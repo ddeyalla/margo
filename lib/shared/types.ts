@@ -81,10 +81,24 @@ export interface Note {
   anchor: Anchor;
   quote: string;
   chapterTitle: string | null;
+  /** The highlight that marks this note's passage, or null once that highlight is removed. */
+  highlightId: string | null;
+  /** Markdown. */
   body: string;
   tags: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** What happened to the markdown copy in NOTES_DIR after the last change. */
+export type VaultStatus =
+  | { state: "written"; file: string }
+  | { state: "off" }
+  | { state: "failed"; error: string };
+
+export interface Annotations {
+  highlights: Highlight[];
+  notes: Note[];
 }
 
 export interface Card {

@@ -13,7 +13,8 @@ const QUEUES: unique symbol = Symbol.for("rigg-learn.store.queues");
 type GlobalWithQueues = typeof globalThis & { [QUEUES]?: Map<string, Promise<unknown>> };
 const queues = ((globalThis as GlobalWithQueues)[QUEUES] ??= new Map());
 
-const serialized = <T>(key: string, task: () => Promise<T>): Promise<T> => {
+/** Runs tasks with the same key one after another, in the order they were queued. */
+export const serialized = <T>(key: string, task: () => Promise<T>): Promise<T> => {
   const previous = queues.get(key) ?? Promise.resolve();
   const run = previous.then(task, task);
   const tail = run.catch(() => undefined);
@@ -42,11 +43,11 @@ export const readJson = async <T>(file: string): Promise<T | null> => {
 };
 
 /** Write to a unique temp file beside the target, then rename over it. Readers see the old file or the new one. */
-export const writeJsonAtomic = async (file: string, value: unknown): Promise<void> => {
+export const writeFileAtomic = async (file: string, text: string): Promise<void> => {
   await mkdir(path.dirname(file), { recursive: true });
   const temp = `${file}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
   try {
-    await writeFile(temp, JSON.stringify(value, null, 2) + "\n", "utf8");
+    await writeFile(temp, text, "utf8");
     await rename(temp, file);
   } catch (error) {
     await rm(temp, { force: true });
@@ -58,7 +59,7 @@ export const writeJsonAtomic = async (file: string, value: unknown): Promise<voi
 export const updateJson = <T>(file: string, fallback: () => T, change: (current: T) => T): Promise<T> =>
   serialized(file, async () => {
     const next = change((await readJson<T>(file)) ?? fallback());
-    await writeJsonAtomic(file, next);
+    await writeFileAtomic(file, JSON.stringify(next, null, 2) + "\n");
     return next;
   });
 
