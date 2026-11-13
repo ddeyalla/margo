@@ -106,7 +106,11 @@ export function TocDrawer({
                 <button
                   type="button"
                   aria-current={isCurrent ? "location" : undefined}
-                  onClick={() => onSelect(entry)}
+                  onClick={(event) => {
+                    /* The docked list stays open, so hand the keys back to the book for turning pages. */
+                    if (docked) event.currentTarget.blur();
+                    onSelect(entry);
+                  }}
                   style={{ paddingLeft: 10 + entry.depth * 14 }}
                   className={clsx(
                     "press flex w-full items-baseline gap-3 rounded-sm py-1.5 pr-2 text-left leading-snug outline-none transition-colors duration-[var(--duration-fast)] focus-visible:outline-2 focus-visible:outline-accent",
