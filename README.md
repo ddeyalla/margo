@@ -10,9 +10,11 @@ The app runs on your own computer. Your books stay there.
 
 ![Reading in Pages view, with the selection toolbar and the tutor panel](docs/screenshots/reader.png)
 
-| Chapters | PDF with highlights and a note |
+| Chapters beside the book | PDF with highlights and a note |
 | --- | --- |
 | ![Chapters drawer](docs/screenshots/chapters.png) | ![A dark PDF page with highlights and a note](docs/screenshots/pdf-notes.png) |
+
+![The light page for EPUBs, with a highlight and a selection](docs/screenshots/light-page.png)
 
 ## What you need
 
