@@ -67,6 +67,40 @@ export const IconButton = forwardRef<
   );
 });
 
+/** A row of mutually exclusive choices. An option with an icon shows only the icon, named by its label. */
+export function Segmented<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: T; label: string; icon?: ReactNode }[];
+  value: T;
+  onChange(value: T): void;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex h-7 shrink-0 items-center gap-0.5 rounded-sm bg-panel-raised p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          aria-label={option.icon ? option.label : undefined}
+          title={option.icon ? option.label : undefined}
+          onClick={() => option.value !== value && onChange(option.value)}
+          className={clsx(
+            "press flex h-6 items-center justify-center rounded-xs text-label text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-panel-hover aria-pressed:text-paper [&>svg]:size-3.5",
+            option.icon ? "w-7" : "px-2.5",
+          )}
+        >
+          {option.icon ?? option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function EmptyState({ icon, title, body, children }: { icon?: ReactNode; title: string; body?: string; children?: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">

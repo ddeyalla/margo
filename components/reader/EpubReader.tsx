@@ -3,7 +3,7 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
-import type { Highlight, SelectionContext } from "@/lib/shared/types";
+import type { Highlight, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
 import { openFailure } from "./errors";
 import { mergeLineBoxes, type Box } from "./rects";
@@ -101,13 +101,22 @@ const pageFontFaces = (): string => {
   return rules.join("\n");
 };
 
-/* Scroll mode pads the section's column top and bottom; in Pages mode foliate keeps its own page margins. */
-const readingCss = (literata: string, paged: boolean) => `
+/**
+ * The book's styles for the reading theme in force around `host`. The book's
+ * frame can't see the page's CSS variables, so the theme's colours are read
+ * here. Scroll mode pads the section's column top and bottom; in Pages mode
+ * foliate keeps its own page margins.
+ */
+const readingCss = (host: HTMLElement, paged: boolean) => {
+  const style = getComputedStyle(host);
+  const token = (name: string) => style.getPropertyValue(name).trim();
+  const literata = token("--font-literata") || "Literata";
+  return `
 ${pageFontFaces()}
-html { color-scheme: dark; }
+html { color-scheme: ${style.colorScheme}; }
 html, body { background: transparent !important; }
 body {
-  color: #d6d6da !important;
+  color: ${token("--color-prose")} !important;
   font-family: ${literata}, Georgia, serif !important;
   font-size: 18px !important;
   line-height: 1.7 !important;
@@ -115,30 +124,35 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-body * { color: inherit !important; background-color: transparent !important; border-color: rgba(255, 255, 255, 0.1) !important; }
+body * { color: inherit !important; background-color: transparent !important; border-color: ${token("--prose-rule")} !important; }
 body *:not(pre, pre *, code, kbd, samp) { font-family: inherit !important; }
 p, li, blockquote, dd, dt { line-height: 1.7 !important; }
 p { hyphens: auto; }
-h1, h2, h3, h4, h5, h6 { color: #ededf0 !important; line-height: 1.3 !important; letter-spacing: -0.01em; }
-a { text-decoration-color: rgba(214, 214, 218, 0.35) !important; text-underline-offset: 3px; }
+h1, h2, h3, h4, h5, h6 { color: ${token("--prose-heading")} !important; line-height: 1.3 !important; letter-spacing: -0.01em; }
+a { text-decoration-color: color-mix(in srgb, currentColor 35%, transparent) !important; text-underline-offset: 3px; }
 pre, code, kbd, samp { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace !important; font-size: 0.82em !important; }
-pre { background-color: rgba(255, 255, 255, 0.04) !important; padding: 0.9em 1.1em !important; border-radius: 8px; white-space: pre-wrap !important; line-height: 1.55 !important; }
+pre { background-color: ${token("--prose-wash")} !important; padding: 0.9em 1.1em !important; border-radius: 8px; white-space: pre-wrap !important; line-height: 1.55 !important; }
 img { background-color: #ececef !important; border-radius: 4px; }
-hr { border: 0 !important; height: 1px; background-color: rgba(255, 255, 255, 0.1) !important; }
+hr { border: 0 !important; height: 1px; background-color: ${token("--prose-rule")} !important; }
 ::selection { background: rgba(59, 130, 246, 0.32); }
 `;
+};
 
 export function EpubReader({
   ref,
   bookId,
   initialPosition,
   mode,
+  theme,
   onReady,
   onSelectionChange,
   onPositionChange,
   onError,
   onHighlightClick,
-}: ReaderProps) {
+}: ReaderProps & {
+  /** Restyles the book in place, so switching keeps the passage in view. The colours come from the surrounding reading theme. */
+  theme: ReadingTheme;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
   /* Set once the book is open, when foliate can resolve a CFI to a section. */
@@ -215,6 +229,12 @@ export function EpubReader({
   const initialCfi = useEffectEvent(() => (initialPosition?.kind === "epub" ? initialPosition.cfi : null));
   const modeNow = useEffectEvent(() => mode);
 
+  const applyStyles = useEffectEvent(() => {
+    const renderer = viewRef.current?.renderer;
+    const host = hostRef.current;
+    if (renderer && host) renderer.setStyles(readingCss(host, pagedRef.current));
+  });
+
   /* Foliate re-lays out the open section and returns to the passage that was in view. */
   const applyMode = useEffectEvent((paged: boolean) => {
     const renderer = viewRef.current?.renderer;
@@ -222,8 +242,7 @@ export function EpubReader({
     if (!renderer || !host) return;
     pagedRef.current = paged;
     if (paged) setAtSectionEnd(false);
-    const literata = getComputedStyle(document.documentElement).getPropertyValue("--font-literata").trim() || "Literata";
-    renderer.setStyles(readingCss(literata, paged));
+    applyStyles();
     fitColumns(renderer, host.clientWidth);
     renderer.setAttribute("flow", paged ? "paginated" : "scrolled");
   });
@@ -231,6 +250,11 @@ export function EpubReader({
   useEffect(() => {
     if (openRef.current) applyMode(mode === "pages");
   }, [mode]);
+
+  /* Only colours change, so foliate keeps its layout and the reader's place. */
+  useEffect(() => {
+    if (openRef.current) applyStyles();
+  }, [theme]);
 
   useEffect(() => {
     const host = hostRef.current;

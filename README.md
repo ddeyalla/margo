@@ -94,7 +94,7 @@ Stop the app with `Ctrl+C` in the terminal.
 - **Find them again.** The Notes and Highlights tabs list everything for the book. Click a quote to jump to it.
 - **Chapters.** The list button at the top left, or `⌘⇧L`, opens the table of contents in a column beside the book. The book makes room for it and keeps your place. The chapter you're in is marked. Click any chapter to go there. In a narrow window the list slides over the book instead.
 - **Scroll or pages.** Switch at the top right. Pages shows one page at a time, or two side by side in an EPUB when there's room. Turn pages with the arrow keys, `Page Up` and `Page Down`, or the arrows at the edges. Your place is kept when you switch, and the app remembers your choice.
-- **Dark pages.** In a PDF, the moon button shows white pages dark. Photos keep their colours.
+- **Page colours.** The moon and sun at the top right switch an EPUB between a dark page and a warm light one. Only the page changes; the app around it stays dark. Your place is kept. In a PDF, the moon shows white pages dark and the sun shows them in their own colours. Photos keep their colours.
 - **More room.** `⌘\` hides or shows the side panel. `Esc` closes the toolbar.
 
 A PDF made of scanned pictures has no text to select. You can still read it, but highlights, notes and the tutor need text.
@@ -105,7 +105,7 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 | --- | --- |
 | Your books | `BOOKS_DIR`. Never changed. |
 | Reading place, chats, highlights and notes | `data/<book id>.json`, one file per book |
-| Your tutor choice, the dark pages switch and scroll or pages | `data/settings.json` |
+| Your tutor choice, scroll or pages, and the page colours for EPUBs and PDFs | `data/settings.json` |
 | Book covers, made from each book the first time it's shown | `data/covers/`. Safe to delete; they're made again. |
 | The markdown copy of each book's notes | `NOTES_DIR/<book title>.md` |
 
@@ -118,7 +118,7 @@ To use a different model, add it to `data/settings.json` under the tutor's name 
 - Flashcards made from your highlights. The Card button is there, marked "Soon".
 - Reading your Obsidian edits back into the app.
 - Search across your books and notes.
-- A light theme.
+- A light theme for the whole app. EPUB pages can already be light.
 - A Mac app with a Dock icon and a folder picker.
 
 ## How it works

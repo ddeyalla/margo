@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useEffectEvent, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, FileWarning, Moon, PanelRight, TableOfContents, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, FileWarning, Moon, PanelRight, Sun, TableOfContents, X } from "lucide-react";
 import { createResizableController, Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
@@ -14,10 +14,10 @@ import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/reader/SelectionToolbar";
 import type { OpenFailure } from "@/components/reader/errors";
-import type { ReaderHandle, ReaderMeta, SelectionRect, TocEntry } from "@/components/reader/types";
-import { EmptyState, IconButton } from "@/components/ui";
+import type { ReaderHandle, ReaderMeta, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
+import { EmptyState, IconButton, Segmented } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
-import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingMode, SelectionContext, TutorAction } from "@/lib/shared/types";
+import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { SidePanel, type PanelTab } from "./SidePanel";
 import { TocDrawer } from "./TocDrawer";
 import { usePositionSaver } from "./usePositionSaver";
@@ -41,6 +41,17 @@ const MODES: { value: ReadingMode; label: string }[] = [
   { value: "pages", label: "Pages" },
 ];
 
+const EPUB_THEMES: { value: ReadingTheme; label: string; icon: ReactNode }[] = [
+  { value: "dark", label: "Dark page", icon: <Moon /> },
+  { value: "light", label: "Light page", icon: <Sun /> },
+];
+
+/* A PDF keeps its own page colours; "dark" here is the switch that darkens white pages. */
+const PDF_THEMES: { value: ReadingTheme; label: string; icon: ReactNode }[] = [
+  { value: "dark", label: "Show white pages dark", icon: <Moon /> },
+  { value: "light", label: "Show pages in their own colours", icon: <Sun /> },
+];
+
 /** Keys that turn the page in Pages mode. */
 const PAGE_KEYS: Record<string, 1 | -1> = { ArrowRight: 1, ArrowDown: 1, PageDown: 1, ArrowLeft: -1, ArrowUp: -1, PageUp: -1 };
 
@@ -62,12 +73,14 @@ export function BookWorkspace({
   savedProvider,
   savedDarkPages,
   savedReadingMode,
+  savedEpubTheme,
 }: {
   book: WorkspaceBook;
   initialState: BookState;
   savedProvider: ProviderId | null;
   savedDarkPages: boolean;
   savedReadingMode: ReadingMode;
+  savedEpubTheme: ReadingTheme;
 }) {
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
@@ -93,6 +106,7 @@ export function BookWorkspace({
   const [mode, setMode] = useState(savedReadingMode);
   const [error, setError] = useState<OpenFailure | null>(null);
   const [darkPages, setDarkPages] = useState(savedDarkPages);
+  const [epubTheme, setEpubTheme] = useState(savedEpubTheme);
   const title = meta.title || book.fileTitle;
   const savePosition = usePositionSaver(book.id);
   const tutor = useTutor(book.id, initialState.threads);
@@ -142,9 +156,14 @@ export function BookWorkspace({
 
   const togglePanel = () => (layout.isCollapsed(PANEL_ID) ? layout.expand(PANEL_ID) : layout.collapse(PANEL_ID));
 
-  const toggleDarkPages = () => {
-    setDarkPages(!darkPages);
-    void patchSettings({ pdfDarkPages: !darkPages });
+  const chooseDarkPages = (dark: boolean) => {
+    setDarkPages(dark);
+    void patchSettings({ pdfDarkPages: dark });
+  };
+
+  const chooseEpubTheme = (theme: ReadingTheme) => {
+    setEpubTheme(theme);
+    void patchSettings({ epubTheme: theme });
   };
 
   const chooseMode = (next: ReadingMode) => {
@@ -226,7 +245,22 @@ export function BookWorkspace({
 
   const jumpTo = (anchor: Anchor) => void readerRef.current?.goTo(anchor);
 
-  const Reader = book.format === "epub" ? EpubReader : PdfReader;
+  const readerProps: ReaderProps = {
+    ref: readerRef,
+    bookId: book.id,
+    initialPosition: initialState.position,
+    onReady: handleReady,
+    onSelectionChange: handleSelection,
+    mode,
+    onPositionChange: (next, entry) => {
+      setChapter(entry);
+      setPosition(next);
+      savePosition(next);
+      setMenu(null);
+    },
+    onError: setError,
+    onHighlightClick: (id, rect) => setMenu({ id, rect }),
+  };
 
   return (
     <div className="flex h-dvh flex-col bg-ink">
@@ -256,24 +290,12 @@ export function BookWorkspace({
         {position && !error ? (
           <span className="shrink-0 px-1.5 text-label text-dim tabular-nums">{progressLabel(position, pageCount)}</span>
         ) : null}
-        <div role="group" aria-label="Reading mode" className="flex h-7 shrink-0 items-center gap-0.5 rounded-sm bg-panel-raised p-0.5">
-          {MODES.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={mode === value}
-              onClick={() => chooseMode(value)}
-              className="press h-6 rounded-xs px-2.5 text-label text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-panel-hover aria-pressed:text-paper"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {book.format === "pdf" ? (
-          <IconButton label={darkPages ? "Show pages in their own colours" : "Show white pages dark"} active={darkPages} onClick={toggleDarkPages}>
-            <Moon />
-          </IconButton>
-        ) : null}
+        <Segmented label="Reading mode" options={MODES} value={mode} onChange={chooseMode} />
+        {book.format === "epub" ? (
+          <Segmented label="Page colours" options={EPUB_THEMES} value={epubTheme} onChange={chooseEpubTheme} />
+        ) : (
+          <Segmented label="Page colours" options={PDF_THEMES} value={darkPages ? "dark" : "light"} onChange={(theme) => chooseDarkPages(theme === "dark")} />
+        )}
         <IconButton
           label={panelOpen ? "Hide the tutor panel (⌘\\)" : "Show the tutor panel (⌘\\)"}
           active={panelOpen}
@@ -300,7 +322,12 @@ export function BookWorkspace({
                 <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked onSelect={openEntry} onClose={closeToc} />
               </div>
             ) : null}
-            <main ref={readerAreaRef} data-dark-pages={darkPages || undefined} className="relative h-full min-w-0 flex-1">
+            <main
+              ref={readerAreaRef}
+              data-dark-pages={(book.format === "pdf" && darkPages) || undefined}
+              data-reading-theme={book.format === "epub" ? epubTheme : undefined}
+              className="relative h-full min-w-0 flex-1"
+            >
               {annotations.error ? (
                 <div
                   role="alert"
@@ -320,23 +347,10 @@ export function BookWorkspace({
                     Back to library
                   </Link>
                 </EmptyState>
+              ) : book.format === "epub" ? (
+                <EpubReader {...readerProps} theme={epubTheme} />
               ) : (
-                <Reader
-                  ref={readerRef}
-                  bookId={book.id}
-                  initialPosition={initialState.position}
-                  onReady={handleReady}
-                  onSelectionChange={handleSelection}
-                  mode={mode}
-                  onPositionChange={(next, entry) => {
-                    setChapter(entry);
-                    setPosition(next);
-                    savePosition(next);
-                    setMenu(null);
-                  }}
-                  onError={setError}
-                  onHighlightClick={(id, rect) => setMenu({ id, rect })}
-                />
+                <PdfReader {...readerProps} />
               )}
               {mode === "pages" && !error ? (
                 <>
@@ -423,7 +437,7 @@ function PageTurn({ direction, onTurn }: { direction: 1 | -1; onTurn(direction: 
       title={direction === 1 ? "Next page (→)" : "Previous page (←)"}
       onClick={() => onTurn(direction)}
       className={clsx(
-        "group absolute inset-y-0 z-20 flex w-10 items-center justify-center text-dim/60 outline-none transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.02] hover:text-paper focus-visible:text-paper",
+        "group absolute inset-y-0 z-20 flex w-10 items-center justify-center text-page-dim/70 outline-none transition-colors duration-[var(--duration-fast)] hover:bg-prose/[0.03] hover:text-prose focus-visible:text-prose",
         direction === 1 ? "right-0" : "left-0",
       )}
     >

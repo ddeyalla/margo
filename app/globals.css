@@ -21,9 +21,11 @@
   --color-warn: #f0b429;
   --color-danger: #f87171;
 
-  /* Reading surface. Softer than paper so long sessions don't glare. */
+  /* Reading surface. Softer than paper so long sessions don't glare. The
+     light reading theme below redefines these for the book's surface only. */
   --color-page: #0c0c0d;
   --color-prose: #d6d6da;
+  --color-page-dim: #74747d;
   --color-highlight: rgba(240, 180, 41, 0.26);
   --color-highlight-strong: #f0b429;
 
@@ -77,6 +79,28 @@
   color-scheme: dark;
   --duration-fast: 120ms;
   --duration-base: 160ms;
+}
+
+/* Book text colours only the EPUB's frame reads, so no utility needs them. */
+:root {
+  --prose-heading: #ededf0;
+  --prose-rule: rgba(255, 255, 255, 0.1);
+  --prose-wash: rgba(255, 255, 255, 0.04);
+}
+
+/* The light reading theme: dark ink on a warm page, tuned for long reading.
+   It applies to the book's surface alone; the app around it stays dark. */
+[data-reading-theme="light"] {
+  color-scheme: light;
+  --color-page: #f7f5f0;
+  --color-prose: #1f1f1f;
+  --color-page-dim: #8c877d;
+  --color-highlight: rgba(236, 168, 22, 0.34);
+  /* foliate draws EPUB highlights over the text; multiplying keeps the ink dark beneath them. */
+  --overlayer-highlight-blend-mode: multiply;
+  --prose-heading: #141414;
+  --prose-rule: rgba(31, 31, 31, 0.14);
+  --prose-wash: rgba(31, 31, 31, 0.05);
 }
 
 @font-face {

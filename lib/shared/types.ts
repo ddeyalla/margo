@@ -131,13 +131,22 @@ export type ReadingMode = "scroll" | "pages";
 
 export const isReadingMode = (value: unknown): value is ReadingMode => value === "scroll" || value === "pages";
 
+/** The colours of an EPUB's page: light text on dark, or dark ink on a warm light page. */
+export type ReadingTheme = "dark" | "light";
+
+export const isReadingTheme = (value: unknown): value is ReadingTheme => value === "dark" || value === "light";
+
 export interface AppSettings {
   provider: ProviderId | null;
   models: Partial<Record<ProviderId, string>>;
   /** Show white PDF pages as dark pages. On unless turned off. */
   pdfDarkPages: boolean;
   readingMode: ReadingMode;
+  epubTheme: ReadingTheme;
 }
+
+/** The settings the app itself changes. */
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode" | "epubTheme">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 
