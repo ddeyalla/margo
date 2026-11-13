@@ -39,7 +39,11 @@ export const fixations = (text: string): [start: number, end: number][] =>
 export const skipFixations = (node: Node): number =>
   node.nodeType === 1 && (node as Element).localName === FIXATION_TAG ? NodeFilter.FILTER_SKIP : NodeFilter.FILTER_ACCEPT;
 
-/** Marks the bold start of every word in the document's body. A document already marked is left as it is. */
+/**
+ * Marks the bold start of every word in the document's body. A document already marked is left as it is.
+ * Text is split and wrapped in place, never replaced, so live ranges such as foliate's place in the
+ * book stay on the same characters: exactly at word edges, and at the word's start within a bold start.
+ */
 export const addFixations = (doc: Document) => {
   const { body } = doc;
   if (!body || body.getElementsByTagName(FIXATION_TAG).length) return;
@@ -50,28 +54,23 @@ export const addFixations = (doc: Document) => {
   const texts: Text[] = [];
   for (let node = walker.nextNode(); node; node = walker.nextNode()) texts.push(node as Text);
   for (const text of texts) {
-    const spans = fixations(text.data);
-    if (!spans.length) continue;
-    const parts = doc.createDocumentFragment();
-    let at = 0;
-    for (const [start, end] of spans) {
-      if (start > at) parts.append(text.data.slice(at, start));
+    /* From the last word back, so the offsets still to come stay put. */
+    for (const [start, end] of fixations(text.data).reverse()) {
+      if (end < text.length) text.splitText(end);
+      const bold = start > 0 ? text.splitText(start) : text;
       const mark = doc.createElementNS(XHTML, FIXATION_TAG);
-      mark.textContent = text.data.slice(start, end);
-      parts.append(mark);
-      at = end;
+      bold.replaceWith(mark);
+      mark.append(bold);
     }
-    if (at < text.data.length) parts.append(text.data.slice(at));
-    text.replaceWith(parts);
   }
 };
 
-/** Takes the bold starts out again, joining each word's text back into one text node. */
+/** Takes the bold starts out again, joining each word's text back into one text node, and live ranges with it. */
 export const removeFixations = (doc: Document) => {
   const parents = new Set<Node>();
   for (const mark of Array.from(doc.getElementsByTagName(FIXATION_TAG))) {
     if (mark.parentNode) parents.add(mark.parentNode);
-    mark.replaceWith(mark.textContent ?? "");
+    mark.replaceWith(...mark.childNodes);
   }
   for (const parent of parents) parent.normalize();
 };

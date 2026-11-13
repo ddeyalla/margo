@@ -20,6 +20,7 @@ import { patchBookState, patchSettings } from "@/lib/client/api";
 import { anchorAt } from "@/lib/shared/place";
 import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { ReadingFooter } from "./ReadingFooter";
+import { ReadingSettings } from "./ReadingSettings";
 import { SidePanel, type PanelTab } from "./SidePanel";
 import { TocDrawer } from "./TocDrawer";
 import { usePositionSaver } from "./usePositionSaver";
@@ -41,11 +42,6 @@ const READER_MIN_WIDTH = 480;
 const MODES: { value: ReadingMode; label: string }[] = [
   { value: "scroll", label: "Scroll" },
   { value: "pages", label: "Pages" },
-];
-
-const EPUB_THEMES: { value: ReadingTheme; label: string; icon: ReactNode }[] = [
-  { value: "dark", label: "Dark page", icon: <Moon /> },
-  { value: "light", label: "Light page", icon: <Sun /> },
 ];
 
 /* A PDF keeps its own page colours; "dark" here is the switch that darkens white pages. */
@@ -72,6 +68,7 @@ export function BookWorkspace({
   savedDarkPages,
   savedReadingMode,
   savedEpubTheme,
+  savedBoldStarts,
 }: {
   book: WorkspaceBook;
   initialState: BookState;
@@ -79,6 +76,7 @@ export function BookWorkspace({
   savedDarkPages: boolean;
   savedReadingMode: ReadingMode;
   savedEpubTheme: ReadingTheme;
+  savedBoldStarts: boolean;
 }) {
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
@@ -105,6 +103,7 @@ export function BookWorkspace({
   const [error, setError] = useState<OpenFailure | null>(null);
   const [darkPages, setDarkPages] = useState(savedDarkPages);
   const [epubTheme, setEpubTheme] = useState(savedEpubTheme);
+  const [boldStarts, setBoldStarts] = useState(savedBoldStarts);
   const title = meta.title || book.fileTitle;
   const savePosition = usePositionSaver(book.id);
   const tutor = useTutor(book.id, initialState.threads);
@@ -161,6 +160,11 @@ export function BookWorkspace({
   const chooseEpubTheme = (theme: ReadingTheme) => {
     setEpubTheme(theme);
     void patchSettings({ epubTheme: theme });
+  };
+
+  const chooseBoldStarts = (on: boolean) => {
+    setBoldStarts(on);
+    void patchSettings({ boldStarts: on });
   };
 
   const chooseMode = (next: ReadingMode) => {
@@ -292,7 +296,7 @@ export function BookWorkspace({
         </div>
         <Segmented label="Reading mode" options={MODES} value={mode} onChange={chooseMode} />
         {book.format === "epub" ? (
-          <Segmented label="Page colours" options={EPUB_THEMES} value={epubTheme} onChange={chooseEpubTheme} />
+          <ReadingSettings theme={epubTheme} onTheme={chooseEpubTheme} boldStarts={boldStarts} onBoldStarts={chooseBoldStarts} />
         ) : (
           <Segmented label="Page colours" options={PDF_THEMES} value={darkPages ? "dark" : "light"} onChange={(theme) => chooseDarkPages(theme === "dark")} />
         )}
@@ -350,7 +354,7 @@ export function BookWorkspace({
               ) : (
                 <>
                   <div className="relative min-h-0 flex-1">
-                    {book.format === "epub" ? <EpubReader {...readerProps} theme={epubTheme} /> : <PdfReader {...readerProps} />}
+                    {book.format === "epub" ? <EpubReader {...readerProps} theme={epubTheme} boldStarts={boldStarts} /> : <PdfReader {...readerProps} />}
                     {mode === "pages" ? (
                       <>
                         <PageTurn direction={-1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />

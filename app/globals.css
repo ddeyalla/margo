@@ -86,6 +86,8 @@
   --prose-heading: #ededf0;
   --prose-rule: rgba(255, 255, 255, 0.1);
   --prose-wash: rgba(255, 255, 255, 0.04);
+  /* Bold starts: light strokes on dark read heavier, so a lighter weight in a brighter tone. */
+  --prose-fixation-weight: 600;
 }
 
 /* The light reading theme: dark ink on a warm page, tuned for long reading.
@@ -101,6 +103,7 @@
   --prose-heading: #141414;
   --prose-rule: rgba(31, 31, 31, 0.14);
   --prose-wash: rgba(31, 31, 31, 0.05);
+  --prose-fixation-weight: 700;
 }
 
 @font-face {

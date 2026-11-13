@@ -81,6 +81,18 @@ describe("marking bold starts in a section", () => {
     expect(doc.body.innerHTML).toBe(once);
   });
 
+  /* Taking marks out relies on normalize() moving live ranges into the joined text node. Browsers do;
+     jsdom moves only ranges that also touch the first node, so that half is checked in the browser. */
+  it("keeps a live range on the same words as the marks go in", () => {
+    const doc = parseSection();
+    const phrase = "building the future";
+    const at = doc.body.textContent!.indexOf(phrase);
+    const range = rangeOf(doc, at, at + phrase.length, "start");
+    addFixations(doc);
+    expect(range.toString()).toBe(phrase);
+    expect(fromRange(range, skipFixations)).toBe(fromRange(rangeOf(parseSection(), at, at + phrase.length, "start")));
+  });
+
   it("restores the section exactly when the marks come out", () => {
     const doc = marked();
     removeFixations(doc);

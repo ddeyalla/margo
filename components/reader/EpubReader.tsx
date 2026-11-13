@@ -6,6 +6,7 @@ import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
 import type { Highlight, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
 import { openFailure } from "./errors";
+import { addFixations, removeFixations, skipFixations } from "./fixations";
 import { mergeLineBoxes, type Box } from "./rects";
 import { epubToc, wholeChapterSections, type FoliateTocItem } from "./toc";
 import type { PageNumber, ReaderProps, TocEntry } from "./types";
@@ -24,11 +25,14 @@ interface FoliateRenderer extends HTMLElement {
   prev(): Promise<void>;
   render(): void;
   setStyles(css: string): void;
+  getContents(): { doc: Document; index: number }[];
 }
 
 interface FoliateView extends HTMLElement {
   book: { metadata?: { title?: unknown; author?: unknown }; sections: { linear?: string }[]; toc?: FoliateTocItem[] };
   renderer: FoliateRenderer;
+  /** Applied to every CFI foliate makes or resolves. A vendored patch adds it. */
+  cfiFilter: ((node: Node) => number) | null;
   open(src: string): Promise<void>;
   init(options: { lastLocation: string | null; showTextStart: boolean }): Promise<void>;
   close(): void;
@@ -160,6 +164,8 @@ p { hyphens: auto; }
 h1, h2, h3, h4, h5, h6 { color: ${token("--prose-heading")} !important; line-height: 1.3 !important; letter-spacing: -0.01em; }
 a { text-decoration-color: color-mix(in srgb, currentColor 35%, transparent) !important; text-underline-offset: 3px; }
 pre, code, kbd, samp { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace !important; font-size: 0.82em !important; }
+rl-fx { font-weight: ${token("--prose-fixation-weight")} !important; color: ${token("--prose-heading")} !important; }
+:is(h1, h2, h3, h4, h5, h6, b, strong, th) rl-fx { font-weight: bolder !important; }
 pre { background-color: ${token("--prose-wash")} !important; padding: 0.9em 1.1em !important; border-radius: 8px; white-space: pre-wrap !important; line-height: 1.55 !important; }
 img { background-color: #ececef !important; border-radius: 4px; }
 hr { border: 0 !important; height: 1px; background-color: ${token("--prose-rule")} !important; }
@@ -173,6 +179,7 @@ export function EpubReader({
   initialPosition,
   mode,
   theme,
+  boldStarts,
   onReady,
   onSelectionChange,
   onPositionChange,
@@ -181,6 +188,8 @@ export function EpubReader({
 }: ReaderProps & {
   /** Restyles the book in place, so switching keeps the passage in view. The colours come from the surrounding reading theme. */
   theme: ReadingTheme;
+  /** Sets the start of each word in bold. Switching keeps the passage in view. */
+  boldStarts: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
@@ -198,6 +207,13 @@ export function EpubReader({
   const [atSectionEnd, setAtSectionEnd] = useState(false);
 
   const chapterOf = (item: FoliateTocItem | null | undefined) => (item && tocRef.current.get(item)) ?? null;
+
+  /* Draws every highlight again in the open section, with ranges resolved in its current DOM. */
+  const drawHighlights = () => {
+    for (const { anchor } of highlightsRef.current.values()) {
+      if (anchor.kind === "epub") viewRef.current?.addAnnotation({ value: anchor.cfi }).catch(() => undefined);
+    }
+  };
 
   const readSelection = (): SelectionContext | null => {
     const view = viewRef.current;
@@ -262,6 +278,7 @@ export function EpubReader({
   const emitHighlightClick = useEffectEvent(onHighlightClick);
   const initialCfi = useEffectEvent(() => (initialPosition?.kind === "epub" ? initialPosition.cfi : null));
   const modeNow = useEffectEvent(() => mode);
+  const boldStartsNow = useEffectEvent(() => boldStarts);
 
   const applyStyles = useEffectEvent(() => {
     const renderer = viewRef.current?.renderer;
@@ -289,6 +306,20 @@ export function EpubReader({
   useEffect(() => {
     if (openRef.current) applyStyles();
   }, [theme]);
+
+  /* Marking keeps foliate's place, a live range, on the same words, so laying out again returns to it the way
+     a change of colours or font does. Highlights are drawn again from their CFIs, since a range can shift
+     within a word. */
+  useEffect(() => {
+    const view = openRef.current ? viewRef.current : null;
+    if (!view) return;
+    for (const { doc } of view.renderer.getContents()) {
+      if (boldStarts) addFixations(doc);
+      else removeFixations(doc);
+    }
+    drawHighlights();
+    view.renderer.render();
+  }, [boldStarts]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -352,6 +383,8 @@ export function EpubReader({
 
     const onLoad = (event: Event) => {
       const { doc, index } = (event as CustomEvent<{ doc: Document; index: number }>).detail;
+      /* Before foliate lays the section out or resolves any CFI in it. */
+      if (boldStartsNow()) addFixations(doc);
       sectionRef.current = { doc, index };
       emitSelectionRect();
       doc.addEventListener("pointerdown", () => {
@@ -412,11 +445,6 @@ export function EpubReader({
         for (const rect of Array.from(group.children)) rect.setAttribute("rx", "2");
         return group;
       };
-      const onCreateOverlay = () => {
-        for (const { anchor } of highlightsRef.current.values()) {
-          if (anchor.kind === "epub") view?.addAnnotation({ value: anchor.cfi }).catch(() => undefined);
-        }
-      };
       const onShowAnnotation = (event: Event) => {
         const { value, range } = (event as CustomEvent<{ value: string; range: Range }>).detail;
         const doc = range.startContainer.ownerDocument;
@@ -428,11 +456,12 @@ export function EpubReader({
       };
       view = document.createElement("foliate-view") as FoliateView;
       view.className = "block size-full";
+      view.cfiFilter = skipFixations;
       view.addEventListener("load", onLoad);
       view.addEventListener("relocate", onRelocate);
       view.addEventListener("wheel", onWheel, { passive: true });
       view.addEventListener("draw-annotation", (event) => (event as CustomEvent<DrawDetail>).detail.draw(tint));
-      view.addEventListener("create-overlay", onCreateOverlay);
+      view.addEventListener("create-overlay", drawHighlights);
       view.addEventListener("show-annotation", onShowAnnotation);
       host.append(view);
       viewRef.current = view;
