@@ -6,6 +6,14 @@ Select a passage and ask the tutor to explain it, go deeper, or answer a questio
 
 The app runs on your own computer. Your books stay there.
 
+![The library, with covers and reading progress](docs/screenshots/library.png)
+
+![Reading in Pages view, with the selection toolbar and the tutor panel](docs/screenshots/reader.png)
+
+| Chapters | PDF with highlights and a note |
+| --- | --- |
+| ![Chapters drawer](docs/screenshots/chapters.png) | ![A dark PDF page with highlights and a note](docs/screenshots/pdf-notes.png) |
+
 ## What you need
 
 - [Node.js 22](https://nodejs.org). Check with `node --version` in a terminal.
@@ -113,6 +121,22 @@ To use a different model, add it to `data/settings.json` under the tutor's name 
 - A light theme.
 - A Mac app with a Dock icon and a folder picker.
 
+## How it works
+
+It's a [Next.js](https://nextjs.org) app. The browser shows the books and the panel. A small server on your computer does everything that touches files or the tutor, so the browser never reads your disk or sees your key.
+
+| Part | Where | What it does |
+| --- | --- | --- |
+| Library | `app/page.tsx`, `lib/server/library.ts` | Scans `BOOKS_DIR`. Each book's id is a hash of its path, and files are only ever served by id. |
+| EPUB reader | `components/reader/EpubReader.tsx` | Renders with [foliate-js](https://github.com/johnfactotum/foliate-js), kept in `public/vendor/foliate-js`. |
+| PDF reader | `components/reader/PdfReader.tsx` | Renders with [pdf.js](https://mozilla.github.io/pdf.js/), with its text layer so you can select. |
+| Tutor | `app/api/chat/route.ts`, `lib/server/tutor/` | One adapter per tutor (Claude Code, Codex, API). Answers stream back to the panel. |
+| Saving | `lib/server/store.ts` | Writes `data/<book id>.json` safely: to a temp file first, one write at a time per book. |
+| Obsidian copy | `lib/server/vault.ts` | Rewrites the book's markdown file after every highlight or note change. |
+| Covers | `lib/server/covers.ts` | Takes the cover from the EPUB, or draws page 1 of a PDF, and caches it. |
+
+Claude Code and Codex run as separate programs with no tools turned on, in an empty temp folder, and with only a short list of environment variables. They can answer, but they can't read or change your files.
+
 ## For developers
 
 ```bash
@@ -121,3 +145,9 @@ npm run lint      # code style
 npx tsc --noEmit  # type check
 npm run build     # production build
 ```
+
+## Credits
+
+- [foliate-js](https://github.com/johnfactotum/foliate-js) by John Factotum, MIT licence. A copy is in `public/vendor/foliate-js` with its `LICENSE`.
+- [pdf.js](https://github.com/mozilla/pdf.js) by Mozilla, Apache 2.0.
+- [Literata](https://github.com/googlefonts/literata) for book text, [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/) for the interface. All SIL Open Font Licence.
