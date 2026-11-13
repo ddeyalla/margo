@@ -18,7 +18,7 @@ import type { ReaderHandle, ReaderMeta, ReaderPlace, ReaderProps, SelectionRect,
 import { EmptyState, IconButton, Segmented } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
 import { anchorAt } from "@/lib/shared/place";
-import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
+import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingFont, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { ReadingFooter } from "./ReadingFooter";
 import { ReadingSettings } from "./ReadingSettings";
 import { SidePanel, type PanelTab } from "./SidePanel";
@@ -69,6 +69,7 @@ export function BookWorkspace({
   savedReadingMode,
   savedEpubTheme,
   savedBoldStarts,
+  savedReadingFont,
 }: {
   book: WorkspaceBook;
   initialState: BookState;
@@ -77,6 +78,7 @@ export function BookWorkspace({
   savedReadingMode: ReadingMode;
   savedEpubTheme: ReadingTheme;
   savedBoldStarts: boolean;
+  savedReadingFont: ReadingFont;
 }) {
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
@@ -104,6 +106,9 @@ export function BookWorkspace({
   const [darkPages, setDarkPages] = useState(savedDarkPages);
   const [epubTheme, setEpubTheme] = useState(savedEpubTheme);
   const [boldStarts, setBoldStarts] = useState(savedBoldStarts);
+  const [readingFont, setReadingFont] = useState(savedReadingFont);
+  /* A font shown on the page while the reader looks through the list, before choosing one. */
+  const [previewFont, setPreviewFont] = useState<ReadingFont | undefined>(undefined);
   const title = meta.title || book.fileTitle;
   const savePosition = usePositionSaver(book.id);
   const tutor = useTutor(book.id, initialState.threads);
@@ -165,6 +170,12 @@ export function BookWorkspace({
   const chooseBoldStarts = (on: boolean) => {
     setBoldStarts(on);
     void patchSettings({ boldStarts: on });
+  };
+
+  const chooseFont = (font: ReadingFont) => {
+    setPreviewFont(undefined);
+    setReadingFont(font);
+    void patchSettings({ readingFont: font });
   };
 
   const chooseMode = (next: ReadingMode) => {
@@ -296,7 +307,15 @@ export function BookWorkspace({
         </div>
         <Segmented label="Reading mode" options={MODES} value={mode} onChange={chooseMode} />
         {book.format === "epub" ? (
-          <ReadingSettings theme={epubTheme} onTheme={chooseEpubTheme} boldStarts={boldStarts} onBoldStarts={chooseBoldStarts} />
+          <ReadingSettings
+            theme={epubTheme}
+            onTheme={chooseEpubTheme}
+            boldStarts={boldStarts}
+            onBoldStarts={chooseBoldStarts}
+            font={readingFont}
+            onPreviewFont={setPreviewFont}
+            onFont={chooseFont}
+          />
         ) : (
           <Segmented label="Page colours" options={PDF_THEMES} value={darkPages ? "dark" : "light"} onChange={(theme) => chooseDarkPages(theme === "dark")} />
         )}
@@ -354,7 +373,7 @@ export function BookWorkspace({
               ) : (
                 <>
                   <div className="relative min-h-0 flex-1">
-                    {book.format === "epub" ? <EpubReader {...readerProps} theme={epubTheme} boldStarts={boldStarts} /> : <PdfReader {...readerProps} />}
+                    {book.format === "epub" ? <EpubReader {...readerProps} theme={epubTheme} boldStarts={boldStarts} font={previewFont === undefined ? readingFont : previewFont} /> : <PdfReader {...readerProps} />}
                     {mode === "pages" ? (
                       <>
                         <PageTurn direction={-1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />

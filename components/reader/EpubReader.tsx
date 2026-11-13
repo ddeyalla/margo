@@ -3,10 +3,11 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
-import type { Highlight, ReadingTheme, SelectionContext } from "@/lib/shared/types";
+import type { Highlight, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
 import { openFailure } from "./errors";
 import { addFixations, removeFixations, skipFixations } from "./fixations";
+import { cssFamily } from "./fonts";
 import { mergeLineBoxes, type Box } from "./rects";
 import { epubToc, wholeChapterSections, type FoliateTocItem } from "./toc";
 import type { PageNumber, ReaderProps, TocEntry } from "./types";
@@ -135,22 +136,22 @@ const pageFontFaces = (): string => {
 };
 
 /**
- * The book's styles for the reading theme in force around `host`. The book's
+ * The book's styles for the reading theme in force around `host`, set in `font`. The book's
  * frame can't see the page's CSS variables, so the theme's colours are read
  * here. Scroll mode pads the section's column top and bottom; in Pages mode
- * foliate keeps its own page margins.
+ * foliate keeps its own page margins. A font that isn't installed falls through to Literata.
  */
-const readingCss = (host: HTMLElement, paged: boolean) => {
+const readingCss = (host: HTMLElement, paged: boolean, font: ReadingFont) => {
   const style = getComputedStyle(host);
   const token = (name: string) => style.getPropertyValue(name).trim();
-  const literata = token("--font-literata") || "Literata";
+  const literata = `${token("--font-literata") || "Literata"}, Georgia, serif`;
   return `
 ${pageFontFaces()}
 html { color-scheme: ${style.colorScheme}; }
 html, body { background: transparent !important; }
 body {
   color: ${token("--color-prose")} !important;
-  font-family: ${literata}, Georgia, serif !important;
+  font-family: ${font === null ? literata : `${cssFamily(font)}, ${literata}`} !important;
   font-size: 18px !important;
   line-height: 1.7 !important;
   padding: ${paged ? "0" : "56px 0 160px"} !important;
@@ -180,6 +181,7 @@ export function EpubReader({
   mode,
   theme,
   boldStarts,
+  font,
   onReady,
   onSelectionChange,
   onPositionChange,
@@ -190,6 +192,8 @@ export function EpubReader({
   theme: ReadingTheme;
   /** Sets the start of each word in bold. Switching keeps the passage in view. */
   boldStarts: boolean;
+  /** The family the book is set in, or null for Literata. Restyles in place, like the theme. */
+  font: ReadingFont;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
@@ -283,7 +287,7 @@ export function EpubReader({
   const applyStyles = useEffectEvent(() => {
     const renderer = viewRef.current?.renderer;
     const host = hostRef.current;
-    if (renderer && host) renderer.setStyles(readingCss(host, pagedRef.current));
+    if (renderer && host) renderer.setStyles(readingCss(host, pagedRef.current, font));
   });
 
   /* Foliate re-lays out the open section and returns to the passage that was in view. */
@@ -302,10 +306,10 @@ export function EpubReader({
     if (openRef.current) applyMode(mode === "pages");
   }, [mode]);
 
-  /* Only colours change, so foliate keeps its layout and the reader's place. */
+  /* New colours or a new font: foliate lays the section out again and returns to the passage that was in view. */
   useEffect(() => {
     if (openRef.current) applyStyles();
-  }, [theme]);
+  }, [theme, font]);
 
   /* Marking keeps foliate's place, a live range, on the same words, so laying out again returns to it the way
      a change of colours or font does. Highlights are drawn again from their CFIs, since a range can shift
