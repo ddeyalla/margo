@@ -67,10 +67,12 @@ const stateFile = (id: BookId, dataDir: string) => path.join(dataDir, `${id}.jso
 
 /** Threads saved before questions without a passage existed have no kind; every one of them is about a passage. */
 type StoredThread = Thread | Omit<PassageThread, "kind">;
-type StoredState = Omit<BookState, "threads"> & { threads: StoredThread[] };
+/* `cards` held an earlier card shape that was never filled; it is dropped on read. */
+type StoredState = Omit<BookState, "threads"> & { threads: StoredThread[]; cards?: unknown };
 
 const normalize = (raw: Partial<StoredState> | null): BookState => {
   const state = { ...emptyBookState(), ...raw };
+  delete state.cards;
   return { ...state, threads: state.threads.map((thread) => ("kind" in thread ? thread : { ...thread, kind: "passage" })) };
 };
 

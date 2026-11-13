@@ -7,9 +7,9 @@ import {
 } from "@/lib/shared/annotations";
 import { normalizeText } from "@/lib/shared/context";
 import type { Annotations, BookFormat, LibraryBook, VaultStatus } from "@/lib/shared/types";
-import { readBookState, serialized, updateBookState } from "./store";
+import { updateBookState } from "./store";
 import { isObject, parseAnchor, shortText } from "./validate";
-import { writeVault } from "./vault";
+import { mirrorVault } from "./vault";
 
 const MAX_QUOTE = 12_000;
 const MAX_NOTE = 20_000;
@@ -53,20 +53,6 @@ export const parseChange = (method: AnnotationMethod, body: unknown, format: Boo
   }
 };
 
-/**
- * Rewrites the book's markdown copy from the saved JSON. Writes queue per
- * book and each reads the latest state when its turn comes, so the file
- * always ends up matching the last change.
- */
-const mirror = (book: LibraryBook, dataDir: string, notesDir: string | null): Promise<VaultStatus> =>
-  serialized(`vault:${book.id}`, async () => {
-    if (!notesDir) return { state: "off" };
-    const state = await readBookState(book.id, dataDir);
-    const title = state.meta?.title ?? book.fileTitle;
-    const author = state.meta?.author ?? book.fileAuthor;
-    return writeVault(notesDir, { id: book.id, title, author, format: book.format }, state);
-  });
-
 /** Saves the change to the book's JSON, then mirrors it to NOTES_DIR. A failed mirror never undoes the save. */
 export const changeAnnotations = async (
   book: LibraryBook,
@@ -75,6 +61,6 @@ export const changeAnnotations = async (
 ): Promise<{ annotations: Annotations; vault: VaultStatus }> => {
   const now = new Date().toISOString();
   const state = await updateBookState(book.id, (current) => ({ ...current, ...applyChange(current, change, now) }), dirs.dataDir);
-  const vault = await mirror(book, dirs.dataDir, dirs.notesDir);
+  const vault = await mirrorVault(book, dirs.dataDir, dirs.notesDir);
   return { annotations: { highlights: state.highlights, notes: state.notes }, vault };
 };

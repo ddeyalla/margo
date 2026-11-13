@@ -127,10 +127,52 @@ export interface Annotations {
   notes: Note[];
 }
 
-export interface Card {
+/** How well the reader recalled a card, from forgot to effortless. */
+export type Rating = "again" | "hard" | "good" | "easy";
+
+export const RATINGS: readonly Rating[] = ["again", "hard", "good", "easy"];
+
+export const isRating = (value: unknown): value is Rating => RATINGS.includes(value as Rating);
+
+export type ScheduleState = "new" | "learning" | "review" | "relearning";
+
+/** When a card set comes back, and the memory model behind it. Dates are ISO strings. */
+export interface Schedule {
+  state: ScheduleState;
+  due: string;
+  stability: number;
+  difficulty: number;
+  scheduledDays: number;
+  /** Which learning or relearning step the set is on. */
+  learningSteps: number;
+  /** Times rated. A rating is applied only when it names the count the reader saw. */
+  reps: number;
+  lapses: number;
+  lastReview: string | null;
+}
+
+/** One question that makes the reader recall the set's fact. */
+export interface Cue {
+  id: string;
+  question: string;
+  answer: string;
+  createdAt: string;
+  lastRating: Rating | null;
+}
+
+/** The cards made from one passage: one fact, a few ways to recall it, one schedule. */
+export interface CardSet {
   id: string;
   anchor: Anchor;
   quote: string;
+  chapterTitle: string | null;
+  fact: string;
+  cues: Cue[];
+  schedule: Schedule;
+  /** The cue a set in learning or relearning keeps showing until it graduates. */
+  learningCueId: string | null;
+  /** The study day of the set's first rating, which counts against that day's new limit. */
+  introducedOn: string | null;
   createdAt: string;
 }
 
@@ -142,7 +184,7 @@ export interface BookState {
   activeThreadId: string | null;
   highlights: Highlight[];
   notes: Note[];
-  cards: Card[];
+  cardSets: CardSet[];
 }
 
 export const emptyBookState = (): BookState => ({
@@ -152,7 +194,7 @@ export const emptyBookState = (): BookState => ({
   activeThreadId: null,
   highlights: [],
   notes: [],
-  cards: [],
+  cardSets: [],
 });
 
 /** How the reader lays out a book: one continuous column, or a page at a time. */
@@ -173,9 +215,9 @@ export const isReadingFont = (value: unknown): value is ReadingFont =>
   value === null || (typeof value === "string" && value.length > 0 && value.length <= 200 && value.trim() === value && !/\p{Cc}/u.test(value));
 
 /** The tab showing in the side panel. */
-export type PanelTab = "chat" | "notes" | "highlights";
+export type PanelTab = "chat" | "notes" | "highlights" | "cards";
 
-export const isPanelTab = (value: unknown): value is PanelTab => value === "chat" || value === "notes" || value === "highlights";
+export const isPanelTab = (value: unknown): value is PanelTab => value === "chat" || value === "notes" || value === "highlights" || value === "cards";
 
 export interface AppSettings {
   provider: ProviderId | null;

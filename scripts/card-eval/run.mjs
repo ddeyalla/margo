@@ -1,6 +1,6 @@
 // Runs the card prompt on every passage through the Claude Code CLI, the way the
 // tutor does: no tools, an empty folder, one fixed model. Writes results.json.
-// Usage: copy prompt.md next to passages.json, then: node run.mjs <that dir> <model>
+// Usage: node scripts/card-eval/run.mjs <dir with passages.json> <model>
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,7 +8,7 @@ import path from "node:path";
 
 const dir = process.argv[2];
 const model = process.argv[3];
-const system = fs.readFileSync(path.join(dir, "prompt.md"), "utf8");
+const system = fs.readFileSync(path.join(import.meta.dirname, "../../lib/server/cards/prompt.md"), "utf8");
 const passages = JSON.parse(fs.readFileSync(path.join(dir, "passages.json"), "utf8"));
 const empty = fs.mkdtempSync(path.join(os.tmpdir(), "card-eval-"));
 

@@ -30,7 +30,7 @@ describe("settings", () => {
   });
 
   it("falls back for values it doesn't know", async () => {
-    await writeFile(path.join(dir, "data", "settings.json"), JSON.stringify({ chaptersOpen: "yes", panelTab: "cards" }));
+    await writeFile(path.join(dir, "data", "settings.json"), JSON.stringify({ chaptersOpen: "yes", panelTab: "quiz" }));
     expect(await readSettings()).toMatchObject({ chaptersOpen: false, panelTab: "chat" });
   });
 });

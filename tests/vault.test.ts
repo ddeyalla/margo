@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderVault, vaultFileName, writeVault, type VaultBook } from "@/lib/server/vault";
+import { addCards } from "@/lib/shared/cards";
 import type { BookId, Highlight, Note } from "@/lib/shared/types";
 
 const book: VaultBook = {
@@ -67,7 +68,7 @@ describe("the Obsidian note file", () => {
         "tags:",
         '  - "patterns"',
         '  - "design"',
-        'generated: "Written by rigg learn from the highlights and notes saved in the app. Edits made here are not read back into the app yet."',
+        'generated: "Written by rigg learn from the highlights, notes and cards saved in the app. Edits made here are not read back into the app yet."',
         "---",
         "",
         "## Chapter 1. Introduction",
@@ -102,6 +103,17 @@ describe("the Obsidian note file", () => {
     expect(empty.endsWith("---\n")).toBe(true);
     const loose = renderVault(book, { highlights: [highlight("ffffffff-6666-4666-8666-666666666666", 2, 0, null, "Front matter.")], notes: [] });
     expect(loose).toContain("## Untitled section\n\n> Front matter. ^h-ffffffff\n");
+  });
+
+  it("writes cards under their highlight, or under their own quote when the passage has none", () => {
+    let n = 0;
+    const id = () => `9999999${++n}-0000-4000-8000-000000000000`;
+    const now = new Date("2026-11-13T12:00:00Z");
+    const onHighlight = addCards([], { anchor: highlights[2].anchor, quote: "Design patterns.", chapterTitle: "Chapter 1. Introduction", fact: "F", cards: [{ question: "What is a design pattern?", answer: "A named problem\nand its solution." }] }, now, id).sets;
+    const alone = addCards(onHighlight, { anchor: { kind: "pdf", page: 60, start: 0, end: 9 }, quote: "No mark.", chapterTitle: "Pattern 3", fact: "F", cards: [{ question: "Q?", answer: "A." }] }, now, id).sets;
+    const text = renderVault(book, { highlights, notes, cardSets: alone });
+    expect(text).toContain("> Design patterns. ^h-cccccccc\n\nCards:\n\n- **Q:** What is a design pattern?\n  **A:** A named problem\n  and its solution.\n");
+    expect(text).toContain(`## Pattern 3\n\n> No mark. ^c-${alone[1].id.slice(0, 8)}\n\nCards:\n\n- **Q:** Q?\n  **A:** A.\n`);
   });
 
   it("names the file after the title, without characters Obsidian or the file system reject", () => {

@@ -28,7 +28,7 @@ First decide what to remember. Then write questions that make the reader recall 
 
 ## Reply format
 
-Reply with JSON only, no code fence:
+Reply with exactly one JSON object and nothing else: no code fence, no notes, no second attempt. Do your checking before you write it.
 
 {"fact": "the fact in one sentence", "cards": [{"question": "...", "answer": "..."}]}
 
