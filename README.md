@@ -84,6 +84,7 @@ Stop the app with `Ctrl+C` in the terminal.
 - **Highlight.** Select text and choose the highlighter, or press `⌘⇧H`. Click a highlight to remove it or open its note.
 - **Write a note.** Select text and choose the notebook button. Notes are markdown. `⌘↩` saves.
 - **Find them again.** The Notes and Highlights tabs list everything for the book. Click a quote to jump to it.
+- **Chapters.** The list button at the top left, or `⌘⇧L`, opens the table of contents. The chapter you're in is marked. Click any chapter to go there.
 - **Dark pages.** In a PDF, the moon button shows white pages dark. Photos keep their colours.
 - **More room.** `⌘\` hides or shows the side panel. `Esc` closes the toolbar.
 

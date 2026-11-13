@@ -7,7 +7,8 @@ import type { Highlight, SelectionContext } from "@/lib/shared/types";
 import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
 import { openFailure } from "./errors";
 import { mergeLineBoxes, type Box } from "./rects";
-import type { ReaderProps } from "./types";
+import { epubToc, type FoliateTocItem } from "./toc";
+import type { ReaderProps, TocEntry } from "./types";
 
 /* foliate-js ships no types. These cover the parts this adapter uses. */
 interface FoliateRenderer extends HTMLElement {
@@ -20,7 +21,7 @@ interface FoliateRenderer extends HTMLElement {
 }
 
 interface FoliateView extends HTMLElement {
-  book: { metadata?: { title?: unknown; author?: unknown }; sections: { linear?: string }[] };
+  book: { metadata?: { title?: unknown; author?: unknown }; sections: { linear?: string }[]; toc?: FoliateTocItem[] };
   renderer: FoliateRenderer;
   open(src: string): Promise<void>;
   init(options: { lastLocation: string | null; showTextStart: boolean }): Promise<void>;
@@ -29,7 +30,7 @@ interface FoliateView extends HTMLElement {
   getCFI(index: number, range: Range): string;
   addAnnotation(annotation: { value: string }): Promise<unknown>;
   deleteAnnotation(annotation: { value: string }): Promise<unknown>;
-  getProgressOf(index: number, range: Range): { tocItem?: { label?: string } | null };
+  getProgressOf(index: number, range: Range): { tocItem?: FoliateTocItem | null };
 }
 
 interface OverlayerModule {
@@ -44,7 +45,7 @@ interface DrawDetail {
 interface RelocateDetail {
   cfi: string;
   fraction?: number;
-  tocItem?: { label?: string } | null;
+  tocItem?: FoliateTocItem | null;
 }
 
 /** Served from public/ and imported at runtime, never bundled. */
@@ -132,7 +133,11 @@ export function EpubReader({
   /* Every highlight, drawn again into each section's overlay as foliate creates it. */
   const highlightsRef = useRef(new Map<string, Highlight>());
   const sectionRef = useRef<{ doc: Document; index: number } | null>(null);
+  /* The book's table of contents, keyed by the foliate item each entry came from. */
+  const tocRef = useRef(new Map<FoliateTocItem, TocEntry>());
   const [atSectionEnd, setAtSectionEnd] = useState(false);
+
+  const chapterOf = (item: FoliateTocItem | null | undefined) => (item && tocRef.current.get(item)) ?? null;
 
   const readSelection = (): SelectionContext | null => {
     const view = viewRef.current;
@@ -147,7 +152,7 @@ export function EpubReader({
       before: trimBefore(before),
       after: trimAfter(after),
       anchor: { kind: "epub", cfi: view.getCFI(section.index, range) },
-      chapterTitle: view.getProgressOf(section.index, range).tocItem?.label?.trim() || null,
+      chapterTitle: chapterOf(view.getProgressOf(section.index, range).tocItem)?.label ?? null,
       rect,
     };
   };
@@ -160,6 +165,9 @@ export function EpubReader({
     },
     async goTo(anchor) {
       if (anchor.kind === "epub") await viewRef.current?.goTo(anchor.cfi);
+    },
+    async goToEntry(entry) {
+      if (entry.target.kind === "epub") await viewRef.current?.goTo(entry.target.href);
     },
     showHighlight(highlight) {
       highlightsRef.current.set(highlight.id, highlight);
@@ -277,7 +285,7 @@ export function EpubReader({
 
     const onRelocate = (event: Event) => {
       const { cfi, fraction, tocItem } = (event as CustomEvent<RelocateDetail>).detail;
-      emitPosition({ kind: "epub", cfi, fraction: fraction ?? 0 }, tocItem?.label?.trim() || null);
+      emitPosition({ kind: "epub", cfi, fraction: fraction ?? 0 }, (tocItem && tocRef.current.get(tocItem)) ?? null);
       updateEdge();
     };
 
@@ -328,8 +336,9 @@ export function EpubReader({
       const literata = getComputedStyle(document.documentElement).getPropertyValue("--font-literata").trim() || "Literata";
       renderer.setStyles(readingCss(literata));
       renderer.addEventListener("scroll", onScroll);
-      const { metadata } = view.book;
-      emitReady({ title: metaText(metadata?.title), author: metaText(metadata?.author) });
+      const { metadata, toc } = view.book;
+      tocRef.current = epubToc(toc);
+      emitReady({ title: metaText(metadata?.title), author: metaText(metadata?.author), toc: [...tocRef.current.values()], pageCount: null });
       await view.init({ lastLocation: initialCfi(), showTextStart: true });
     })().catch((error: unknown) => {
       if (!disposed) emitError(openFailure("epub", error));

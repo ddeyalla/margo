@@ -4,29 +4,39 @@ import { mergeLineBoxes } from "@/components/reader/rects";
 import { placeLabel } from "@/lib/shared/place";
 
 describe("PDF chapter lookup", () => {
+  const entry = (label: string, page: number, top: number, depth = 0): OutlineEntry => ({ label, depth, target: { kind: "pdf", page, top } });
   const outline: OutlineEntry[] = [
-    { page: 1, top: 0, title: "Preface" },
-    { page: 12, top: 0.1, title: "Chapter 1" },
-    { page: 12, top: 0.55, title: "Chapter 2" },
-    { page: 30, top: 0.2, title: "Chapter 3" },
+    entry("Preface", 1, 0),
+    entry("Chapter 1", 12, 0.1),
+    entry("Chapter 2", 12, 0.55),
+    entry("Chapter 3", 30, 0.2),
   ];
+  const at = (list: OutlineEntry[], page: number, top: number) => chapterAt(list, page, top)?.label ?? null;
 
   it("picks the entry at or above the point on its page", () => {
-    expect(chapterAt(outline, 12, 0.3)).toBe("Chapter 1");
-    expect(chapterAt(outline, 12, 0.7)).toBe("Chapter 2");
-    expect(chapterAt(outline, 12, 0.54)).toBe("Chapter 2");
-    expect(chapterAt(outline, 12, 0.05)).toBe("Preface");
+    expect(at(outline, 12, 0.3)).toBe("Chapter 1");
+    expect(at(outline, 12, 0.7)).toBe("Chapter 2");
+    expect(at(outline, 12, 0.54)).toBe("Chapter 2");
+    expect(at(outline, 12, 0.05)).toBe("Preface");
   });
 
   it("carries a chapter across the pages that follow it", () => {
-    expect(chapterAt(outline, 20, 0)).toBe("Chapter 2");
-    expect(chapterAt(outline, 30, 0.1)).toBe("Chapter 2");
-    expect(chapterAt(outline, 31, 0)).toBe("Chapter 3");
+    expect(at(outline, 20, 0)).toBe("Chapter 2");
+    expect(at(outline, 30, 0.1)).toBe("Chapter 2");
+    expect(at(outline, 31, 0)).toBe("Chapter 3");
   });
 
   it("has no chapter before the first entry or without an outline", () => {
-    expect(chapterAt([{ page: 3, top: 0, title: "One" }], 2, 0.5)).toBeNull();
-    expect(chapterAt([], 5, 0.5)).toBeNull();
+    expect(at([entry("One", 3, 0)], 2, 0.5)).toBeNull();
+    expect(at([], 5, 0.5)).toBeNull();
+  });
+
+  it("returns the outline's own entry, preferring the deeper of two that start together", () => {
+    const part = entry("Part I", 12, 0);
+    const first = entry("Chapter 1", 12, 0, 1);
+    const nested = [entry("Preface", 1, 0), part, first, entry("Appendix", 3, 0)];
+    expect(chapterAt(nested, 13, 0)).toBe(first);
+    expect(at(nested, 5, 0)).toBe("Appendix");
   });
 
   it("reads the top of each destination kind", () => {

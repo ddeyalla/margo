@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CircleAlert, FileWarning, Moon, PanelRight, X } from "lucide-react";
+import { ArrowLeft, CircleAlert, FileWarning, Moon, PanelRight, TableOfContents, X } from "lucide-react";
 import { createResizableController, Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
@@ -13,12 +13,13 @@ import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/reader/SelectionToolbar";
 import type { OpenFailure } from "@/components/reader/errors";
-import type { ReaderHandle, ReaderMeta, SelectionRect } from "@/components/reader/types";
+import type { ReaderHandle, ReaderMeta, SelectionRect, TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
 import { placeLabel } from "@/lib/shared/place";
 import type { Anchor, BookFormat, BookId, BookState, ProviderId, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { SidePanel, type PanelTab } from "./SidePanel";
+import { TocDrawer } from "./TocDrawer";
 import { usePositionSaver } from "./usePositionSaver";
 
 export interface WorkspaceBook {
@@ -29,6 +30,7 @@ export interface WorkspaceBook {
 }
 
 const PANEL_ID = "tutor-panel";
+const TOC_SHORTCUT = "⌘⇧L";
 
 /** Typing here keeps its own keys, such as Esc in the note editor or ⌘⇧H in a question. */
 const isTextEntry = (target: EventTarget | null) =>
@@ -51,11 +53,17 @@ export function BookWorkspace({
   const [layout] = useState(createResizableController);
   const [panelOpen, setPanelOpen] = useState(true);
   const [tab, setTab] = useState<PanelTab>("chat");
-  const [meta, setMeta] = useState<ReaderMeta>({
+  const [meta, setMeta] = useState({
     title: initialState.meta?.title ?? null,
     author: initialState.meta?.author ?? null,
   });
-  const [chapter, setChapter] = useState<string | null>(null);
+  /* The table of contents, null until the reader has opened the book. */
+  const [toc, setToc] = useState<TocEntry[] | null>(null);
+  const [tocOpen, setTocOpen] = useState(false);
+  const closeToc = useCallback(() => setTocOpen(false), []);
+  /* The entry of the table of contents being read, and the header's label for it. */
+  const [chapter, setChapter] = useState<TocEntry | null>(null);
+  const [place, setPlace] = useState<string | null>(null);
   const [error, setError] = useState<OpenFailure | null>(null);
   const [darkPages, setDarkPages] = useState(savedDarkPages);
   const title = meta.title || book.fileTitle;
@@ -77,6 +85,7 @@ export function BookWorkspace({
 
   /* The book's own title and author replace the file name once it has been opened. */
   const handleReady = (next: ReaderMeta) => {
+    setToc(next.toc);
     const merged = { title: next.title ?? meta.title, author: next.author ?? meta.author };
     setMeta(merged);
     const stored = initialState.meta;
@@ -129,12 +138,20 @@ export function BookWorkspace({
     setNoteFocus({ id: noteId, at: Date.now() });
   };
 
+  const openEntry = (entry: TocEntry) => {
+    setTocOpen(false);
+    void readerRef.current?.goToEntry(entry);
+  };
+
   /* Keys from the EPUB's frame are forwarded here too. */
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
     const mod = event.metaKey || event.ctrlKey;
     if (mod && !event.shiftKey && !event.altKey && event.code === "Backslash") {
       event.preventDefault();
       togglePanel();
+    } else if (mod && event.shiftKey && !event.altKey && event.code === "KeyL") {
+      event.preventDefault();
+      if (!error) setTocOpen((open) => !open);
     } else if (mod && event.shiftKey && !event.altKey && event.code === "KeyH" && !isTextEntry(event.target)) {
       event.preventDefault();
       const selection = readerRef.current?.getSelection();
@@ -168,9 +185,18 @@ export function BookWorkspace({
         >
           <ArrowLeft className="size-4" />
         </Link>
-        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+        <IconButton
+          label={tocOpen ? `Hide chapters (${TOC_SHORTCUT})` : `Show chapters (${TOC_SHORTCUT})`}
+          active={tocOpen}
+          disabled={!!error}
+          onClick={() => setTocOpen(!tocOpen)}
+          data-toc-toggle
+        >
+          <TableOfContents />
+        </IconButton>
+        <div className="ml-1 flex min-w-0 flex-1 items-baseline gap-2">
           <h1 className="truncate text-[13px] font-medium text-paper">{title}</h1>
-          {chapter ? <span className="truncate text-label text-dim">{chapter}</span> : null}
+          {place ? <span className="truncate text-label text-dim">{place}</span> : null}
         </div>
         {book.format === "pdf" ? (
           <IconButton label={darkPages ? "Show pages in their own colours" : "Show white pages dark"} active={darkPages} onClick={toggleDarkPages}>
@@ -220,8 +246,9 @@ export function BookWorkspace({
                 initialPosition={initialState.position}
                 onReady={handleReady}
                 onSelectionChange={handleSelection}
-                onPositionChange={(position, chapterTitle) => {
-                  setChapter(placeLabel(chapterTitle, position));
+                onPositionChange={(position, entry) => {
+                  setChapter(entry);
+                  setPlace(placeLabel(entry?.label ?? null, position));
                   savePosition(position);
                   setMenu(null);
                 }}
@@ -229,6 +256,9 @@ export function BookWorkspace({
                 onHighlightClick={(id, rect) => setMenu({ id, rect })}
               />
             )}
+            {tocOpen && !error ? (
+              <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} onSelect={openEntry} onClose={closeToc} />
+            ) : null}
           </main>
         </ResizablePanel>
         <ResizableHandle

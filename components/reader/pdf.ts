@@ -1,5 +1,6 @@
 import type { PageViewport, PDFDocumentProxy } from "pdfjs-dist";
 import type { TextContent } from "pdfjs-dist/types/src/display/api";
+import type { TocEntry, TocTarget } from "./types";
 
 /** pdf.js runtime assets, copied into public/ by scripts/copy-pdfjs-assets.mjs. */
 export const PDFJS_ASSETS = "/vendor/pdfjs";
@@ -89,12 +90,8 @@ export const locateOffset = (lengths: number[], offset: number, edge: "start" | 
   return null;
 };
 
-export interface OutlineEntry {
-  page: number;
-  /** Where the entry's destination sits on its page, as a fraction from the top. */
-  top: number;
-  title: string;
-}
+/** A PDF outline entry: a table of contents entry that leads to a point on a page. */
+export type OutlineEntry = TocEntry & { target: Extract<TocTarget, { kind: "pdf" }> };
 
 type OutlineItem = Awaited<ReturnType<PDFDocumentProxy["getOutline"]>>[number];
 type Destination = Awaited<ReturnType<PDFDocumentProxy["getDestination"]>>;
@@ -107,7 +104,11 @@ export const destinationTop = (dest: Destination): number | null => {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 };
 
-/** The outline flattened to 1-based pages and in-page positions, in reading order, for finding a passage's chapter. */
+/**
+ * The outline flattened in its own order, each entry with its depth, 1-based
+ * page and position on that page. Entries whose destination is missing or
+ * broken are left out; their children keep their depth.
+ */
 export const readOutline = async (doc: PDFDocumentProxy): Promise<OutlineEntry[]> => {
   const outline = (await doc.getOutline()) ?? [];
   const entries: OutlineEntry[] = [];
@@ -116,43 +117,48 @@ export const readOutline = async (doc: PDFDocumentProxy): Promise<OutlineEntry[]
     if (!viewports.has(index)) viewports.set(index, doc.getPage(index + 1).then((page) => page.getViewport({ scale: 1 })));
     return viewports.get(index)!;
   };
-  const visit = async (items: OutlineItem[]) => {
+  const visit = async (items: OutlineItem[], depth: number) => {
     for (const item of items) {
       try {
         const dest = typeof item.dest === "string" ? await doc.getDestination(item.dest) : item.dest;
         const ref = dest?.[0];
         const index = typeof ref === "number" ? ref : ref ? await doc.getPageIndex(ref) : null;
-        if (index !== null && item.title.trim()) {
+        const label = item.title.replace(/\s+/g, " ").trim();
+        if (index !== null && label) {
           const y = destinationTop(dest);
           const viewport = y === null ? null : await viewportOf(index);
           /* The viewport handles the crop box offset and page rotation. */
           const top = viewport && y !== null ? viewport.convertToViewportPoint(0, y)[1] / viewport.height : 0;
-          entries.push({ page: index + 1, top: Math.min(1, Math.max(0, top)), title: item.title.trim() });
+          entries.push({ label, depth, target: { kind: "pdf", page: index + 1, top: Math.min(1, Math.max(0, top)) } });
         }
       } catch {
         /* An outline entry with a broken destination is skipped. */
       }
-      if (item.items?.length) await visit(item.items);
+      if (item.items?.length) await visit(item.items, depth + 1);
     }
   };
-  await visit(outline);
-  return entries.sort((a, b) => a.page - b.page || a.top - b.top);
+  await visit(outline, 0);
+  return entries;
 };
 
 /** A heading's destination can sit a little below the top of its own text. */
 const HEADING_SLACK = 0.02;
 
 /**
- * The chapter a point on a page belongs to: the last outline entry at or above
- * it, so a chapter that starts lower on the same page only covers what follows.
+ * The chapter a point on a page belongs to: the entry that starts last at or
+ * above it, so a chapter that starts lower on the same page only covers what
+ * follows. Of entries that start at the same point, the later one in the
+ * outline wins, which is the deeper one.
  */
-export const chapterAt = (outline: OutlineEntry[], page: number, top: number): string | null => {
-  let title: string | null = null;
+export const chapterAt = (outline: OutlineEntry[], page: number, top: number): OutlineEntry | null => {
+  let found: OutlineEntry | null = null;
   for (const entry of outline) {
-    if (entry.page > page || (entry.page === page && entry.top > top + HEADING_SLACK)) break;
-    title = entry.title;
+    const { page: entryPage, top: entryTop } = entry.target;
+    if (entryPage > page || (entryPage === page && entryTop > top + HEADING_SLACK)) continue;
+    const { page: foundPage, top: foundTop } = found?.target ?? { page: 0, top: 0 };
+    if (!found || entryPage > foundPage || (entryPage === foundPage && entryTop >= foundTop)) found = entry;
   }
-  return title;
+  return found;
 };
 
 /** Brightness at or above which a sampled pixel counts as paper. */

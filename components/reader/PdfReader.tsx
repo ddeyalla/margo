@@ -28,6 +28,8 @@ import type { ReaderProps } from "./types";
 const MAX_PAGE_WIDTH = 960;
 /** Space kept on each side of the page column. */
 const GUTTER = 32;
+/** Space left above a chapter's heading when jumping to it. */
+const ENTRY_MARGIN = 24;
 /** Pages within two screens of the viewport are drawn; the rest are released. */
 const RENDER_MARGIN = "200% 0px";
 
@@ -154,7 +156,7 @@ export function PdfReader({
       before: trimBefore(flowText((texts.get(page - 1) ?? "") + "\n" + text.slice(0, start))),
       after: trimAfter(flowText(endText.slice(endInEndPage) + "\n" + (texts.get(endPage + 1) ?? ""))),
       anchor: { kind: "pdf", page, start, end: endPage === page ? endInEndPage : text.length },
-      chapterTitle: chapterAt(outline, page, (rect.top - pageBox.top) / Math.max(1, pageBox.height)),
+      chapterTitle: chapterAt(outline, page, (rect.top - pageBox.top) / Math.max(1, pageBox.height))?.label ?? null,
       rect,
     };
   };
@@ -172,6 +174,12 @@ export function PdfReader({
       const length = engineRef.current.texts.get(anchor.page)?.length;
       const within = length ? (anchor.start / length) * slot.el.offsetHeight : 0;
       scroller.scrollTo({ top: Math.max(0, slot.el.offsetTop + within - scroller.clientHeight / 3), behavior: "smooth" });
+    },
+    async goToEntry(entry) {
+      const scroller = scrollRef.current;
+      const slot = entry.target.kind === "pdf" ? engineRef.current.slots[entry.target.page - 1] : null;
+      if (!scroller || !slot || entry.target.kind !== "pdf") return;
+      scroller.scrollTop = Math.max(0, slot.el.offsetTop + entry.target.top * slot.el.offsetHeight - ENTRY_MARGIN);
     },
     showHighlight(highlight) {
       highlightsRef.current.set(highlight.id, highlight);
@@ -414,9 +422,10 @@ export function PdfReader({
 
       const info = (await doc.getMetadata().catch(() => null))?.info as Record<string, unknown> | undefined;
       const author = usableTitle(info?.Author)?.split(/\s*;\s*/).filter(Boolean).join(", ") || null;
-      emitReady({ title: usableTitle(info?.Title), author });
       engine.outline = await readOutline(doc).catch(() => []);
-      if (!disposed) onScroll();
+      if (disposed) return;
+      emitReady({ title: usableTitle(info?.Title), author, toc: engine.outline, pageCount: doc.numPages });
+      onScroll();
       const loaded = doc;
       const pagesWithText = await Promise.all(
         samplePages(loaded.numPages, SCAN_SAMPLES).map((n) =>
