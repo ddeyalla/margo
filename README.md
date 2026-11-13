@@ -74,7 +74,7 @@ Pick one from the menu at the top of the Chat tab. The menu says which ones are 
 npm run dev
 ```
 
-Then open [http://localhost:3000](http://localhost:3000). Your books are listed by folder. The ones you read last sit under Continue reading.
+Then open [http://localhost:3000](http://localhost:3000). Your books are listed by folder, with their covers. The ones you read last sit under Continue reading. A bar under each book you've started shows how far you are.
 
 Stop the app with `Ctrl+C` in the terminal.
 
@@ -98,6 +98,7 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 | Your books | `BOOKS_DIR`. Never changed. |
 | Reading place, chats, highlights and notes | `data/<book id>.json`, one file per book |
 | Your tutor choice, the dark pages switch and scroll or pages | `data/settings.json` |
+| Book covers, made from each book the first time it's shown | `data/covers/`. Safe to delete; they're made again. |
 | The markdown copy of each book's notes | `NOTES_DIR/<book title>.md` |
 
 The `data/` folder is the real record. Git ignores it. Back it up if your notes matter to you.

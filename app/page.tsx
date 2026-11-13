@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { BookOpen, FolderX } from "lucide-react";
-import { BookList, type Shelf, type ShelfBook } from "@/components/library/BookList";
+import { BookList, GRID, type Shelf, type ShelfBook } from "@/components/library/BookList";
 import { EmptyState } from "@/components/ui";
 import { libraryProblem, scanLibrary } from "@/lib/server/library";
 import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
@@ -44,6 +44,7 @@ async function Library() {
         author: state.meta?.author ?? book.fileAuthor,
         sizeBytes: book.sizeBytes,
         progress: state.position?.fraction ?? null,
+        cover: `/api/books/${book.id}/cover?v=${Date.parse(book.modifiedAt)}`,
       };
       return { folder: book.folder, shelfBook, readAt: state.position ? updatedAt : null };
     }),
@@ -83,9 +84,13 @@ function LibrarySkeleton() {
   return (
     <>
       <Heading />
-      <div aria-hidden className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-2.5">
-      {Array.from({ length: 8 }, (_, index) => (
-          <div key={index} className="h-[132px] animate-pulse rounded-lg bg-panel" />
+      <div aria-hidden className={GRID}>
+        {Array.from({ length: 14 }, (_, index) => (
+          <div key={index} className="flex flex-col gap-2.5">
+            <div className="aspect-[2/3] animate-pulse rounded-[5px] bg-panel" />
+            <div className="h-3 w-4/5 animate-pulse rounded-xs bg-panel" />
+            <div className="h-2.5 w-1/2 animate-pulse rounded-xs bg-panel" />
+          </div>
         ))}
       </div>
     </>

@@ -43,11 +43,11 @@ export const readJson = async <T>(file: string): Promise<T | null> => {
 };
 
 /** Write to a unique temp file beside the target, then rename over it. Readers see the old file or the new one. */
-export const writeFileAtomic = async (file: string, text: string): Promise<void> => {
+export const writeFileAtomic = async (file: string, content: string | Uint8Array): Promise<void> => {
   await mkdir(path.dirname(file), { recursive: true });
   const temp = `${file}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
   try {
-    await writeFile(temp, text, "utf8");
+    await writeFile(temp, content);
     await rename(temp, file);
   } catch (error) {
     await rm(temp, { force: true });
