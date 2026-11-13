@@ -255,8 +255,13 @@ export function PdfReader({
         slot.el.style.setProperty("--total-scale-factor", String(viewport.scale));
         slot.el.replaceChildren(canvas, marks, layer);
         const task = page.render({ canvas, viewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] });
-        /* A release can cancel this before it is awaited below; that rejection is expected. */
-        task.promise.catch(() => undefined);
+        /* The page shows once painted, even if its text layer later fails. A release can cancel this; that rejection is expected. */
+        task.promise.then(
+          () => {
+            if (generation === slot.generation) slot.el.dataset.tone = toneOf(canvas);
+          },
+          () => undefined,
+        );
         slot.task = task;
         const content = await page.getTextContent();
         if (generation !== slot.generation) return;
@@ -264,7 +269,6 @@ export function PdfReader({
         slot.textLayer = new pdfjs.TextLayer({ textContentSource: content, container: layer, viewport });
         await Promise.all([slot.task.promise, slot.textLayer.render()]);
         if (generation !== slot.generation) return;
-        slot.el.dataset.tone = toneOf(canvas);
         const endOfContent = document.createElement("div");
         endOfContent.className = "endOfContent";
         layer.append(endOfContent);
