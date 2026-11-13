@@ -1,13 +1,12 @@
 "use client";
 
-import { NotebookPen } from "lucide-react";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
 import { HighlightsTab } from "@/components/annotations/HighlightsTab";
+import { NotesTab, type NoteDraft } from "@/components/annotations/NotesTab";
 import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
 import { ChatTab } from "@/components/chat/ChatTab";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import type { Tutor } from "@/components/chat/useTutor";
-import { EmptyState } from "@/components/ui";
 import type { Anchor, ProviderId, ProviderInfo } from "@/lib/shared/types";
 
 export type PanelTab = "chat" | "notes" | "highlights";
@@ -31,6 +30,9 @@ export function SidePanel({
   onReply,
   onRetry,
   annotations,
+  noteDraft,
+  noteFocus,
+  onNoteDraft,
   onOpenNote,
 }: {
   tab: PanelTab;
@@ -44,6 +46,9 @@ export function SidePanel({
   onReply(text: string): void;
   onRetry(): void;
   annotations: AnnotationsApi;
+  noteDraft: NoteDraft | null;
+  noteFocus: { id: string; at: number } | null;
+  onNoteDraft(draft: NoteDraft | null): void;
   onOpenNote(noteId: string): void;
 }) {
   return (
@@ -67,7 +72,23 @@ export function SidePanel({
         <ChatTab tutor={tutor} unavailable={unavailable} onJump={onJump} onReply={onReply} onRetry={onRetry} />
       </TabsPanel>
       <TabsPanel value="notes" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
-        <EmptyState icon={<NotebookPen />} title="No notes yet" body="Notes you write on passages will collect here." />
+        <NotesTab
+          notes={annotations.notes}
+          draft={noteDraft}
+          focus={noteFocus}
+          vault={annotations.vault}
+          onDraft={onNoteDraft}
+          onAdd={(selection, body) => {
+            annotations.addNote(selection, body);
+            onNoteDraft(null);
+          }}
+          onEdit={(id, body) => {
+            annotations.editNote(id, body);
+            onNoteDraft(null);
+          }}
+          onRemove={annotations.removeNote}
+          onJump={onJump}
+        />
       </TabsPanel>
       <TabsPanel value="highlights" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
         <HighlightsTab

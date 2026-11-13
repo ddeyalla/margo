@@ -36,7 +36,7 @@ const components: Components = {
   td: styled("td", "border-b border-line px-2 py-1.5 align-top"),
 };
 
-/** An assistant reply: plain body text, no bubble. Memoised so a streaming answer doesn't re-parse earlier messages. */
+/** An assistant reply or a note: plain body text, no bubble. Memoised so a streaming answer doesn't re-parse earlier messages. */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="min-w-0 break-words text-body text-paper">

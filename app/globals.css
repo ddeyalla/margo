@@ -164,6 +164,17 @@
   animation: rise-in var(--duration-base) var(--ease-out) both;
 }
 
+/* A brief warm glow that fades, marking the item the reader just jumped to. */
+@keyframes glow-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@utility animate-glow {
+  animation: glow-out 1200ms var(--ease-out) 400ms both;
+}
+
 /* PDF pages: a canvas with pdf.js's selectable text layer on top. The text
    layer rules are adapted from pdfjs-dist/web/pdf_viewer.css. */
 .pdf-page {

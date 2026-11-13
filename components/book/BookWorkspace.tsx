@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, CircleAlert, FileWarning, PanelRight, X } from "lucide-react";
 import { createResizableController, Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
+import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { useProviders } from "@/components/chat/useProviders";
 import { useTutor } from "@/components/chat/useTutor";
@@ -57,6 +58,8 @@ export function BookWorkspace({
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
+  const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
 
   /* A layout restored from an earlier visit may start with the panel collapsed; read it once the group has attached. */
   useEffect(() => {
@@ -100,7 +103,16 @@ export function BookWorkspace({
     annotations.highlight(selection);
   };
 
-  const openNote = () => showTab("notes");
+  const writeNote = (selection: SelectionContext) => {
+    readerRef.current?.clearSelection();
+    setNoteDraft({ kind: "new", selection });
+    showTab("notes");
+  };
+
+  const openNote = (noteId: string) => {
+    showTab("notes");
+    setNoteFocus({ id: noteId, at: Date.now() });
+  };
 
   const menuNote = menu ? annotations.notes.find((note) => note.highlightId === menu.id) : undefined;
 
@@ -197,6 +209,9 @@ export function BookWorkspace({
             onReply={(text) => provider && tutor.reply(text, provider)}
             onRetry={() => provider && tutor.retry(provider)}
             annotations={annotations}
+            noteDraft={noteDraft}
+            noteFocus={noteFocus}
+            onNoteDraft={setNoteDraft}
             onOpenNote={openNote}
           />
         </ResizablePanel>
@@ -209,7 +224,7 @@ export function BookWorkspace({
         onAction={(action, selection) => startThread(action, selection, null)}
         onAsk={(question, selection) => startThread("ask", selection, question)}
         onHighlight={highlight}
-        onNote={() => undefined}
+        onNote={writeNote}
         onDismiss={() => readerRef.current?.clearSelection()}
       />
       {menu ? (
@@ -219,7 +234,7 @@ export function BookWorkspace({
           bounds={readerBounds}
           hasNote={!!menuNote}
           onNote={() => {
-            openNote();
+            if (menuNote) openNote(menuNote.id);
             setMenu(null);
           }}
           onRemove={() => {
