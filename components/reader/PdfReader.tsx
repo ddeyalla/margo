@@ -160,7 +160,10 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
         layer.dataset.page = String(slot.page);
         slot.el.style.setProperty("--total-scale-factor", String(viewport.scale));
         slot.el.replaceChildren(canvas, layer);
-        slot.task = page.render({ canvas, viewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] });
+        const task = page.render({ canvas, viewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] });
+        /* A release can cancel this before it is awaited below; that rejection is expected. */
+        task.promise.catch(() => undefined);
+        slot.task = task;
         const content = await page.getTextContent();
         if (generation !== slot.generation) return;
         texts.set(slot.page, pageText(content));
