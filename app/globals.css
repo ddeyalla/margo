@@ -142,3 +142,20 @@
     animation-duration: 0ms !important;
   }
 }
+
+@utility press {
+  &:active:not(:disabled) {
+    scale: 0.97;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@utility animate-rise {
+  animation: rise-in var(--duration-base) var(--ease-out) both;
+}

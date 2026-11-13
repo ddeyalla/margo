@@ -1,68 +1,115 @@
-import Image from "next/image";
+import { Suspense } from "react";
+import { connection } from "next/server";
+import { BookOpen, FolderX } from "lucide-react";
+import { BookList, type Shelf, type ShelfBook } from "@/components/library/BookList";
+import { EmptyState } from "@/components/ui";
+import { ConfigError, getConfig } from "@/lib/server/config";
+import { scanLibrary } from "@/lib/server/library";
+import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
+
+const RECENT_LIMIT = 4;
+
+async function Library() {
+  await connection();
+  let books;
+  try {
+    books = await scanLibrary();
+  } catch (error) {
+    const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
+    const message =
+      error instanceof ConfigError
+        ? error.message
+        : missing
+          ? `The books folder ${getConfig().booksDir} does not exist. Check BOOKS_DIR in .env.local.`
+          : "The books folder could not be read.";
+    return (
+      <>
+        <Heading />
+        <EmptyState icon={<FolderX />} title="Your library is not set up yet" body={message} />
+      </>
+    );
+  }
+  if (!books.length) {
+    return (
+      <>
+        <Heading />
+        <EmptyState
+          icon={<BookOpen />}
+          title="No books yet"
+          body="Add EPUB or PDF files to your books folder, in any subfolders you like, then reload."
+        />
+      </>
+    );
+  }
+
+  const entries = await Promise.all(
+    books.map(async (book) => {
+      const [state, updatedAt] = await Promise.all([readBookState(book.id), bookStateUpdatedAt(book.id)]);
+      const shelfBook: ShelfBook = {
+        id: book.id,
+        format: book.format,
+        title: state.meta?.title || book.fileTitle,
+        author: state.meta?.author ?? null,
+        sizeBytes: book.sizeBytes,
+        progress: state.position?.fraction ?? null,
+      };
+      return { folder: book.folder, shelfBook, readAt: state.position ? updatedAt : null };
+    }),
+  );
+
+  const shelves = new Map<string, ShelfBook[]>();
+  for (const { folder, shelfBook } of entries) shelves.set(folder, [...(shelves.get(folder) ?? []), shelfBook]);
+  const sorted: Shelf[] = [...shelves.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([folder, list]) => ({ folder, books: list.sort((a, b) => a.title.localeCompare(b.title)) }));
+  const recent = entries
+    .filter((entry) => entry.readAt)
+    .sort((a, b) => (b.readAt?.getTime() ?? 0) - (a.readAt?.getTime() ?? 0))
+    .slice(0, RECENT_LIMIT)
+    .map((entry) => entry.shelfBook);
+
+  return (
+    <>
+      <Heading>
+        {books.length} books in {shelves.size} folders
+      </Heading>
+      <BookList shelves={sorted} recent={recent} />
+    </>
+  );
+}
+
+function Heading({ children }: { children?: React.ReactNode }) {
+  return (
+    <div className="mb-8 flex items-baseline gap-3">
+      <h1 className="text-display text-paper">Library</h1>
+      {children ? <span className="text-label text-dim tabular-nums">{children}</span> : null}
+    </div>
+  );
+}
+
+function LibrarySkeleton() {
+  return (
+    <>
+      <Heading />
+      <div aria-hidden className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-2.5">
+      {Array.from({ length: 8 }, (_, index) => (
+          <div key={index} className="h-[132px] animate-pulse rounded-lg bg-panel" />
+        ))}
+      </div>
+    </>
+  );
+}
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+    <div className="min-h-full bg-ink">
+      <header className="sticky top-0 z-10 flex h-11 items-center gap-2 bg-shell px-4">
+        <span className="text-[13px] font-semibold text-paper">rigg learn</span>
+      </header>
+      <main className="mx-auto w-full max-w-[1100px] px-6 pb-24 pt-10">
+        <Suspense fallback={<LibrarySkeleton />}>
+          <Library />
+        </Suspense>
       </main>
     </div>
   );

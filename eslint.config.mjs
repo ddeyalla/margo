@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored third-party code, loaded at runtime and never bundled.
+    "public/vendor/**",
   ]),
 ]);
 
