@@ -285,11 +285,22 @@ const nodeToParts = (node, offset, filter) => {
         .filter(x => x.index !== -1)
 }
 
+// A boundary on an element the filter skips has no index of its own, so move
+// it into the text beside it, where it indexes as if the element weren't there.
+const unskip = (node, offset, filter) => {
+    if (!filter || !isElementNode(node) || filter(node) !== NodeFilter.FILTER_SKIP)
+        return [node, offset]
+    const after = node.childNodes[offset], before = node.childNodes[offset - 1]
+    if (after && isTextNode(after)) return [after, 0]
+    if (before && isTextNode(before)) return [before, before.nodeValue.length]
+    return [node, offset]
+}
+
 export const fromRange = (range, filter) => {
     const { startContainer, startOffset, endContainer, endOffset } = range
-    const start = nodeToParts(startContainer, startOffset, filter)
+    const start = nodeToParts(...unskip(startContainer, startOffset, filter), filter)
     if (range.collapsed) return toString([start])
-    const end = nodeToParts(endContainer, endOffset, filter)
+    const end = nodeToParts(...unskip(endContainer, endOffset, filter), filter)
     return buildRange([start], [end])
 }
 

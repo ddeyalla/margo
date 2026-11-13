@@ -222,6 +222,9 @@ export class View extends HTMLElement {
         this.hasAttribute('autohide-cursor'))
     isFixedLayout = false
     lastLocation
+    // A NodeFilter for every CFI made or resolved, so nodes the app adds to a
+    // section's document can be skipped and CFIs stay the same without them.
+    cfiFilter = null
     history = new History()
     constructor() {
         super()
@@ -431,15 +434,15 @@ export class View extends HTMLElement {
     getCFI(index, range) {
         const baseCFI = this.book.sections[index].cfi ?? CFI.fake.fromIndex(index)
         if (!range) return baseCFI
-        return CFI.joinIndir(baseCFI, CFI.fromRange(range))
+        return CFI.joinIndir(baseCFI, CFI.fromRange(range, this.cfiFilter))
     }
     resolveCFI(cfi) {
         if (this.book.resolveCFI)
-            return this.book.resolveCFI(cfi)
+            return this.book.resolveCFI(cfi, this.cfiFilter)
         else {
             const parts = CFI.parse(cfi)
             const index = CFI.fake.toIndex((parts.parent ?? parts).shift())
-            const anchor = doc => CFI.toRange(doc, parts)
+            const anchor = doc => CFI.toRange(doc, parts, this.cfiFilter)
             return { index, anchor }
         }
     }
