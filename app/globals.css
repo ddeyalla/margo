@@ -114,6 +114,10 @@
     background: var(--color-ink);
     color: var(--color-paper);
     font-family: var(--font-sans);
+  }
+
+  /* Body text is 13px; the root stays 16px so Tailwind's rem sizes keep their meaning. */
+  body {
     font-size: 13px;
     -webkit-font-smoothing: antialiased;
     font-feature-settings: "cv11", "ss01";
@@ -158,4 +162,82 @@
 
 @utility animate-rise {
   animation: rise-in var(--duration-base) var(--ease-out) both;
+}
+
+/* PDF pages: a canvas with pdf.js's selectable text layer on top. The text
+   layer rules are adapted from pdfjs-dist/web/pdf_viewer.css. */
+.pdf-page {
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  position: relative;
+  flex: none;
+  background: #f4f4f5;
+  border-radius: 3px;
+  overflow: hidden;
+
+  > canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.pdf-page .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+
+  :is(span, br) {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+
+  > :not(.markedContent),
+  .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    --scale-x: 1;
+    --rotate: 0deg;
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+
+  .markedContent {
+    display: contents;
+  }
+
+  ::selection {
+    background: rgba(59, 130, 246, 0.32);
+    color: transparent;
+  }
+
+  br::selection {
+    background: transparent;
+  }
+
+  .endOfContent {
+    display: block;
+    position: absolute;
+    inset: 100% 0 0;
+    z-index: 0;
+    cursor: default;
+    user-select: none;
+  }
+
+  &.selecting .endOfContent {
+    top: 0;
+  }
 }
