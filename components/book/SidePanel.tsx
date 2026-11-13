@@ -7,9 +7,8 @@ import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
 import { CardsTab } from "@/components/cards/CardsTab";
 import type { CardsApi } from "@/components/cards/useCards";
 import { ChatTab } from "@/components/chat/ChatTab";
-import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
-import type { Anchor, PanelTab, ProviderId, ProviderInfo } from "@/lib/shared/types";
+import type { Anchor, PanelTab } from "@/lib/shared/types";
 
 const TABS: { value: PanelTab; label: string }[] = [
   { value: "chat", label: "Chat" },
@@ -23,10 +22,7 @@ export function SidePanel({
   tab,
   onTabChange,
   tutor,
-  providers,
-  provider,
   unavailable,
-  onProvider,
   onJump,
   onAsk,
   onReply,
@@ -42,10 +38,7 @@ export function SidePanel({
   tab: PanelTab;
   onTabChange(tab: PanelTab): void;
   tutor: Tutor;
-  providers: ProviderInfo[] | null;
-  provider: ProviderId | null;
   unavailable: string | null;
-  onProvider(id: ProviderId): void;
   onJump(anchor: Anchor): void;
   onAsk(draft: MessageDraft): void;
   onReply(draft: MessageDraft): void;
@@ -72,8 +65,6 @@ export function SidePanel({
             </TabsTab>
           ))}
         </TabsList>
-        <span className="min-w-0 flex-1" />
-        {tab === "chat" ? <ProviderPicker providers={providers} current={provider} onSelect={onProvider} /> : null}
       </div>
       <TabsPanel value="chat" className="flex min-h-0 flex-1 flex-col outline-none data-[selected]:flex [&:not([data-selected])]:hidden">
         <ChatTab tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onReply={onReply} onRetry={onRetry} />

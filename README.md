@@ -76,7 +76,7 @@ The tutor can run through any one of these. You only need one.
 - **Codex.** Install the Codex CLI, then run `codex login` in a terminal and sign in.
 - **Anthropic API.** Put your key after `ANTHROPIC_API_KEY=` in `.env.local`. You pay per use.
 
-Pick one from the menu at the top of the Chat tab. The menu says which ones are ready, and what to do for the rest. The app remembers your choice.
+Pick one from the tutor menu in the bar above the book, beside Scroll and Pages. The menu says which ones are ready, and what to do for the rest. The app remembers your choice, and the same tutor writes your cards.
 
 ## Start it
 

@@ -10,6 +10,7 @@ import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { ReviewSheet } from "@/components/cards/ReviewSheet";
 import { useCards } from "@/components/cards/useCards";
+import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import { useProviders } from "@/components/chat/useProviders";
 import { useTutor, type MessageDraft } from "@/components/chat/useTutor";
 import { EpubReader } from "@/components/reader/EpubReader";
@@ -330,6 +331,9 @@ export function BookWorkspace({
           <h1 className="truncate text-[13px] font-medium text-paper">{title}</h1>
           {chapter ? <span className="truncate text-label text-dim">{chapter.label}</span> : null}
         </div>
+        <div className="shrink-0">
+          <ProviderPicker providers={providers} current={provider} onSelect={chooseProvider} />
+        </div>
         <Segmented label="Reading mode" options={MODES} value={mode} onChange={chooseMode} />
         {book.format === "epub" ? (
           <ReadingSettings
@@ -432,10 +436,7 @@ export function BookWorkspace({
             tab={tab}
             onTabChange={chooseTab}
             tutor={tutor}
-            providers={providers}
-            provider={provider}
             unavailable={unavailable}
-            onProvider={chooseProvider}
             onJump={jumpTo}
             onAsk={askAnywhere}
             onReply={(draft) => provider && tutor.reply(draft, provider)}
