@@ -15,9 +15,11 @@ interface FoliateRenderer extends HTMLElement {
   start: number;
   end: number;
   viewSize: number;
-  /** In Pages mode, the page of the section on screen, and the section's page count. */
+  /** In Pages mode, the screen of the section in view, and the section's screen count. */
   page: number;
   pages: number;
+  /** In Pages mode, one running header per column on screen. */
+  heads: Element[] | null;
   next(): Promise<void>;
   prev(): Promise<void>;
   render(): void;
@@ -65,10 +67,15 @@ const pageNumber = ({ pageItem, location }: RelocateDetail): PageNumber | null =
   return location ? { kind: "location", current: location.current, total: location.total } : null;
 };
 
-/** Page turns left in the section on screen. foliate pads each paginated section with a blank page at either end. */
+/**
+ * Pages left in the section after the ones on screen. foliate pads each
+ * paginated section with a blank screen at either end, and a screen holds a
+ * page per column; the section's last screen may fill only its first column.
+ */
 const pagesLeftInSection = (renderer: FoliateRenderer): number | null => {
-  const textPages = renderer.pages - 2;
-  return textPages > 0 ? Math.max(0, textPages - renderer.page) : null;
+  const screens = renderer.pages - 2;
+  if (screens <= 0) return null;
+  return Math.max(0, screens - renderer.page) * (renderer.heads?.length || 1);
 };
 
 /** Served from public/ and imported at runtime, never bundled. */
