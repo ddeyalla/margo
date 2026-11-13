@@ -14,6 +14,14 @@ export const patchBookState = (bookId: BookId, patch: StatePatch, keepalive = fa
     keepalive,
   }).catch(() => undefined);
 
+/** The font families installed on this Mac, sorted. */
+export const fetchFonts = async (): Promise<string[]> => {
+  const response = await fetch("/api/fonts");
+  if (!response.ok) throw new Error(`Listing fonts failed with ${response.status}.`);
+  const { families } = (await response.json()) as { families: string[] };
+  return families;
+};
+
 /** Saves app settings the reader changed, such as the tutor, the reading mode or the page colours. */
 export const patchSettings = (change: SettingsChange) =>
   fetch("/api/settings", {
