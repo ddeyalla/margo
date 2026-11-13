@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chapterAt, destinationTop, isLightPage, locateOffset, samplePages, type OutlineEntry } from "@/components/reader/pdf";
+import { chapterAt, destinationTop, flowText, isLightPage, locateOffset, samplePages, type OutlineEntry } from "@/components/reader/pdf";
 import { mergeLineBoxes } from "@/components/reader/rects";
 import { placeLabel } from "@/lib/shared/place";
 
@@ -162,5 +162,17 @@ describe("scanned PDF check", () => {
 
   it("spreads samples through a long one, first and last included", () => {
     expect(samplePages(500, 5)).toEqual([1, 126, 251, 375, 500]);
+  });
+});
+
+describe("PDF line joining", () => {
+  it("rejoins a word split across lines, whichever hyphen the book uses", () => {
+    expect(flowText("any counterpro-\nductive constructs")).toBe("any counterproductive constructs");
+    expect(flowText("any counterpro\u2010\nductive constructs")).toBe("any counterproductive constructs");
+    expect(flowText("any counterpro\u00ad\nductive constructs")).toBe("any counterproductive constructs");
+  });
+
+  it("turns other line breaks into spaces", () => {
+    expect(flowText("you need\nto evaluate")).toBe("you need to evaluate");
   });
 });

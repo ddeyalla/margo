@@ -17,8 +17,12 @@ export const loadPdfJs = (): Promise<PdfJs> =>
 export const pageText = (content: TextContent): string =>
   content.items.map((item) => ("str" in item ? item.str + (item.hasEOL ? "\n" : "") : "")).join("");
 
-/** Joins a page's hard line breaks into running prose, rejoining words split by a hyphen. */
-export const flowText = (text: string): string => text.replace(/(\w)-\n(\w)/g, "$1$2").replace(/\n/g, " ");
+/**
+ * Joins a page's hard line breaks into running prose, rejoining words split by
+ * a hyphen. Typeset books often break lines with U+2010 or a soft hyphen rather
+ * than "-".
+ */
+export const flowText = (text: string): string => text.replace(/(\w)[-\u2010\u00ad]\n(\w)/g, "$1$2").replace(/\n/g, " ");
 
 /** Character offset of a boundary point inside a text layer, counting text and one per line break. */
 export const offsetInLayer = (layer: Element, node: Node, offset: number): number => {
