@@ -49,7 +49,7 @@ async function Library() {
         id: book.id,
         format: book.format,
         title: state.meta?.title || book.fileTitle,
-        author: state.meta?.author ?? null,
+        author: state.meta?.author ?? book.fileAuthor,
         sizeBytes: book.sizeBytes,
         progress: state.position?.fraction ?? null,
       };

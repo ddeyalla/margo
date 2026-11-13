@@ -9,6 +9,8 @@ export interface LibraryBook {
   relPath: string;
   folder: string;
   fileTitle: string;
+  /** The author read from the file name, for books whose metadata has none or that were never opened. */
+  fileAuthor: string | null;
   sizeBytes: number;
   modifiedAt: string;
 }

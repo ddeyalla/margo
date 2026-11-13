@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   if (typeof thread === "string") return badRequest(thread);
 
   const [state, settings] = await Promise.all([readBookState(found.book.id), readSettings()]);
-  const label = { title: state.meta?.title ?? found.book.fileTitle, author: state.meta?.author ?? null };
+  const label = { title: state.meta?.title ?? found.book.fileTitle, author: state.meta?.author ?? found.book.fileAuthor };
   const model = settings.models[providerId] ?? DEFAULT_MODELS[providerId] ?? null;
   const turn = buildTurn(label, thread, model);
 

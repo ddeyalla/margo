@@ -3,7 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { BookFormat, BookId, LibraryBook } from "@/lib/shared/types";
 import { getConfig } from "./config";
-import { cleanFileTitle } from "./filename";
+import { parseFileName } from "./filename";
 
 const FORMATS: Record<string, BookFormat> = { ".epub": "epub", ".pdf": "pdf" };
 
@@ -29,12 +29,14 @@ export const scanLibrary = async (root: string = getConfig().booksDir): Promise<
         if (!entry.isFile() || !format) return;
         const info = await stat(absPath);
         const relPath = toPosix(path.relative(root, absPath));
+        const { title, author } = parseFileName(entry.name);
         books.push({
           id: bookIdOf(relPath),
           format,
           relPath,
           folder: toPosix(path.relative(root, dir)),
-          fileTitle: cleanFileTitle(entry.name),
+          fileTitle: title,
+          fileAuthor: author,
           sizeBytes: info.size,
           modifiedAt: info.mtime.toISOString(),
         });
