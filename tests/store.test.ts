@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import type { BookId, Thread } from "@/lib/shared/types";
 const id = "a".repeat(40) as BookId;
 
 const thread = (n: number): Thread => ({
+  kind: "passage",
   id: `t${n}`,
   anchor: { kind: "epub", cfi: `epubcfi(/6/${n})` },
   quote: `quote ${n}`,
@@ -40,5 +41,15 @@ describe("book state store", () => {
     expect(raw.threads).toHaveLength(20);
     expect(raw.position).toEqual({ kind: "epub", cfi: "epubcfi(/6/2)", fraction: 0.5 });
     expect(await readdir(dir)).toEqual([`${id}.json`]);
+  });
+
+  it("reads threads saved before questions without a passage existed as passage threads", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const old: Record<string, unknown> = { ...thread(1) };
+    delete old.kind;
+    await writeFile(path.join(dir, `${id}.json`), JSON.stringify({ threads: [old] }));
+    expect((await readBookState(id, dir)).threads).toEqual([thread(1)]);
+    const updated = await updateBookState(id, (state) => state, dir);
+    expect(updated.threads[0].kind).toBe("passage");
   });
 });

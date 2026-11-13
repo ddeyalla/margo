@@ -4,10 +4,10 @@ import { useLayoutEffect, useRef } from "react";
 import { ChevronLeft, CircleAlert, CornerDownRight, MessageSquareText } from "lucide-react";
 import { Button, EmptyState, Spinner } from "@/components/ui";
 import { placeLabel } from "@/lib/shared/place";
-import type { Anchor, Thread, TutorAction } from "@/lib/shared/types";
+import type { Anchor, GeneralThread, Thread, TutorAction } from "@/lib/shared/types";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
-import { awaitsAnswer, type FailedTurn, type Tutor } from "./useTutor";
+import { awaitsAnswer, type FailedTurn, type MessageDraft, type Tutor } from "./useTutor";
 
 const ACTION_LABELS: Record<Exclude<TutorAction, "ask">, string> = { explain: "Explain", deeper: "Go deeper" };
 
@@ -20,6 +20,7 @@ export function ChatTab({
   tutor,
   unavailable,
   onJump,
+  onAsk,
   onReply,
   onRetry,
 }: {
@@ -27,7 +28,9 @@ export function ChatTab({
   /** Why the tutor can't take a message, or null. */
   unavailable: string | null;
   onJump(anchor: Anchor): void;
-  onReply(text: string): void;
+  /** Starts a thread with no passage. */
+  onAsk(draft: MessageDraft): void;
+  onReply(draft: MessageDraft): void;
   onRetry(): void;
 }) {
   const { active, failure } = tutor;
@@ -40,7 +43,7 @@ export function ChatTab({
         failure={failure}
         unavailable={unavailable}
         onBack={() => tutor.open(null)}
-        onJump={() => onJump(active.anchor)}
+        onJump={() => active.anchor && onJump(active.anchor)}
         onReply={onReply}
         onRetry={onRetry}
         onStop={tutor.stop}
@@ -55,16 +58,24 @@ export function ChatTab({
           threads={tutor.threads}
           onOpen={(thread) => {
             tutor.open(thread.id);
-            onJump(thread.anchor);
+            /* A question with no passage keeps the reader where they are; its header leads back to where it was asked. */
+            if (thread.kind === "passage") onJump(thread.anchor);
           }}
         />
       ) : (
         <EmptyState
           icon={<MessageSquareText />}
           title="Ask about a passage"
-          body="Select text in the book, then choose Explain, Go deeper or Ask…"
+          body="Select text in the book, then choose Explain, Go deeper or Ask… Or ask about the book below."
         />
       )}
+      <Composer
+        placeholder="Ask about the book…"
+        disabledReason={unavailable}
+        sending={tutor.sending}
+        onSend={(text) => onAsk({ text, attachments: [] })}
+        onStop={tutor.stop}
+      />
     </div>
   );
 }
@@ -77,8 +88,9 @@ function ThreadList({ threads, onOpen }: { threads: Thread[]; onOpen(thread: Thr
       </p>
       <ul className="flex flex-col gap-0.5">
         {threads.map((thread) => {
-          const label = thread.action === "ask" ? thread.messages[0]?.content : ACTION_LABELS[thread.action];
-          const place = placeLabel(thread.chapterTitle, thread.anchor);
+          const first = thread.messages[0]?.content ?? "";
+          const label = thread.kind === "general" ? "No passage" : thread.action === "ask" ? first : ACTION_LABELS[thread.action];
+          const place = thread.anchor && placeLabel(thread.chapterTitle, thread.anchor);
           return (
             <li key={thread.id}>
               <button
@@ -87,7 +99,11 @@ function ThreadList({ threads, onOpen }: { threads: Thread[]; onOpen(thread: Thr
                 title={place ?? undefined}
                 className="press flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-panel-raised focus-visible:bg-panel-raised"
               >
-                <span className="line-clamp-2 font-reading text-[13px] leading-snug text-prose">{thread.quote}</span>
+                {thread.kind === "passage" ? (
+                  <span className="line-clamp-2 font-reading text-[13px] leading-snug text-prose">{thread.quote}</span>
+                ) : (
+                  <span className="line-clamp-2 text-body leading-snug text-paper">{first}</span>
+                )}
                 <span className="flex min-w-0 items-center gap-2 text-[11px] text-dim">
                   <span className="min-w-0 flex-1 truncate">
                     {label}
@@ -121,7 +137,7 @@ function ThreadView({
   unavailable: string | null;
   onBack(): void;
   onJump(): void;
-  onReply(text: string): void;
+  onReply(draft: MessageDraft): void;
   onRetry(): void;
   onStop(): void;
 }) {
@@ -156,18 +172,22 @@ function ThreadView({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-4 pb-4"
       >
-        <button
-          type="button"
-          onClick={onJump}
-          title="Go to this passage"
-          className="group block w-full rounded-lg bg-panel-raised p-3 text-left transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover"
-        >
-          <span className="line-clamp-6 whitespace-pre-line font-reading text-[14px] leading-relaxed text-prose">{thread.quote}</span>
-          <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-dim group-hover:text-fog">
-            <CornerDownRight className="size-3 shrink-0" aria-hidden />
-            <span className="truncate">{placeLabel(thread.chapterTitle, thread.anchor) ?? "Go to passage"}</span>
-          </span>
-        </button>
+        {thread.kind === "passage" ? (
+          <button
+            type="button"
+            onClick={onJump}
+            title="Go to this passage"
+            className="group block w-full rounded-lg bg-panel-raised p-3 text-left transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover"
+          >
+            <span className="line-clamp-6 whitespace-pre-line font-reading text-[14px] leading-relaxed text-prose">{thread.quote}</span>
+            <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-dim group-hover:text-fog">
+              <CornerDownRight className="size-3 shrink-0" aria-hidden />
+              <span className="truncate">{placeLabel(thread.chapterTitle, thread.anchor) ?? "Go to passage"}</span>
+            </span>
+          </button>
+        ) : (
+          <AskedAt thread={thread} onJump={onJump} />
+        )}
 
         <div className="mt-4 flex flex-col gap-4">
           {thread.messages.map((message, index) =>
@@ -214,10 +234,27 @@ function ThreadView({
         placeholder="Ask a follow-up…"
         disabledReason={unavailable}
         sending={streaming !== null}
-        onSend={onReply}
+        onSend={(text) => onReply({ text, attachments: [] })}
         onStop={onStop}
       />
     </div>
+  );
+}
+
+/** The head of a thread with no passage: where the reader was when they asked, as a way back there. */
+function AskedAt({ thread, onJump }: { thread: GeneralThread; onJump(): void }) {
+  const place = thread.anchor && (placeLabel(thread.chapterTitle, thread.anchor) ?? "where you were reading");
+  if (!place) return <p className="text-[11px] text-dim">Asked without a passage</p>;
+  return (
+    <button
+      type="button"
+      onClick={onJump}
+      title="Go back to where you asked"
+      className="press flex max-w-full items-center gap-1.5 rounded-xs text-[11px] text-dim transition-colors duration-[var(--duration-fast)] hover:text-fog"
+    >
+      <CornerDownRight className="size-3 shrink-0" aria-hidden />
+      <span className="truncate">Asked at {place}</span>
+    </button>
   );
 }
 

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { emptyBookState, type BookId, type BookState } from "@/lib/shared/types";
+import { emptyBookState, type BookId, type BookState, type PassageThread, type Thread } from "@/lib/shared/types";
 import { getConfig } from "./config";
 
 /**
@@ -65,10 +65,17 @@ export const updateJson = <T>(file: string, fallback: () => T, change: (current:
 
 const stateFile = (id: BookId, dataDir: string) => path.join(dataDir, `${id}.json`);
 
-const normalize = (raw: Partial<BookState> | null): BookState => ({ ...emptyBookState(), ...raw });
+/** Threads saved before questions without a passage existed have no kind; every one of them is about a passage. */
+type StoredThread = Thread | Omit<PassageThread, "kind">;
+type StoredState = Omit<BookState, "threads"> & { threads: StoredThread[] };
+
+const normalize = (raw: Partial<StoredState> | null): BookState => {
+  const state = { ...emptyBookState(), ...raw };
+  return { ...state, threads: state.threads.map((thread) => ("kind" in thread ? thread : { ...thread, kind: "passage" })) };
+};
 
 export const readBookState = async (id: BookId, dataDir = getConfig().dataDir): Promise<BookState> =>
-  normalize(await readJson<Partial<BookState>>(stateFile(id, dataDir)));
+  normalize(await readJson<Partial<StoredState>>(stateFile(id, dataDir)));
 
 export const updateBookState = (
   id: BookId,

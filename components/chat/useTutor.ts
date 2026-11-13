@@ -2,8 +2,16 @@
 
 import { useRef, useState } from "react";
 import { streamChat } from "@/lib/client/chat";
-import type { ChatRequest } from "@/lib/shared/chat";
-import type { BookId, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
+import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
+import type { BookId, ImageAttachment, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
+
+/** What the reader wrote in the composer: words, images, or both. */
+export interface MessageDraft {
+  text: string;
+  attachments: ImageAttachment[];
+}
+
+const ids = (draft: MessageDraft) => draft.attachments.map((attachment) => attachment.id);
 
 /** A turn that ended without a full answer. */
 export interface FailedTurn {
@@ -81,11 +89,8 @@ export function useTutor(bookId: BookId, initialThreads: Thread[]) {
     setSending(false);
     setLive(null);
     if (error && !controller.signal.aborted) {
-      setFailure({
-        threadId: thread?.id ?? (request.kind === "new" ? null : request.threadId),
-        message: error,
-        request: thread || request.kind !== "new" ? null : request,
-      });
+      const inThread = "threadId" in request ? request.threadId : null;
+      setFailure({ threadId: thread?.id ?? inThread, message: error, request: thread || inThread ? null : request });
     }
   };
 
@@ -97,8 +102,13 @@ export function useTutor(bookId: BookId, initialThreads: Thread[]) {
   const active = threads.find((t) => t.id === activeId) ?? null;
   const shownFailure = failure && (failure.threadId === null || failure.threadId === activeId) ? failure : null;
 
-  const reply = (text: string, provider: ProviderId) => {
-    if (activeId) void run({ kind: "reply", bookId, provider, threadId: activeId, text });
+  /** Starts a thread with no passage, placed where the reader is. */
+  const ask = (draft: MessageDraft, place: QuestionPlace | null, provider: ProviderId) => {
+    void run({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), place });
+  };
+
+  const reply = (draft: MessageDraft, provider: ProviderId) => {
+    if (activeId) void run({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft) });
   };
 
   /** Asks again for the active thread's unanswered message, or resends a first turn the server never saved. */
@@ -115,6 +125,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[]) {
   };
 
   return {
+    bookId,
     threads: [...threads].sort(newestFirst),
     active,
     /** The answer streaming into the active thread, or null when it isn't the one answering. */
@@ -122,6 +133,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[]) {
     sending,
     failure: shownFailure,
     start,
+    ask,
     reply,
     retry,
     stop,

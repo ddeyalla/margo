@@ -100,6 +100,7 @@ describe("CLI arguments", () => {
 
 describe("tutor turns", () => {
   const thread: Thread = {
+    kind: "passage",
     id: "t1",
     anchor: { kind: "pdf", page: 3, start: 10, end: 40 },
     quote: "The selected words.",

@@ -62,19 +62,34 @@ export interface ChatMessage {
   attachments?: ImageAttachment[];
 }
 
-export interface Thread {
+interface ThreadBase {
   id: string;
+  provider: ProviderId;
+  sessionId: string | null;
+  createdAt: string;
+  messages: ChatMessage[];
+}
+
+/** A thread about a passage the reader selected. */
+export interface PassageThread extends ThreadBase {
+  kind: "passage";
   anchor: Anchor;
   quote: string;
   before: string;
   after: string;
   chapterTitle: string | null;
   action: TutorAction;
-  provider: ProviderId;
-  sessionId: string | null;
-  createdAt: string;
-  messages: ChatMessage[];
 }
+
+/** A question asked with no passage selected, such as one about an image. */
+export interface GeneralThread extends ThreadBase {
+  kind: "general";
+  /** Where the reader was when they asked, or null if the book had not reported a place yet. */
+  anchor: Anchor | null;
+  chapterTitle: string | null;
+}
+
+export type Thread = PassageThread | GeneralThread;
 
 export type HighlightColor = "amber";
 

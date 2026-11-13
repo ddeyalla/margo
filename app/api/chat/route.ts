@@ -1,58 +1,16 @@
-import { randomUUID } from "node:crypto";
-import { findBook, type FoundBook } from "@/lib/server/library";
+import { findBook } from "@/lib/server/library";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
-import { openTurn, type TurnRequest } from "@/lib/server/turns";
+import { openTurn, parseTurnRequest } from "@/lib/server/turns";
 import { CODEX_DEFAULT_MODEL } from "@/lib/server/tutor/codex";
-import { ACTION_MESSAGES, buildTurn } from "@/lib/server/tutor/prompt";
+import { buildTurn } from "@/lib/server/tutor/prompt";
 import { PROVIDERS, isProviderId } from "@/lib/server/tutor/providers";
-import { isObject, parseAnchor, shortText } from "@/lib/server/validate";
-import { trimAfter, trimBefore } from "@/lib/shared/context";
-import type { ChatStreamEvent, ProviderId, TutorAction } from "@/lib/shared/types";
+import { isObject } from "@/lib/server/validate";
+import type { ChatStreamEvent, ProviderId } from "@/lib/shared/types";
 
-const MAX_QUOTE = 12_000;
-const MAX_MESSAGE = 8_000;
-const ACTIONS: TutorAction[] = ["explain", "deeper", "ask"];
 const DEFAULT_MODELS: Partial<Record<ProviderId, string>> = { codex: CODEX_DEFAULT_MODEL };
 
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
-
-/** The validated turn this request asks for. Nothing is read or saved yet. */
-const parseTurn = (body: Record<string, unknown>, found: FoundBook, provider: ProviderId): TurnRequest | string => {
-  if (body.kind === "new") {
-    const now = new Date().toISOString();
-    const action = ACTIONS.find((a) => a === body.action);
-    const selection = isObject(body.selection) ? body.selection : null;
-    const anchor = selection && parseAnchor(selection.anchor, found.book.format);
-    const quote = selection && shortText(selection.text, MAX_QUOTE);
-    if (!action || !selection || !anchor || !quote) return "Invalid selection.";
-    const question = action === "ask" ? shortText(body.question, MAX_MESSAGE) : null;
-    if (action === "ask" && !question) return "A question is required.";
-    return {
-      kind: "new",
-      thread: {
-        id: randomUUID(),
-        anchor,
-        quote,
-        before: trimBefore(typeof selection.before === "string" ? selection.before : ""),
-        after: trimAfter(typeof selection.after === "string" ? selection.after : ""),
-        chapterTitle: shortText(selection.chapterTitle, 500),
-        action,
-        provider,
-        sessionId: null,
-        createdAt: now,
-        messages: [{ role: "user", content: question ?? ACTION_MESSAGES[action as Exclude<TutorAction, "ask">], createdAt: now }],
-      },
-    };
-  }
-  if (typeof body.threadId !== "string") return "Invalid thread.";
-  if (body.kind === "retry") return { kind: "retry", threadId: body.threadId };
-  if (body.kind === "reply") {
-    const text = shortText(body.text, MAX_MESSAGE);
-    return text ? { kind: "reply", threadId: body.threadId, text } : "Invalid reply.";
-  }
-  return "Unknown request.";
-};
 
 /**
  * Streams the tutor's answer as newline-delimited ChatStreamEvent JSON: the
@@ -68,7 +26,7 @@ export async function POST(request: Request) {
   const found = await findBook(body.bookId);
   if (!found) return Response.json({ error: "Book not found." }, { status: 404 });
 
-  const parsed = parseTurn(body, found, providerId);
+  const parsed = await parseTurnRequest(body, found.book, providerId);
   if (typeof parsed === "string") return badRequest(parsed);
 
   const [state, settings] = await Promise.all([readBookState(found.book.id), readSettings()]);

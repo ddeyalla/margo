@@ -1,12 +1,112 @@
-import type { BookId, BookState, ChatMessage, ProviderId, Thread } from "@/lib/shared/types";
+import { randomUUID } from "node:crypto";
+import { MAX_IMAGES_PER_MESSAGE } from "@/lib/shared/attachments";
+import { trimAfter, trimBefore } from "@/lib/shared/context";
+import type { BookId, BookState, ChatMessage, ImageAttachment, LibraryBook, ProviderId, Thread, TutorAction } from "@/lib/shared/types";
+import { readAttachment } from "./attachments";
 import { getConfig } from "./config";
 import { hold, readBookState, updateBookState } from "./store";
+import { ACTION_MESSAGES, imageMessage } from "./tutor/prompt";
+import { isObject, parseAnchor, parseAttachmentIds, shortText } from "./validate";
 
 /** What a chat request asks for, already validated. A new thread arrives built, with the reader's first message. */
 export type TurnRequest =
   | { kind: "new"; thread: Thread }
-  | { kind: "reply"; threadId: string; text: string }
+  | { kind: "reply"; threadId: string; message: ChatMessage }
   | { kind: "retry"; threadId: string };
+
+const MAX_QUOTE = 12_000;
+const MAX_MESSAGE = 8_000;
+const ACTIONS: TutorAction[] = ["explain", "deeper", "ask"];
+
+/** The images a message names, each one stored for this book. */
+const readAttachments = async (value: unknown, bookId: BookId, dataDir: string): Promise<ImageAttachment[] | string> => {
+  const ids = value === undefined ? [] : parseAttachmentIds(value, MAX_IMAGES_PER_MESSAGE);
+  if (!ids) return `Attach up to ${MAX_IMAGES_PER_MESSAGE} images to a message.`;
+  const images = await Promise.all(ids.map((id) => readAttachment(bookId, id, dataDir)));
+  if (images.some((image) => !image)) return "An attached image is missing. Remove it and attach it again.";
+  return images.flatMap((image) => (image ? [image.attachment] : []));
+};
+
+/** The reader's typed message with its images. Images sent without words ask the tutor to explain them. */
+const userMessage = async (body: Record<string, unknown>, bookId: BookId, dataDir: string): Promise<ChatMessage | string> => {
+  const attachments = await readAttachments(body.attachments, bookId, dataDir);
+  if (typeof attachments === "string") return attachments;
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (text.length > MAX_MESSAGE) return "This message is too long.";
+  if (!text && !attachments.length) return "Write a message or attach an image.";
+  const message: ChatMessage = { role: "user", content: text || imageMessage(attachments.length), createdAt: new Date().toISOString() };
+  if (attachments.length) message.attachments = attachments;
+  return message;
+};
+
+const passageThread = (body: Record<string, unknown>, book: LibraryBook, provider: ProviderId): Thread | string => {
+  const now = new Date().toISOString();
+  const action = ACTIONS.find((a) => a === body.action);
+  const selection = isObject(body.selection) ? body.selection : null;
+  const anchor = selection && parseAnchor(selection.anchor, book.format);
+  const quote = selection && shortText(selection.text, MAX_QUOTE);
+  if (!action || !selection || !anchor || !quote) return "Invalid selection.";
+  const question = action === "ask" ? shortText(body.question, MAX_MESSAGE) : null;
+  if (action === "ask" && !question) return "A question is required.";
+  return {
+    kind: "passage",
+    id: randomUUID(),
+    anchor,
+    quote,
+    before: trimBefore(typeof selection.before === "string" ? selection.before : ""),
+    after: trimAfter(typeof selection.after === "string" ? selection.after : ""),
+    chapterTitle: shortText(selection.chapterTitle, 500),
+    action,
+    provider,
+    sessionId: null,
+    createdAt: now,
+    messages: [{ role: "user", content: question ?? ACTION_MESSAGES[action as Exclude<TutorAction, "ask">], createdAt: now }],
+  };
+};
+
+/** A question with no passage, placed where the reader was when they asked. */
+const generalThread = async (
+  body: Record<string, unknown>,
+  book: LibraryBook,
+  provider: ProviderId,
+  dataDir: string,
+): Promise<Thread | string> => {
+  const place = isObject(body.place) ? body.place : null;
+  const anchor = place && parseAnchor(place.anchor, book.format);
+  if (body.place !== null && !anchor) return "Invalid place.";
+  const message = await userMessage(body, book.id, dataDir);
+  if (typeof message === "string") return message;
+  return {
+    kind: "general",
+    id: randomUUID(),
+    anchor,
+    chapterTitle: place && shortText(place.chapterTitle, 500),
+    provider,
+    sessionId: null,
+    createdAt: message.createdAt,
+    messages: [message],
+  };
+};
+
+/** The validated turn a chat request body asks for. Images must already be stored for this book. Nothing is saved yet. */
+export const parseTurnRequest = async (
+  body: Record<string, unknown>,
+  book: LibraryBook,
+  provider: ProviderId,
+  dataDir = getConfig().dataDir,
+): Promise<TurnRequest | string> => {
+  if (body.kind === "new" || body.kind === "general") {
+    const thread = body.kind === "new" ? passageThread(body, book, provider) : await generalThread(body, book, provider, dataDir);
+    return typeof thread === "string" ? thread : { kind: "new", thread };
+  }
+  if (typeof body.threadId !== "string") return "Invalid thread.";
+  if (body.kind === "retry") return { kind: "retry", threadId: body.threadId };
+  if (body.kind === "reply") {
+    const message = await userMessage(body, book.id, dataDir);
+    return typeof message === "string" ? message : { kind: "reply", threadId: body.threadId, message };
+  }
+  return "Unknown request.";
+};
 
 export interface TurnAnswer {
   text: string;
@@ -43,8 +143,7 @@ const threadForTurn = (state: BookState, request: TurnRequest, provider: Provide
     if (existing.messages.at(-1)?.role !== "user") return "This thread has no unanswered message to retry.";
     return forProvider(existing, provider);
   }
-  const message: ChatMessage = { role: "user", content: request.text, createdAt: new Date().toISOString() };
-  return { ...forProvider(existing, provider), messages: [...existing.messages, message] };
+  return { ...forProvider(existing, provider), messages: [...existing.messages, request.message] };
 };
 
 /** Appends the tutor's answer to the stored thread. An answer with no text saves nothing. */

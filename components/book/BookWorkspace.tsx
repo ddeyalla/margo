@@ -9,7 +9,7 @@ import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { useProviders } from "@/components/chat/useProviders";
-import { useTutor } from "@/components/chat/useTutor";
+import { useTutor, type MessageDraft } from "@/components/chat/useTutor";
 import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/reader/SelectionToolbar";
@@ -17,6 +17,7 @@ import type { OpenFailure } from "@/components/reader/errors";
 import type { ReaderHandle, ReaderMeta, ReaderPlace, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton, Segmented } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
+import { anchorAt } from "@/lib/shared/place";
 import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { ReadingFooter } from "./ReadingFooter";
 import { SidePanel, type PanelTab } from "./SidePanel";
@@ -178,6 +179,12 @@ export function BookWorkspace({
     readerRef.current?.clearSelection();
     showTab("chat");
     tutor.start(action, selection, question, provider);
+  };
+
+  /* A question with no passage remembers where the reader was, so its thread can lead back there. */
+  const askAnywhere = (draft: MessageDraft) => {
+    if (!provider) return;
+    tutor.ask(draft, position && { anchor: anchorAt(position), chapterTitle: chapter?.label ?? null }, provider);
   };
 
   const highlight = (selection: SelectionContext) => {
@@ -381,7 +388,8 @@ export function BookWorkspace({
             unavailable={unavailable}
             onProvider={chooseProvider}
             onJump={jumpTo}
-            onReply={(text) => provider && tutor.reply(text, provider)}
+            onAsk={askAnywhere}
+            onReply={(draft) => provider && tutor.reply(draft, provider)}
             onRetry={() => provider && tutor.retry(provider)}
             annotations={annotations}
             noteDraft={noteDraft}

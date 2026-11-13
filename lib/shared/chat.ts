@@ -1,6 +1,16 @@
-import type { BookId, ProviderId, SelectionContext, TutorAction } from "./types";
+import type { Anchor, BookId, ProviderId, SelectionContext, TutorAction } from "./types";
 
-/** POST /api/chat: start a thread from a selection, reply in one, or get an answer to its unanswered message. */
+/** Where the reader is, sent with a question that has no passage. */
+export interface QuestionPlace {
+  anchor: Anchor;
+  chapterTitle: string | null;
+}
+
+/**
+ * POST /api/chat: start a thread from a selection or with no passage, reply in
+ * one, or get an answer to its unanswered message. `attachments` are ids of
+ * images already uploaded for this book; a message may be images alone.
+ */
 export type ChatRequest =
   | {
       kind: "new";
@@ -11,5 +21,6 @@ export type ChatRequest =
       question: string | null;
       selection: Omit<SelectionContext, "rect">;
     }
-  | { kind: "reply"; bookId: BookId; provider: ProviderId; threadId: string; text: string }
+  | { kind: "general"; bookId: BookId; provider: ProviderId; text: string; attachments: string[]; place: QuestionPlace | null }
+  | { kind: "reply"; bookId: BookId; provider: ProviderId; threadId: string; text: string; attachments: string[] }
   | { kind: "retry"; bookId: BookId; provider: ProviderId; threadId: string };

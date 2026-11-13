@@ -6,7 +6,7 @@ import { NotesTab, type NoteDraft } from "@/components/annotations/NotesTab";
 import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
 import { ChatTab } from "@/components/chat/ChatTab";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
-import type { Tutor } from "@/components/chat/useTutor";
+import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
 import type { Anchor, ProviderId, ProviderInfo } from "@/lib/shared/types";
 
 export type PanelTab = "chat" | "notes" | "highlights";
@@ -27,6 +27,7 @@ export function SidePanel({
   unavailable,
   onProvider,
   onJump,
+  onAsk,
   onReply,
   onRetry,
   annotations,
@@ -43,7 +44,8 @@ export function SidePanel({
   unavailable: string | null;
   onProvider(id: ProviderId): void;
   onJump(anchor: Anchor): void;
-  onReply(text: string): void;
+  onAsk(draft: MessageDraft): void;
+  onReply(draft: MessageDraft): void;
   onRetry(): void;
   annotations: AnnotationsApi;
   noteDraft: NoteDraft | null;
@@ -69,7 +71,7 @@ export function SidePanel({
         {tab === "chat" ? <ProviderPicker providers={providers} current={provider} onSelect={onProvider} /> : null}
       </div>
       <TabsPanel value="chat" className="flex min-h-0 flex-1 flex-col outline-none data-[selected]:flex [&:not([data-selected])]:hidden">
-        <ChatTab tutor={tutor} unavailable={unavailable} onJump={onJump} onReply={onReply} onRetry={onRetry} />
+        <ChatTab tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onReply={onReply} onRetry={onRetry} />
       </TabsPanel>
       <TabsPanel value="notes" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
         <NotesTab

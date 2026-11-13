@@ -2,12 +2,13 @@ import { placeLabel } from "@/lib/shared/place";
 import type { Thread, TutorAction } from "@/lib/shared/types";
 import type { TutorMessage, TutorTurn } from "./types";
 
-export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who is reading a book. They select a passage and ask you about it.
+export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who is reading a book. They select a passage, or share an image such as a figure, a screenshot or a photo of their working, and ask you about it. Some questions come with no passage at all.
 
-- Ground every answer in the passage first: what it says, and what it means where it sits in the book. Then broaden only as far as it helps.
+- Ground every answer in what they gave you first: the passage, and what it means where it sits in the book, or the image, read closely. Then broaden only as far as it helps.
+- Connect an image to the book and to where they are reading when you can. If part of an image is unreadable, say which part.
 - Be concise. Use plain language and short paragraphs. Prefer one concrete example to an abstract explanation.
 - When you go beyond what the book says, say so plainly, for example "Beyond the book: ...".
-- If the passage is ambiguous or the question is unclear, say what you are assuming.
+- If the passage or image is ambiguous or the question is unclear, say what you are assuming.
 - Write in Markdown. Use a list or a small table only when it makes the answer clearer.`;
 
 /** What the reader's message says in the chat for each toolbar action. */
@@ -15,6 +16,9 @@ export const ACTION_MESSAGES: Record<Exclude<TutorAction, "ask">, string> = {
   explain: "Explain this passage.",
   deeper: "Go deeper on this passage.",
 };
+
+/** What the reader's message says when they send images with no words. */
+export const imageMessage = (count: number) => (count === 1 ? "Explain this image." : "Explain these images.");
 
 const ACTION_REQUESTS: Record<Exclude<TutorAction, "ask">, string> = {
   explain: "Explain this passage.",
@@ -27,12 +31,23 @@ export interface BookLabel {
   author: string | null;
 }
 
-/** The first user turn: the book, where the passage sits, the passage with its surroundings, and the request. */
+/**
+ * The first user turn. For a passage: the book, where it sits, the passage
+ * with its surroundings, and the request. For a question with no passage: the
+ * book, where the reader is, and their message.
+ */
 export const contextMessage = (book: BookLabel, thread: Thread): string => {
-  const where = placeLabel(thread.chapterTitle, thread.anchor);
-  const request = thread.action === "ask" ? `My question: ${thread.messages[0]?.content ?? ""}` : ACTION_REQUESTS[thread.action];
+  const where = thread.anchor && placeLabel(thread.chapterTitle, thread.anchor);
+  const heading = `Book: ${book.title}${book.author ? `, by ${book.author}` : ""}`;
+  const first = thread.messages[0]?.content ?? "";
+  if (thread.kind === "general") {
+    return [heading, where ? `Where I am reading: ${where}` : null, "", "I have not selected a passage.", "", first]
+      .filter((line) => line !== null)
+      .join("\n");
+  }
+  const request = thread.action === "ask" ? `My question: ${first}` : ACTION_REQUESTS[thread.action];
   return [
-    `Book: ${book.title}${book.author ? `, by ${book.author}` : ""}`,
+    heading,
     where ? `Where: ${where}` : null,
     "",
     "Text just before the selection:",
