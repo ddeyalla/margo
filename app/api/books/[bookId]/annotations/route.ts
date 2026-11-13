@@ -1,6 +1,7 @@
-import { changeAnnotations, parseChange, type AnnotationMethod } from "@/lib/server/annotations";
+import { changeAnnotations, parseChange } from "@/lib/server/annotations";
 import { getConfig } from "@/lib/server/config";
 import { findBook } from "@/lib/server/library";
+import type { AnnotationMethod } from "@/lib/shared/annotations";
 
 type Context = RouteContext<"/api/books/[bookId]/annotations">;
 
@@ -14,9 +15,7 @@ const handle = (method: AnnotationMethod) => async (request: Request, ctx: Conte
   return Response.json(await changeAnnotations(found.book, change, { dataDir, notesDir }));
 };
 
-/** Body: `{ highlight }`, or `{ note, highlightId }` where highlightId names the highlight to create if the passage has none. */
+/* The body is one AnnotationChange: add-highlight and add-note go as POST, edit-note as PATCH, the removals as DELETE. */
 export const POST = handle("POST");
-/** Body: `{ note: { id, body } }`. */
 export const PATCH = handle("PATCH");
-/** Body: `{ highlightId }` or `{ noteId }`. */
 export const DELETE = handle("DELETE");

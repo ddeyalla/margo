@@ -46,8 +46,8 @@ export const Button = forwardRef<
 
 export const IconButton = forwardRef<
   HTMLButtonElement,
-  ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean }
->(function IconButton({ className, label, active, type = "button", ...props }, ref) {
+  ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean; size?: "sm" | "md" }
+>(function IconButton({ className, label, active, size = "md", type = "button", ...props }, ref) {
   return (
     <button
       ref={ref}
@@ -56,7 +56,8 @@ export const IconButton = forwardRef<
       aria-label={label}
       aria-pressed={active}
       className={clsx(
-        "press inline-flex size-7 shrink-0 items-center justify-center rounded-sm transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out disabled:pointer-events-none disabled:opacity-40 [&>svg]:size-4 [&>svg]:shrink-0",
+        "press inline-flex shrink-0 items-center justify-center rounded-sm transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out disabled:pointer-events-none disabled:opacity-40 [&>svg]:shrink-0",
+        size === "sm" ? "size-6 [&>svg]:size-3.5" : "size-7 [&>svg]:size-4",
         focusRing,
         active ? "bg-panel-hover text-paper" : "text-dim hover:bg-white/[0.06] hover:text-paper",
         className,

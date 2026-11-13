@@ -34,6 +34,57 @@ export const offsetInLayer = (layer: Element, node: Node, offset: number): numbe
   return count;
 };
 
+/** A text layer's text nodes and line breaks, in order, as offsetInLayer counts them. */
+export const textPieces = (layer: Element): { node: Node; length: number }[] => {
+  const pieces: { node: Node; length: number }[] = [];
+  const walker = layer.ownerDocument.createTreeWalker(layer, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType === Node.TEXT_NODE) pieces.push({ node, length: node.nodeValue?.length ?? 0 });
+    else if ((node as Element).localName === "br") pieces.push({ node, length: 1 });
+  }
+  return pieces;
+};
+
+/** The DOM range over characters [start, end) of a rendered text layer, or null if the layer doesn't reach them. */
+export const rangeInLayer = (layer: Element, start: number, end: number): Range | null => {
+  const pieces = textPieces(layer);
+  const lengths = pieces.map((piece) => piece.length);
+  const from = locateOffset(lengths, start, "start");
+  const to = locateOffset(lengths, end, "end");
+  if (!from || !to || from.piece > to.piece) return null;
+  const range = layer.ownerDocument.createRange();
+  const first = pieces[from.piece].node;
+  const last = pieces[to.piece].node;
+  if (first.nodeType === Node.TEXT_NODE) range.setStart(first, from.offset);
+  else range.setStartBefore(first);
+  if (last.nodeType === Node.TEXT_NODE) range.setEnd(last, to.offset);
+  else range.setEndAfter(last);
+  return range;
+};
+
+export interface TextPoint {
+  /** Which piece of the text layer: a text node, or a line break that counts as one character. */
+  piece: number;
+  offset: number;
+}
+
+/**
+ * Where a character offset in a page's text falls among its text layer's
+ * pieces, given each piece's length. A start lands at the beginning of the
+ * piece that holds the next character; an end at the close of the piece that
+ * holds the last one. Null when no character lies on that side.
+ */
+export const locateOffset = (lengths: number[], offset: number, edge: "start" | "end"): TextPoint | null => {
+  let before = 0;
+  for (let piece = 0; piece < lengths.length; piece += 1) {
+    const length = lengths[piece];
+    const inside = edge === "start" ? offset < before + length : offset <= before + length && offset > before;
+    if (length > 0 && inside) return { piece, offset: Math.max(0, offset - before) };
+    before += length;
+  }
+  return null;
+};
+
 export interface OutlineEntry {
   page: number;
   /** Where the entry's destination sits on its page, as a fraction from the top. */

@@ -3,8 +3,9 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
-import type { SelectionContext } from "@/lib/shared/types";
-import { blockText, selectedRange, textAround, viewportRect } from "./dom";
+import type { Highlight, SelectionContext } from "@/lib/shared/types";
+import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
+import { mergeLineBoxes, type Box } from "./rects";
 import type { ReaderProps } from "./types";
 
 /* foliate-js ships no types. These cover the parts this adapter uses. */
@@ -25,7 +26,18 @@ interface FoliateView extends HTMLElement {
   close(): void;
   goTo(target: string): Promise<unknown>;
   getCFI(index: number, range: Range): string;
+  addAnnotation(annotation: { value: string }): Promise<unknown>;
+  deleteAnnotation(annotation: { value: string }): Promise<unknown>;
   getProgressOf(index: number, range: Range): { tocItem?: { label?: string } | null };
+}
+
+interface OverlayerModule {
+  Overlayer: { highlight(rects: Iterable<Box>, options?: { color?: string }): SVGGElement };
+}
+
+/** foliate's call to draw one annotation in a section's overlay. */
+interface DrawDetail {
+  draw(draw: (rects: Iterable<Box>) => SVGElement): void;
 }
 
 interface RelocateDetail {
@@ -36,6 +48,7 @@ interface RelocateDetail {
 
 /** Served from public/ and imported at runtime, never bundled. */
 const FOLIATE_VIEW = "/vendor/foliate-js/view.js";
+const FOLIATE_OVERLAYER = "/vendor/foliate-js/overlayer.js";
 /** Wheel distance past a section's edge that turns to the next or previous section. */
 const OVERSCROLL_TO_TURN = 260;
 /** Wheel events further apart than this start a new overscroll gesture. */
@@ -101,9 +114,22 @@ hr { border: 0 !important; height: 1px; background-color: rgba(255, 255, 255, 0.
 ::selection { background: rgba(59, 130, 246, 0.32); }
 `;
 
-export function EpubReader({ ref, bookId, initialPosition, onReady, onSelectionChange, onPositionChange, onError }: ReaderProps) {
+export function EpubReader({
+  ref,
+  bookId,
+  initialPosition,
+  onReady,
+  onSelectionChange,
+  onPositionChange,
+  onError,
+  onHighlightClick,
+}: ReaderProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
+  /* Set once the book is open, when foliate can resolve a CFI to a section. */
+  const openRef = useRef(false);
+  /* Every highlight, drawn again into each section's overlay as foliate creates it. */
+  const highlightsRef = useRef(new Map<string, Highlight>());
   const sectionRef = useRef<{ doc: Document; index: number } | null>(null);
   const [atSectionEnd, setAtSectionEnd] = useState(false);
 
@@ -116,7 +142,7 @@ export function EpubReader({ ref, bookId, initialPosition, onReady, onSelectionC
     if (!range || !rect) return null;
     const { before, after } = textAround(range, section.doc.body);
     return {
-      text: normalizeText(blockText(range.cloneContents())),
+      text: normalizeText(blockText(range.cloneContents(), insidePre(range.commonAncestorContainer))),
       before: trimBefore(before),
       after: trimAfter(after),
       anchor: { kind: "epub", cfi: view.getCFI(section.index, range) },
@@ -134,6 +160,19 @@ export function EpubReader({ ref, bookId, initialPosition, onReady, onSelectionC
     async goTo(anchor) {
       if (anchor.kind === "epub") await viewRef.current?.goTo(anchor.cfi);
     },
+    showHighlight(highlight) {
+      highlightsRef.current.set(highlight.id, highlight);
+      if (openRef.current && highlight.anchor.kind === "epub") {
+        viewRef.current?.addAnnotation({ value: highlight.anchor.cfi }).catch(() => undefined);
+      }
+    },
+    removeHighlight(id) {
+      const removed = highlightsRef.current.get(id)?.anchor;
+      highlightsRef.current.delete(id);
+      if (!openRef.current || removed?.kind !== "epub") return;
+      const shared = [...highlightsRef.current.values()].some((h) => h.anchor.kind === "epub" && h.anchor.cfi === removed.cfi);
+      if (!shared) viewRef.current?.deleteAnnotation({ value: removed.cfi }).catch(() => undefined);
+    },
   }));
 
   const emitSelectionRect = useEffectEvent(() => {
@@ -144,6 +183,7 @@ export function EpubReader({ ref, bookId, initialPosition, onReady, onSelectionC
   const emitReady = useEffectEvent(onReady);
   const emitPosition = useEffectEvent(onPositionChange);
   const emitError = useEffectEvent(onError);
+  const emitHighlightClick = useEffectEvent(onHighlightClick);
   const initialCfi = useEffectEvent(() => (initialPosition?.kind === "epub" ? initialPosition.cfi : null));
 
   useEffect(() => {
@@ -208,6 +248,8 @@ export function EpubReader({ ref, bookId, initialPosition, onReady, onSelectionC
       emitSelectionRect();
       doc.addEventListener("pointerdown", () => {
         pointerDown = true;
+        /* A press in the book's frame counts as a press on the page, so open menus close. */
+        host.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       });
       doc.addEventListener("pointerup", () => {
         pointerDown = false;
@@ -224,6 +266,10 @@ export function EpubReader({ ref, bookId, initialPosition, onReady, onSelectionC
           doc.getSelection()?.removeAllRanges();
           emitSelectionRect();
         }
+        /* Keys pressed while the book's frame has focus reach the page's shortcuts too. */
+        const { key, code, metaKey, ctrlKey, shiftKey, altKey, repeat } = e;
+        const forwarded = new KeyboardEvent("keydown", { key, code, metaKey, ctrlKey, shiftKey, altKey, repeat, bubbles: true, cancelable: true });
+        if (!host.dispatchEvent(forwarded)) e.preventDefault();
       });
       doc.addEventListener("wheel", onWheel, { passive: true });
     };
@@ -235,17 +281,46 @@ export function EpubReader({ ref, bookId, initialPosition, onReady, onSelectionC
     };
 
     (async () => {
-      await import(/* webpackIgnore: true */ FOLIATE_VIEW);
+      const [, { Overlayer }] = await Promise.all([
+        import(/* webpackIgnore: true */ FOLIATE_VIEW),
+        import(/* webpackIgnore: true */ FOLIATE_OVERLAYER) as Promise<OverlayerModule>,
+      ]);
       if (disposed) return;
+      /* One warm tint per line, the token's own alpha, with softened corners. */
+      const tint = (rects: Iterable<Box>) => {
+        const group = Overlayer.highlight(mergeLineBoxes(rects));
+        group.style.fill = "var(--color-highlight)";
+        group.style.opacity = "1";
+        for (const rect of Array.from(group.children)) rect.setAttribute("rx", "2");
+        return group;
+      };
+      const onCreateOverlay = () => {
+        for (const { anchor } of highlightsRef.current.values()) {
+          if (anchor.kind === "epub") view?.addAnnotation({ value: anchor.cfi }).catch(() => undefined);
+        }
+      };
+      const onShowAnnotation = (event: Event) => {
+        const { value, range } = (event as CustomEvent<{ value: string; range: Range }>).detail;
+        const doc = range.startContainer.ownerDocument;
+        /* A drag that starts on a highlight also ends in a click; selecting wins. */
+        if (!doc || selectedRange(doc)) return;
+        const hit = [...highlightsRef.current.values()].find((h) => h.anchor.kind === "epub" && h.anchor.cfi === value);
+        const rect = viewportRect(range, doc.defaultView?.frameElement);
+        if (hit && rect) emitHighlightClick(hit.id, rect);
+      };
       view = document.createElement("foliate-view") as FoliateView;
       view.className = "block size-full";
       view.addEventListener("load", onLoad);
       view.addEventListener("relocate", onRelocate);
       view.addEventListener("wheel", onWheel, { passive: true });
+      view.addEventListener("draw-annotation", (event) => (event as CustomEvent<DrawDetail>).detail.draw(tint));
+      view.addEventListener("create-overlay", onCreateOverlay);
+      view.addEventListener("show-annotation", onShowAnnotation);
       host.append(view);
       viewRef.current = view;
       await view.open(`/api/books/${bookId}/file`);
       if (disposed) return;
+      openRef.current = true;
       const { renderer } = view;
       renderer.setAttribute("flow", "scrolled");
       renderer.setAttribute("max-inline-size", COLUMN_WIDTH);
@@ -265,6 +340,7 @@ export function EpubReader({ ref, bookId, initialPosition, onReady, onSelectionC
       view?.close();
       view?.remove();
       viewRef.current = null;
+      openRef.current = false;
       sectionRef.current = null;
     };
   }, [bookId]);

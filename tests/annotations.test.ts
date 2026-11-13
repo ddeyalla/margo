@@ -2,9 +2,9 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { applyChange, changeAnnotations, parseChange } from "@/lib/server/annotations";
+import { changeAnnotations, parseChange } from "@/lib/server/annotations";
 import { readBookState } from "@/lib/server/store";
-import { byChapter } from "@/lib/shared/annotations";
+import { applyChange, byChapter } from "@/lib/shared/annotations";
 import { compareCfi } from "@/lib/shared/cfi";
 import { parseTags } from "@/lib/shared/tags";
 import { emptyBookState, type BookId, type LibraryBook } from "@/lib/shared/types";
@@ -23,39 +23,40 @@ const change = (method: "POST" | "PATCH" | "DELETE", body: unknown) => {
 
 describe("annotation changes", () => {
   it("adds a highlight once, however often the request is sent", () => {
-    const add = change("POST", { highlight: { id: H1, ...passage } });
+    const add = change("POST", { op: "add-highlight", highlight: { id: H1, ...passage } });
     const once = applyChange(emptyBookState(), add, NOW);
     expect(applyChange(once, add, NOW)).toEqual(once);
     expect(once.highlights).toEqual([{ id: H1, ...passage, color: "amber", createdAt: NOW }]);
   });
 
   it("marks a note's passage, reusing a highlight already on it", () => {
-    const fresh = applyChange(emptyBookState(), change("POST", { note: { id: N1, ...passage, body: "Why? #question" }, highlightId: H2 }), NOW);
+    const fresh = applyChange(emptyBookState(), change("POST", { op: "add-note", note: { id: N1, ...passage, body: "Why? #question" }, highlightId: H2 }), NOW);
     expect(fresh.highlights.map((h) => h.id)).toEqual([H2]);
     expect(fresh.notes[0]).toMatchObject({ highlightId: H2, tags: ["question"], body: "Why? #question" });
 
-    const highlighted = applyChange(emptyBookState(), change("POST", { highlight: { id: H1, ...passage } }), NOW);
-    const reused = applyChange(highlighted, change("POST", { note: { id: N1, ...passage, body: "Hm." }, highlightId: H2 }), NOW);
+    const highlighted = applyChange(emptyBookState(), change("POST", { op: "add-highlight", highlight: { id: H1, ...passage } }), NOW);
+    const reused = applyChange(highlighted, change("POST", { op: "add-note", note: { id: N1, ...passage, body: "Hm." }, highlightId: H2 }), NOW);
     expect(reused.highlights.map((h) => h.id)).toEqual([H1]);
     expect(reused.notes[0].highlightId).toBe(H1);
   });
 
   it("re-reads tags when a note is edited, and keeps a note when its highlight goes", () => {
-    let state = applyChange(emptyBookState(), change("POST", { note: { id: N1, ...passage, body: "First." }, highlightId: H1 }), NOW);
-    state = applyChange(state, change("PATCH", { note: { id: N1, body: "Second #later" } }), "2026-11-14T00:00:00.000Z");
+    let state = applyChange(emptyBookState(), change("POST", { op: "add-note", note: { id: N1, ...passage, body: "First." }, highlightId: H1 }), NOW);
+    state = applyChange(state, change("PATCH", { op: "edit-note", id: N1, body: "Second #later" }), "2026-11-14T00:00:00.000Z");
     expect(state.notes[0]).toMatchObject({ body: "Second #later", tags: ["later"], updatedAt: "2026-11-14T00:00:00.000Z" });
-    state = applyChange(state, change("DELETE", { highlightId: H1 }), NOW);
+    state = applyChange(state, change("DELETE", { op: "remove-highlight", id: H1 }), NOW);
     expect(state.highlights).toEqual([]);
     expect(state.notes[0]).toMatchObject({ id: N1, highlightId: null });
-    state = applyChange(state, change("DELETE", { noteId: N1 }), NOW);
+    state = applyChange(state, change("DELETE", { op: "remove-note", id: N1 }), NOW);
     expect(state.notes).toEqual([]);
   });
 
   it("refuses what it cannot trust", () => {
-    expect(parseChange("POST", { highlight: { id: "../x", ...passage } }, "pdf")).toBe("Invalid highlight.");
-    expect(parseChange("POST", { highlight: { id: H1, ...passage } }, "epub")).toBe("Invalid highlight.");
-    expect(parseChange("POST", { note: { id: N1, ...passage, body: "   " }, highlightId: H1 }, "pdf")).toBe("Invalid note.");
-    expect(parseChange("PATCH", { highlightId: H1 }, "pdf")).toBe("Unknown change.");
+    expect(parseChange("POST", { op: "add-highlight", highlight: { id: "../x", ...passage } }, "pdf")).toBe("Invalid highlight.");
+    expect(parseChange("POST", { op: "add-highlight", highlight: { id: H1, ...passage } }, "epub")).toBe("Invalid highlight.");
+    expect(parseChange("POST", { op: "add-note", note: { id: N1, ...passage, body: "   " }, highlightId: H1 }, "pdf")).toBe("Invalid note.");
+    expect(parseChange("PATCH", { op: "remove-highlight", id: H1 }, "pdf")).toBe("Send remove-highlight as DELETE.");
+    expect(parseChange("POST", { op: "rename", id: H1 }, "pdf")).toBe("Unknown change.");
   });
 
   it("keeps the saved change when the notes folder cannot be written", async () => {
@@ -72,14 +73,14 @@ describe("annotation changes", () => {
       modifiedAt: NOW,
     };
     const dataDir = path.join(base, "data");
-    const result = await changeAnnotations(book, change("POST", { highlight: { id: H1, ...passage } }), {
+    const result = await changeAnnotations(book, change("POST", { op: "add-highlight", highlight: { id: H1, ...passage } }), {
       dataDir,
       notesDir: path.join(base, "file", "Notes"),
     });
     expect(result.vault.state).toBe("failed");
     expect((await readBookState(book.id, dataDir)).highlights.map((h) => h.id)).toEqual([H1]);
 
-    const written = await changeAnnotations(book, change("POST", { highlight: { id: H2, ...passage, quote: "More." } }), {
+    const written = await changeAnnotations(book, change("POST", { op: "add-highlight", highlight: { id: H2, ...passage, quote: "More." } }), {
       dataDir,
       notesDir: path.join(base, "Notes"),
     });

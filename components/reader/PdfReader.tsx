@@ -3,9 +3,20 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef } from "react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
-import type { Position, SelectionContext } from "@/lib/shared/types";
+import type { Highlight, Position, SelectionContext } from "@/lib/shared/types";
 import { blockText, selectedRange, viewportRect } from "./dom";
-import { PDFJS_ASSETS, chapterAt, flowText, loadPdfJs, offsetInLayer, pageText, readOutline, type OutlineEntry } from "./pdf";
+import {
+  PDFJS_ASSETS,
+  chapterAt,
+  flowText,
+  loadPdfJs,
+  offsetInLayer,
+  pageText,
+  rangeInLayer,
+  readOutline,
+  type OutlineEntry,
+} from "./pdf";
+import { mergeLineBoxes, unionBox } from "./rects";
 import type { ReaderProps } from "./types";
 
 /** Widest a page is drawn, so wide windows don't blow pages up past comfortable reading. */
@@ -26,6 +37,8 @@ interface Slot {
   generation: number;
   task: RenderTask | null;
   textLayer: TextLayer | null;
+  /** The text layer has finished, so highlights can find their characters. */
+  textReady: boolean;
 }
 
 interface Engine {
@@ -44,10 +57,53 @@ const usableTitle = (value: unknown): string | null => {
 const isCancelled = (error: unknown) =>
   error instanceof Error && (error.name === "RenderingCancelledException" || error.name === "AbortException");
 
-export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionChange, onPositionChange, onError }: ReaderProps) {
+const percent = (value: number, total: number) => `${(value / Math.max(1, total)) * 100}%`;
+
+/**
+ * Draws a rendered page's highlights as tinted boxes between the canvas and
+ * the text layer, by finding each one's characters in the text layer. Runs
+ * again whenever the page renders, so highlights survive resizes and pages
+ * that scroll out and back.
+ */
+const paintPage = (slot: Slot | undefined, highlights: Map<string, Highlight>) => {
+  const layer = slot?.textReady ? slot.el.querySelector(":scope > .textLayer") : null;
+  const marks = slot?.el.querySelector(":scope > .pdf-marks");
+  if (!slot || !layer || !marks) return;
+  const page = slot.el.getBoundingClientRect();
+  const drawn: HTMLElement[] = [];
+  for (const highlight of highlights.values()) {
+    const { anchor } = highlight;
+    if (anchor.kind !== "pdf" || anchor.page !== slot.page) continue;
+    const range = rangeInLayer(layer, anchor.start, anchor.end);
+    for (const box of range ? mergeLineBoxes(range.getClientRects()) : []) {
+      const mark = document.createElement("div");
+      mark.className = "pdf-mark";
+      mark.dataset.id = highlight.id;
+      mark.style.left = percent(box.left - page.left, page.width);
+      mark.style.top = percent(box.top - page.top, page.height);
+      mark.style.width = percent(box.width, page.width);
+      mark.style.height = percent(box.height, page.height);
+      drawn.push(mark);
+    }
+  }
+  marks.replaceChildren(...drawn);
+};
+
+export function PdfReader({
+  ref,
+  bookId,
+  initialPosition,
+  onReady,
+  onSelectionChange,
+  onPositionChange,
+  onError,
+  onHighlightClick,
+}: ReaderProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine>({ slots: [], texts: new Map(), outline: [] });
+  /* Outlives page renders and document loads: pages read it each time they draw. */
+  const highlightsRef = useRef(new Map<string, Highlight>());
 
   /** The selection, if it lies inside this reader's pages. */
   const ownRange = (): Range | null => {
@@ -94,6 +150,15 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
       const within = length ? (anchor.start / length) * slot.el.offsetHeight : 0;
       scroller.scrollTo({ top: Math.max(0, slot.el.offsetTop + within - scroller.clientHeight / 3), behavior: "smooth" });
     },
+    showHighlight(highlight) {
+      highlightsRef.current.set(highlight.id, highlight);
+      if (highlight.anchor.kind === "pdf") paintPage(engineRef.current.slots[highlight.anchor.page - 1], highlightsRef.current);
+    },
+    removeHighlight(id) {
+      const highlight = highlightsRef.current.get(id);
+      highlightsRef.current.delete(id);
+      if (highlight?.anchor.kind === "pdf") paintPage(engineRef.current.slots[highlight.anchor.page - 1], highlightsRef.current);
+    },
   }));
 
   const emitSelectionRect = useEffectEvent(() => {
@@ -103,6 +168,7 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
   const emitReady = useEffectEvent(onReady);
   const emitPosition = useEffectEvent(onPositionChange);
   const emitError = useEffectEvent(onError);
+  const emitHighlightClick = useEffectEvent(onHighlightClick);
   const startPosition = useEffectEvent(() => (initialPosition?.kind === "pdf" ? initialPosition : null));
 
   useEffect(() => {
@@ -136,6 +202,7 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
       slot.textLayer?.cancel();
       slot.task = null;
       slot.textLayer = null;
+      slot.textReady = false;
       slot.el.replaceChildren();
       delete slot.el.dataset.rendered;
     };
@@ -156,11 +223,13 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
         const canvas = document.createElement("canvas");
         canvas.width = Math.floor(viewport.width * pixelRatio);
         canvas.height = Math.floor(viewport.height * pixelRatio);
+        const marks = document.createElement("div");
+        marks.className = "pdf-marks";
         const layer = document.createElement("div");
         layer.className = "textLayer";
         layer.dataset.page = String(slot.page);
         slot.el.style.setProperty("--total-scale-factor", String(viewport.scale));
-        slot.el.replaceChildren(canvas, layer);
+        slot.el.replaceChildren(canvas, marks, layer);
         const task = page.render({ canvas, viewport, transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0] });
         /* A release can cancel this before it is awaited below; that rejection is expected. */
         task.promise.catch(() => undefined);
@@ -174,6 +243,8 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
         const endOfContent = document.createElement("div");
         endOfContent.className = "endOfContent";
         layer.append(endOfContent);
+        slot.textReady = true;
+        paintPage(slot, highlightsRef.current);
       } catch (error) {
         if (generation === slot.generation && !isCancelled(error)) delete slot.el.dataset.rendered;
       }
@@ -258,12 +329,26 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.shiftKey || event.key === "Shift") emitSelectionRect();
     };
+    /* Highlight boxes sit under the text layer, so a click on one lands on text; match it by position. */
+    const onClick = (event: MouseEvent) => {
+      if (ownRange()) return;
+      const page = (event.target as Element).closest(".pdf-page");
+      const marks = page ? Array.from(page.querySelectorAll<HTMLElement>(".pdf-mark")) : [];
+      const hit = marks.find((mark) => {
+        const box = mark.getBoundingClientRect();
+        return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+      });
+      const id = hit?.dataset.id;
+      const box = id ? unionBox(marks.filter((mark) => mark.dataset.id === id).map((mark) => mark.getBoundingClientRect())) : null;
+      if (id && box) emitHighlightClick(id, box);
+    };
 
     scroller.addEventListener("scroll", onScroll, { passive: true });
     scroller.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointerup", onPointerUp);
     document.addEventListener("selectionchange", onSelectionChange);
     scroller.addEventListener("keyup", onKeyUp);
+    scroller.addEventListener("click", onClick);
 
     (async () => {
       const pdfjs = await loadPdfJs();
@@ -284,7 +369,7 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
         const el = document.createElement("div");
         el.className = "pdf-page";
         el.dataset.page = String(page);
-        const slot: Slot = { page, el, ratio: null, generation: 0, task: null, textLayer: null };
+        const slot: Slot = { page, el, ratio: null, generation: 0, task: null, textLayer: null, textReady: false };
         sizeSlot(slot);
         slots.push(slot);
       }
@@ -326,6 +411,7 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
       window.removeEventListener("pointerup", onPointerUp);
       document.removeEventListener("selectionchange", onSelectionChange);
       scroller.removeEventListener("keyup", onKeyUp);
+      scroller.removeEventListener("click", onClick);
       column.replaceChildren();
       void loading?.destroy();
     };

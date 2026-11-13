@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileWarning, PanelRight } from "lucide-react";
+import { ArrowLeft, CircleAlert, FileWarning, PanelRight, X } from "lucide-react";
 import { createResizableController, Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
+import { HighlightMenu } from "@/components/annotations/HighlightMenu";
+import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { useProviders } from "@/components/chat/useProviders";
 import { useTutor } from "@/components/chat/useTutor";
 import { EpubReader } from "@/components/reader/EpubReader";
@@ -51,6 +53,10 @@ export function BookWorkspace({
   const savePosition = usePositionSaver(book.id);
   const tutor = useTutor(book.id, initialState.threads);
   const { providers, current: provider, choose: chooseProvider, unavailable } = useProviders(savedProvider);
+  const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
+  /* The highlight the reader clicked, with the menu that offers its note and removal. */
+  const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   /* A layout restored from an earlier visit may start with the panel collapsed; read it once the group has attached. */
   useEffect(() => {
@@ -70,21 +76,33 @@ export function BookWorkspace({
   };
 
   /* Selection rects arrive on every scroll frame; they go straight to the toolbar, never through state here. */
-  const handleSelection = useCallback((rect: SelectionRect | null) => toolbarRef.current?.update(rect), []);
+  const handleSelection = useCallback((rect: SelectionRect | null) => {
+    toolbarRef.current?.update(rect);
+    if (rect) setMenu(null);
+  }, []);
   const readerBounds = useCallback(() => readerAreaRef.current?.getBoundingClientRect() ?? null, []);
   const readSelection = useCallback(() => readerRef.current?.getSelection() ?? null, []);
 
-  const showChat = () => {
-    setTab("chat");
+  const showTab = (next: PanelTab) => {
+    setTab(next);
     if (layout.isCollapsed(PANEL_ID)) layout.expand(PANEL_ID);
   };
 
   const startThread = (action: TutorAction, selection: SelectionContext, question: string | null) => {
     if (!provider) return;
     readerRef.current?.clearSelection();
-    showChat();
+    showTab("chat");
     tutor.start(action, selection, question, provider);
   };
+
+  const highlight = (selection: SelectionContext) => {
+    readerRef.current?.clearSelection();
+    annotations.highlight(selection);
+  };
+
+  const openNote = () => showTab("notes");
+
+  const menuNote = menu ? annotations.notes.find((note) => note.highlightId === menu.id) : undefined;
 
   const jumpTo = (anchor: Anchor) => void readerRef.current?.goTo(anchor);
 
@@ -123,6 +141,18 @@ export function BookWorkspace({
       >
         <ResizablePanel id="reader-panel" minSize="360px" className="min-w-0">
           <main ref={readerAreaRef} className="relative h-full min-w-0">
+            {annotations.error ? (
+              <div
+                role="alert"
+                className="animate-rise absolute left-1/2 top-3 z-20 flex w-max max-w-[min(520px,calc(100%-24px))] -translate-x-1/2 items-start gap-2 rounded-lg bg-panel-raised py-2 pl-3 pr-1.5 text-label text-fog shadow-float ring-1 ring-white/[0.06]"
+              >
+                <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-warn" />
+                <p className="min-w-0 py-px leading-relaxed [overflow-wrap:anywhere]">{annotations.error}</p>
+                <IconButton label="Dismiss" size="sm" onClick={annotations.dismissError}>
+                  <X />
+                </IconButton>
+              </div>
+            ) : null}
             {error ? (
               <EmptyState icon={<FileWarning />} title="This book could not be opened" body={error} />
             ) : (
@@ -135,8 +165,10 @@ export function BookWorkspace({
                 onPositionChange={(position, chapterTitle) => {
                   setChapter(placeLabel(chapterTitle, position));
                   savePosition(position);
+                  setMenu(null);
                 }}
                 onError={setError}
+                onHighlightClick={(id, rect) => setMenu({ id, rect })}
               />
             )}
           </main>
@@ -164,6 +196,8 @@ export function BookWorkspace({
             onJump={jumpTo}
             onReply={(text) => provider && tutor.reply(text, provider)}
             onRetry={() => provider && tutor.retry(provider)}
+            annotations={annotations}
+            onOpenNote={openNote}
           />
         </ResizablePanel>
       </Resizable>
@@ -174,8 +208,27 @@ export function BookWorkspace({
         disabledReason={unavailable}
         onAction={(action, selection) => startThread(action, selection, null)}
         onAsk={(question, selection) => startThread("ask", selection, question)}
+        onHighlight={highlight}
+        onNote={() => undefined}
         onDismiss={() => readerRef.current?.clearSelection()}
       />
+      {menu ? (
+        <HighlightMenu
+          key={menu.id}
+          rect={menu.rect}
+          bounds={readerBounds}
+          hasNote={!!menuNote}
+          onNote={() => {
+            openNote();
+            setMenu(null);
+          }}
+          onRemove={() => {
+            annotations.removeHighlight(menu.id);
+            setMenu(null);
+          }}
+          onClose={closeMenu}
+        />
+      ) : null}
     </div>
   );
 }

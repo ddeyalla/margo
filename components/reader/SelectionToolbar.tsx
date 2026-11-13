@@ -4,11 +4,8 @@ import { useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode,
 import { ArrowUp, BookOpenText, Highlighter, Layers, MessageCircleQuestion, NotebookPen, Sparkles } from "lucide-react";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
 import type { SelectionContext } from "@/lib/shared/types";
+import { placeFloating } from "./floating";
 import type { SelectionRect } from "./types";
-
-/** Space between the toolbar and the selection, and between the toolbar and the reader's edges. */
-const GAP = 8;
-const EDGE = 8;
 
 export interface SelectionToolbarHandle {
   /** The reader's latest selection rect; null hides the toolbar. Fed straight from the reader so the workspace never re-renders on scroll. */
@@ -24,10 +21,10 @@ interface SelectionToolbarProps {
   disabledReason: string | null;
   onAction(action: "explain" | "deeper", selection: SelectionContext): void;
   onAsk(question: string, selection: SelectionContext): void;
+  onHighlight(selection: SelectionContext): void;
+  onNote(selection: SelectionContext): void;
   onDismiss(): void;
 }
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, Math.max(min, max)));
 
 const itemClass =
   "press inline-flex h-7 shrink-0 select-none items-center gap-1.5 rounded-sm px-2 text-label text-fog outline-none transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out hover:bg-white/[0.06] hover:text-paper focus-visible:bg-white/[0.06] focus-visible:text-paper data-[disabled]:opacity-40 data-[disabled]:hover:bg-transparent data-[disabled]:hover:text-fog [&>svg]:size-3.5 [&>svg]:shrink-0";
@@ -43,9 +40,20 @@ function Action({ icon, label, title, disabled, onPress }: { icon: ReactNode; la
 
 /**
  * Floats above the selected passage (below it when there's no room) and offers
- * the tutor's actions. Ask… swaps the buttons for an inline question field.
+ * the tutor's actions, Highlight and Note. Ask… swaps the buttons for an
+ * inline question field.
  */
-export function SelectionToolbar({ ref, bounds, readSelection, disabledReason, onAction, onAsk, onDismiss }: SelectionToolbarProps) {
+export function SelectionToolbar({
+  ref,
+  bounds,
+  readSelection,
+  disabledReason,
+  onAction,
+  onAsk,
+  onHighlight,
+  onNote,
+  onDismiss,
+}: SelectionToolbarProps) {
   const [rect, setRect] = useState<SelectionRect | null>(null);
   const [asking, setAsking] = useState(false);
   const [question, setQuestion] = useState("");
@@ -74,16 +82,7 @@ export function SelectionToolbar({ ref, bounds, readSelection, disabledReason, o
   useLayoutEffect(() => {
     const box = boxRef.current;
     const area = bounds();
-    if (!box || !rect || !area) return;
-    const outside = rect.top + rect.height < area.top || rect.top > area.bottom;
-    const { offsetWidth: width, offsetHeight: height } = box;
-    let top = rect.top - height - GAP;
-    if (top < area.top + EDGE) top = rect.top + rect.height + GAP;
-    top = clamp(top, area.top + EDGE, area.bottom - height - EDGE);
-    const left = clamp(rect.left + rect.width / 2 - width / 2, area.left + EDGE, area.right - width - EDGE);
-    box.style.left = `${Math.round(left)}px`;
-    box.style.top = `${Math.round(top)}px`;
-    box.style.visibility = outside ? "hidden" : "visible";
+    if (box && rect && area) placeFloating(box, rect, area);
   }, [rect, asking, bounds]);
 
   if (!rect) return null;
@@ -95,6 +94,14 @@ export function SelectionToolbar({ ref, bounds, readSelection, disabledReason, o
     if (!selection) return;
     reset();
     onAction(action, selection);
+  };
+
+  /* Highlight and Note need no tutor, so they work even when it's unavailable. */
+  const keep = (save: (selection: SelectionContext) => void) => {
+    const selection = take();
+    if (!selection) return;
+    reset();
+    save(selection);
   };
 
   const submit = () => {
@@ -182,13 +189,19 @@ export function SelectionToolbar({ ref, bounds, readSelection, disabledReason, o
               }}
             />
             <ToolbarSeparator className="mx-1 h-4 w-px shrink-0 bg-line-strong" />
+            <ToolbarButton
+              aria-label="Highlight"
+              title="Highlight (⌘⇧H)"
+              onClick={() => keep(onHighlight)}
+              className={`${itemClass} w-7 justify-center px-0`}
+            >
+              <Highlighter />
+            </ToolbarButton>
+            <ToolbarButton aria-label="Note" title="Write a note on this passage" onClick={() => keep(onNote)} className={`${itemClass} w-7 justify-center px-0`}>
+              <NotebookPen />
+            </ToolbarButton>
+            <ToolbarSeparator className="mx-1 h-4 w-px shrink-0 bg-line-strong" />
             <ToolbarGroup disabled aria-label="Coming soon" className="flex items-center gap-0.5">
-              <ToolbarButton aria-label="Highlight (coming soon)" title="Highlight · coming soon" className={`${itemClass} w-7 justify-center px-0`}>
-                <Highlighter />
-              </ToolbarButton>
-              <ToolbarButton aria-label="Note (coming soon)" title="Note · coming soon" className={`${itemClass} w-7 justify-center px-0`}>
-                <NotebookPen />
-              </ToolbarButton>
               <ToolbarButton aria-label="Card (coming soon)" title="Card · coming soon" className={`${itemClass} w-7 justify-center px-0`}>
                 <BookOpenText />
               </ToolbarButton>

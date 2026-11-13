@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import type { Anchor, BookId, Position, SelectionContext } from "@/lib/shared/types";
+import type { Anchor, BookId, Highlight, Position, SelectionContext } from "@/lib/shared/types";
 
 /** Where the selection sits on screen, in viewport coordinates, for placing the toolbar. */
 export type SelectionRect = SelectionContext["rect"];
@@ -15,6 +15,9 @@ export interface ReaderHandle {
   getSelection(): SelectionContext | null;
   clearSelection(): void;
   goTo(anchor: Anchor): Promise<void>;
+  /** Draws a highlight now if its passage is on screen, and again whenever its page or section renders. */
+  showHighlight(highlight: Highlight): void;
+  removeHighlight(id: string): void;
 }
 
 export interface ReaderProps {
@@ -27,4 +30,6 @@ export interface ReaderProps {
   /** Fires as the reader scrolls; callers debounce. */
   onPositionChange(position: Position, chapterTitle: string | null): void;
   onError(message: string): void;
+  /** The reader clicked a drawn highlight (with no text selected); `rect` is its box in the viewport. */
+  onHighlightClick(id: string, rect: SelectionRect): void;
 }

@@ -1,7 +1,9 @@
 "use client";
 
-import { Highlighter, NotebookPen } from "lucide-react";
+import { NotebookPen } from "lucide-react";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
+import { HighlightsTab } from "@/components/annotations/HighlightsTab";
+import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
 import { ChatTab } from "@/components/chat/ChatTab";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import type { Tutor } from "@/components/chat/useTutor";
@@ -16,7 +18,7 @@ const TABS: { value: PanelTab; label: string }[] = [
   { value: "highlights", label: "Highlights" },
 ];
 
-/** The right panel: the tutor chat, and the places notes and highlights will collect. */
+/** The right panel: the tutor chat, and the book's notes and highlights. */
 export function SidePanel({
   tab,
   onTabChange,
@@ -28,6 +30,8 @@ export function SidePanel({
   onJump,
   onReply,
   onRetry,
+  annotations,
+  onOpenNote,
 }: {
   tab: PanelTab;
   onTabChange(tab: PanelTab): void;
@@ -39,6 +43,8 @@ export function SidePanel({
   onJump(anchor: Anchor): void;
   onReply(text: string): void;
   onRetry(): void;
+  annotations: AnnotationsApi;
+  onOpenNote(noteId: string): void;
 }) {
   return (
     <Tabs value={tab} onValueChange={(value) => value && onTabChange(value as PanelTab)} className="flex h-full min-w-0 flex-col bg-panel">
@@ -64,7 +70,14 @@ export function SidePanel({
         <EmptyState icon={<NotebookPen />} title="No notes yet" body="Notes you write on passages will collect here." />
       </TabsPanel>
       <TabsPanel value="highlights" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
-        <EmptyState icon={<Highlighter />} title="No highlights yet" body="Passages you highlight will collect here." />
+        <HighlightsTab
+          highlights={annotations.highlights}
+          notes={annotations.notes}
+          vault={annotations.vault}
+          onJump={onJump}
+          onRemove={annotations.removeHighlight}
+          onOpenNote={onOpenNote}
+        />
       </TabsPanel>
     </Tabs>
   );

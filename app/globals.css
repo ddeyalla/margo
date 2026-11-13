@@ -183,6 +183,19 @@
   }
 }
 
+/* Saved highlights, painted between the canvas and the text layer so selecting still works. */
+.pdf-page > .pdf-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pdf-mark {
+  position: absolute;
+  background: var(--color-highlight);
+  border-radius: 2px;
+}
+
 .pdf-page .textLayer {
   position: absolute;
   inset: 0;
