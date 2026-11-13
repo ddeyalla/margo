@@ -90,7 +90,7 @@ Stop the app with `Ctrl+C` in the terminal.
 
 ## Read
 
-- **Ask the tutor.** Select text. A small toolbar appears. Choose Explain, Go deeper or Ask.
+- **Ask the tutor.** Select text. A small toolbar appears. Choose Explain, Go deeper or Ask. Go deeper asks you one question first, so you can try before it explains. Say "just tell me" to skip it.
 - **Show the tutor an image.** Paste one with `⌘V`, drop it on the chat, or choose the image button in the message box. A message can carry up to 4 PNG, JPEG, WebP or GIF images. Ask about them, or send them alone and the tutor explains them. Images work in a follow-up on a passage, and in the box under the list of threads, where you can also ask about the book without selecting anything. Click an image in the chat to see it larger.
 - **Highlight.** Select text and choose the highlighter, or press `⌘⇧H`. Click a highlight to remove it or open its note.
 - **Write a note.** Select text and choose the notebook button. Notes are markdown. `⌘↩` saves.

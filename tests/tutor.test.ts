@@ -224,6 +224,13 @@ describe("tutor turns", () => {
     expect(first.endsWith("My question: What does this mean?")).toBe(true);
   });
 
+  it("asks the reader to try first on Go deeper, with a way out", () => {
+    const deeper: Thread = { ...thread, action: "deeper", messages: [{ role: "user", content: "Go deeper on this passage.", createdAt: "" }] };
+    const first = buildTurn(book, deeper, null, noImages).messages[0].content;
+    expect(first).toContain("Don't explain yet. Ask me one short question");
+    expect(first).toContain("just tell me, explain it straight away");
+  });
+
   it("expands a question with no passage into the book, where the reader is, and the message", () => {
     const general: Thread = {
       kind: "general",

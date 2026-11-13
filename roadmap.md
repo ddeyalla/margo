@@ -19,11 +19,11 @@ Effort: `S` hours · `M` a day or two · `L` a week or more.
 
 Prompt changes in `lib/server/tutor/prompt.ts`. No UI.
 
-- [ ] Smallest useful answer: no preamble, no closing summary, the rest left for
+- [x] Smallest useful answer: no preamble, no closing summary, the rest left for
       follow-ups.
-- [ ] Say plainly when unsure, before building on it.
-- [ ] Ask at most one question per reply.
-- [ ] **Guess first on Go deeper:** pose one question about the passage, hold the
+- [x] Say plainly when unsure, before building on it.
+- [x] Ask at most one question per reply.
+- [x] **Guess first on Go deeper:** pose one question about the passage, hold the
       explanation until the reader answers. Change `ACTION_REQUESTS.deeper`.
 
 Done when `tests/tutor.test.ts` passes and five real questions read tighter.
