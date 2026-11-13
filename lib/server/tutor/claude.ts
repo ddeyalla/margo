@@ -5,7 +5,9 @@ import type { Provider, TutorEvent, TutorTurn } from "./types";
 /**
  * Flags for a tools-free, streamed answer. The message goes on stdin as
  * stream-json, the one way to hand the CLI images; --print with
- * --input-format stream-json also works with --resume. --safe-mode skips the
+ * --input-format stream-json also works with --resume, and a resume of a lost
+ * session still fails with "No conversation found" (checked on Claude Code
+ * 2.1.322). The stdin line is built by claudeInput. --safe-mode skips the
  * user's hooks, plugins and CLAUDE.md, which would otherwise leak into the
  * tutor. --tools comes last because it takes every value that follows it.
  */
