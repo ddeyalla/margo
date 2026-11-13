@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isReadingMode, isReadingTheme, type AppSettings, type SettingsChange } from "@/lib/shared/types";
+import { isReadingFont, isReadingMode, isReadingTheme, type AppSettings, type SettingsChange } from "@/lib/shared/types";
 import { getConfig } from "./config";
 import { readJson, updateJson } from "./store";
 import { isProviderId } from "./tutor/providers";
@@ -21,6 +21,8 @@ const normalize = (raw: unknown): AppSettings => {
     pdfDarkPages: value.pdfDarkPages !== false,
     readingMode: isReadingMode(value.readingMode) ? value.readingMode : "scroll",
     epubTheme: isReadingTheme(value.epubTheme) ? value.epubTheme : "dark",
+    boldStarts: value.boldStarts === true,
+    readingFont: isReadingFont(value.readingFont) ? value.readingFont : null,
   };
 };
 

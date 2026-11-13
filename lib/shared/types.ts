@@ -162,6 +162,13 @@ export type ReadingTheme = "dark" | "light";
 
 export const isReadingTheme = (value: unknown): value is ReadingTheme => value === "dark" || value === "light";
 
+/** A font family installed on this computer, chosen for EPUB text. null is the bundled Literata. */
+export type ReadingFont = string | null;
+
+/** A family name the reader could have picked: a short line of text, or null for Literata. */
+export const isReadingFont = (value: unknown): value is ReadingFont =>
+  value === null || (typeof value === "string" && value.length > 0 && value.length <= 200 && value.trim() === value && !/\p{Cc}/u.test(value));
+
 export interface AppSettings {
   provider: ProviderId | null;
   models: Partial<Record<ProviderId, string>>;
@@ -169,10 +176,13 @@ export interface AppSettings {
   pdfDarkPages: boolean;
   readingMode: ReadingMode;
   epubTheme: ReadingTheme;
+  /** Set the start of each word in EPUB text in bold. Off unless turned on. */
+  boldStarts: boolean;
+  readingFont: ReadingFont;
 }
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode" | "epubTheme">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode" | "epubTheme" | "boldStarts" | "readingFont">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 
