@@ -91,6 +91,7 @@ Stop the app with `Ctrl+C` in the terminal.
 ## Read
 
 - **Ask the tutor.** Select text. A small toolbar appears. Choose Explain, Go deeper or Ask.
+- **Show the tutor an image.** Paste one with `⌘V`, drop it on the chat, or choose the image button in the message box. A message can carry up to 4 PNG, JPEG, WebP or GIF images. Ask about them, or send them alone and the tutor explains them. Images work in a follow-up on a passage, and in the box under the list of threads, where you can also ask about the book without selecting anything. Click an image in the chat to see it larger.
 - **Highlight.** Select text and choose the highlighter, or press `⌘⇧H`. Click a highlight to remove it or open its note.
 - **Write a note.** Select text and choose the notebook button. Notes are markdown. `⌘↩` saves.
 - **Find them again.** The Notes and Highlights tabs list everything for the book. Click a quote to jump to it.
@@ -110,6 +111,7 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 | Reading place, chats, highlights and notes | `data/<book id>.json`, one file per book |
 | Your tutor choice, scroll or pages, and the page colours for EPUBs and PDFs | `data/settings.json` |
 | Book covers, made from each book the first time it's shown | `data/covers/`. Safe to delete; they're made again. |
+| Images you show the tutor | `data/attachments/<book id>/`. Nothing deletes them yet, so images you removed before sending stay here too. |
 | The markdown copy of each book's notes | `NOTES_DIR/<book title>.md` |
 
 The `data/` folder is the real record. Git ignores it. Back it up if your notes matter to you.
@@ -134,11 +136,12 @@ It's a [Next.js](https://nextjs.org) app. The browser shows the books and the pa
 | EPUB reader | `components/reader/EpubReader.tsx` | Renders with [foliate-js](https://github.com/johnfactotum/foliate-js), kept in `public/vendor/foliate-js`. |
 | PDF reader | `components/reader/PdfReader.tsx` | Renders with [pdf.js](https://mozilla.github.io/pdf.js/), with its text layer so you can select. |
 | Tutor | `app/api/chat/route.ts`, `lib/server/tutor/` | One adapter per tutor (Claude Code, Codex, API). Answers stream back to the panel. |
+| Images | `lib/client/images.ts`, `lib/server/attachments.ts` | The browser shrinks each image to 1568 px on its longest side before upload. The server reads its type from its bytes, not its name, and keeps it under a random id. |
 | Saving | `lib/server/store.ts` | Writes `data/<book id>.json` safely: to a temp file first, one write at a time per book. |
 | Obsidian copy | `lib/server/vault.ts` | Rewrites the book's markdown file after every highlight or note change. |
 | Covers | `lib/server/covers.ts` | Takes the cover from the EPUB, or draws page 1 of a PDF, and caches it. |
 
-Claude Code and Codex run as separate programs with no tools turned on, in an empty temp folder, and with only a short list of environment variables. They can answer, but they can't read or change your files.
+Claude Code and Codex run as separate programs with no tools turned on, in an empty temp folder, and with only a short list of environment variables. They can answer, but they can't read or change your files. Images reach Claude Code through its input, and Codex as copies in its temp folder that are deleted after each answer.
 
 ## For developers
 

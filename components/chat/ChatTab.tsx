@@ -1,12 +1,14 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
-import { ChevronLeft, CircleAlert, CornerDownRight, MessageSquareText } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { ChevronLeft, CircleAlert, CornerDownRight, ImageIcon, MessageSquareText } from "lucide-react";
 import { Button, EmptyState, Spinner } from "@/components/ui";
 import { placeLabel } from "@/lib/shared/place";
-import type { Anchor, GeneralThread, Thread, TutorAction } from "@/lib/shared/types";
+import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread, TutorAction } from "@/lib/shared/types";
 import { Composer } from "./Composer";
+import { DropArea, Lightbox, MessageImages } from "./Images";
 import { Markdown } from "./Markdown";
+import { useImageDraft } from "./useImageDraft";
 import { awaitsAnswer, type FailedTurn, type MessageDraft, type Tutor } from "./useTutor";
 
 const ACTION_LABELS: Record<Exclude<TutorAction, "ask">, string> = { explain: "Explain", deeper: "Go deeper" };
@@ -38,6 +40,7 @@ export function ChatTab({
     return (
       <ThreadView
         key={active.id}
+        bookId={tutor.bookId}
         thread={active}
         streaming={tutor.streaming}
         failure={failure}
@@ -50,8 +53,27 @@ export function ChatTab({
       />
     );
   }
+  return <Threads tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onRetry={onRetry} />;
+}
+
+/** The book's threads, and a composer for a question with no passage. */
+function Threads({
+  tutor,
+  unavailable,
+  onJump,
+  onAsk,
+  onRetry,
+}: {
+  tutor: Tutor;
+  unavailable: string | null;
+  onJump(anchor: Anchor): void;
+  onAsk(draft: MessageDraft): void;
+  onRetry(): void;
+}) {
+  const { failure } = tutor;
+  const images = useImageDraft(tutor.bookId);
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <DropArea onFiles={images.add} enabled={!unavailable} className="flex min-h-0 flex-1 flex-col">
       {failure ? <FailureNote failure={failure} onRetry={failure.request ? onRetry : null} className="mx-3 mt-1" /> : null}
       {tutor.threads.length ? (
         <ThreadList
@@ -66,17 +88,18 @@ export function ChatTab({
         <EmptyState
           icon={<MessageSquareText />}
           title="Ask about a passage"
-          body="Select text in the book, then choose Explain, Go deeper or Ask… Or ask about the book below."
+          body="Select text in the book, then choose Explain, Go deeper or Ask… Or ask below, and paste or drop an image to show the tutor."
         />
       )}
       <Composer
-        placeholder="Ask about the book…"
+        placeholder="Ask about the book, or paste an image…"
         disabledReason={unavailable}
         sending={tutor.sending}
-        onSend={(text) => onAsk({ text, attachments: [] })}
+        images={images}
+        onSend={onAsk}
         onStop={tutor.stop}
       />
-    </div>
+    </DropArea>
   );
 }
 
@@ -102,7 +125,12 @@ function ThreadList({ threads, onOpen }: { threads: Thread[]; onOpen(thread: Thr
                 {thread.kind === "passage" ? (
                   <span className="line-clamp-2 font-reading text-[13px] leading-snug text-prose">{thread.quote}</span>
                 ) : (
-                  <span className="line-clamp-2 text-body leading-snug text-paper">{first}</span>
+                  <span className="line-clamp-2 text-body leading-snug text-paper">
+                    {thread.messages[0]?.attachments?.length ? (
+                      <ImageIcon className="mr-1.5 inline size-3.5 align-[-2px] text-dim" aria-label="With an image" />
+                    ) : null}
+                    {first}
+                  </span>
                 )}
                 <span className="flex min-w-0 items-center gap-2 text-[11px] text-dim">
                   <span className="min-w-0 flex-1 truncate">
@@ -121,6 +149,7 @@ function ThreadList({ threads, onOpen }: { threads: Thread[]; onOpen(thread: Thr
 }
 
 function ThreadView({
+  bookId,
   thread,
   streaming,
   failure,
@@ -131,6 +160,7 @@ function ThreadView({
   onRetry,
   onStop,
 }: {
+  bookId: BookId;
   thread: Thread;
   streaming: string | null;
   failure: FailedTurn | null;
@@ -143,6 +173,8 @@ function ThreadView({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  const images = useImageDraft(bookId);
+  const [viewing, setViewing] = useState<ImageAttachment | null>(null);
 
   useLayoutEffect(() => {
     const scroller = scrollRef.current;
@@ -153,7 +185,7 @@ function ThreadView({
   const unanswered = streaming === null && awaitsAnswer(thread);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <DropArea onFiles={images.add} enabled={!unavailable} className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center px-2">
         <button
           type="button"
@@ -192,7 +224,8 @@ function ThreadView({
         <div className="mt-4 flex flex-col gap-4">
           {thread.messages.map((message, index) =>
             message.role === "user" ? (
-              <div key={index} className="flex justify-end pl-8">
+              <div key={index} className="flex flex-col items-end gap-1.5 pl-8">
+                {message.attachments?.length ? <MessageImages bookId={bookId} images={message.attachments} onOpen={setViewing} /> : null}
                 <p className="min-w-0 whitespace-pre-wrap break-words rounded-[14px] rounded-br-[5px] bg-panel-hover px-3.5 py-2.5 text-body text-paper">
                   {message.content}
                 </p>
@@ -234,10 +267,12 @@ function ThreadView({
         placeholder="Ask a follow-up…"
         disabledReason={unavailable}
         sending={streaming !== null}
-        onSend={(text) => onReply({ text, attachments: [] })}
+        images={images}
+        onSend={onReply}
         onStop={onStop}
       />
-    </div>
+      {viewing ? <Lightbox bookId={bookId} image={viewing} onClose={() => setViewing(null)} /> : null}
+    </DropArea>
   );
 }
 
