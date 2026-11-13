@@ -16,6 +16,13 @@ const isCount = (value: unknown): value is number => Number.isInteger(value) && 
 const isCfi = (value: unknown): value is string =>
   typeof value === "string" && value.startsWith("epubcfi(") && value.length <= 4000;
 
+/** An image's id: 128 random bits as hex. Images are looked up by nothing else, so an id can't name another file. */
+export const isAttachmentId = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{32}$/.test(value);
+
+/** Up to `max` distinct image ids, or null for anything else. */
+export const parseAttachmentIds = (value: unknown, max: number): string[] | null =>
+  Array.isArray(value) && value.length <= max && value.every(isAttachmentId) && new Set(value).size === value.length ? value : null;
+
 /** A string of at most `max` characters, trimmed; null if absent, empty or too long. */
 export const shortText = (value: unknown, max: number): string | null =>
   typeof value === "string" && value.trim() && value.length <= max ? value.trim() : null;

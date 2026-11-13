@@ -44,11 +44,22 @@ export type ProviderId = "claude" | "codex" | "api";
 
 export type TutorAction = "explain" | "deeper" | "ask";
 
+export type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+
+/** An image the reader gave the tutor. The file is data/attachments/<book id>/<id>.<ext>. */
+export interface ImageAttachment {
+  id: string;
+  mediaType: ImageMediaType;
+  width: number;
+  height: number;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
   partial?: boolean;
+  attachments?: ImageAttachment[];
 }
 
 export interface Thread {
