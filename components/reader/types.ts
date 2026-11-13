@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import type { Anchor, BookId, Highlight, Position, SelectionContext } from "@/lib/shared/types";
+import type { Anchor, BookId, Highlight, Position, ReadingMode, SelectionContext } from "@/lib/shared/types";
 import type { OpenFailure } from "./errors";
 
 /** Where the selection sits on screen, in viewport coordinates, for placing the toolbar. */
@@ -32,6 +32,8 @@ export interface ReaderHandle {
   goTo(anchor: Anchor): Promise<void>;
   /** Jumps to a table of contents entry this reader reported. */
   goToEntry(entry: TocEntry): Promise<void>;
+  /** Turns to the next (1) or previous (-1) page. */
+  turnPage(direction: 1 | -1): void;
   /** Draws a highlight now if its passage is on screen, and again whenever its page or section renders. */
   showHighlight(highlight: Highlight): void;
   removeHighlight(id: string): void;
@@ -41,6 +43,8 @@ export interface ReaderProps {
   ref: Ref<ReaderHandle>;
   bookId: BookId;
   initialPosition: Position | null;
+  /** Switching keeps the passage being read in view. */
+  mode: ReadingMode;
   onReady(meta: ReaderMeta): void;
   /** Fires when a selection settles, moves on scroll, or clears (null). */
   onSelectionChange(rect: SelectionRect | null): void;

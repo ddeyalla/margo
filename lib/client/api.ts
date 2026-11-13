@@ -14,8 +14,8 @@ export const patchBookState = (bookId: BookId, patch: StatePatch, keepalive = fa
     keepalive,
   }).catch(() => undefined);
 
-/** Saves app settings the reader changed, such as the tutor or the PDF dark pages switch. */
-export const patchSettings = (change: Partial<Pick<AppSettings, "provider" | "pdfDarkPages">>) =>
+/** Saves app settings the reader changed, such as the tutor, the PDF dark pages switch or the reading mode. */
+export const patchSettings = (change: Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode">>) =>
   fetch("/api/settings", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

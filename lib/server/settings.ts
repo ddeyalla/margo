@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { AppSettings } from "@/lib/shared/types";
+import { isReadingMode, type AppSettings } from "@/lib/shared/types";
 import { getConfig } from "./config";
 import { readJson, updateJson } from "./store";
 import { isProviderId } from "./tutor/providers";
@@ -19,13 +19,14 @@ const normalize = (raw: unknown): AppSettings => {
     provider: isProviderId(value.provider) ? value.provider : null,
     models,
     pdfDarkPages: value.pdfDarkPages !== false,
+    readingMode: isReadingMode(value.readingMode) ? value.readingMode : "scroll",
   };
 };
 
 export const readSettings = async (): Promise<AppSettings> => normalize(await readJson(settingsFile()));
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode">>;
 
 export const saveSettings = (change: SettingsChange): Promise<AppSettings> =>
   updateJson(settingsFile(), () => normalize(null), (current) => ({ ...normalize(current), ...change }));

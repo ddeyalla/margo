@@ -85,6 +85,7 @@ Stop the app with `Ctrl+C` in the terminal.
 - **Write a note.** Select text and choose the notebook button. Notes are markdown. `⌘↩` saves.
 - **Find them again.** The Notes and Highlights tabs list everything for the book. Click a quote to jump to it.
 - **Chapters.** The list button at the top left, or `⌘⇧L`, opens the table of contents. The chapter you're in is marked. Click any chapter to go there.
+- **Scroll or pages.** Switch at the top right. Pages shows one page at a time, or two side by side in an EPUB when there's room. Turn pages with the arrow keys, `Page Up` and `Page Down`, or the arrows at the edges. Your place is kept when you switch, and the app remembers your choice.
 - **Dark pages.** In a PDF, the moon button shows white pages dark. Photos keep their colours.
 - **More room.** `⌘\` hides or shows the side panel. `Esc` closes the toolbar.
 
@@ -96,7 +97,7 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 | --- | --- |
 | Your books | `BOOKS_DIR`. Never changed. |
 | Reading place, chats, highlights and notes | `data/<book id>.json`, one file per book |
-| Your tutor choice and the dark pages switch | `data/settings.json` |
+| Your tutor choice, the dark pages switch and scroll or pages | `data/settings.json` |
 | The markdown copy of each book's notes | `NOTES_DIR/<book title>.md` |
 
 The `data/` folder is the real record. Git ignores it. Back it up if your notes matter to you.

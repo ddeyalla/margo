@@ -17,6 +17,7 @@ interface FoliateRenderer extends HTMLElement {
   viewSize: number;
   next(): Promise<void>;
   prev(): Promise<void>;
+  render(): void;
   setStyles(css: string): void;
 }
 
@@ -57,6 +58,16 @@ const OVERSCROLL_TO_TURN = 260;
 const GESTURE_GAP_MS = 400;
 /** Book text column width: about 66 characters of Literata at 18px. */
 const COLUMN_WIDTH = "570px";
+/** Panes at least this wide show two columns side by side in Pages mode. */
+const TWO_COLUMNS_FROM = 1040;
+
+/** Lets Pages mode use two columns on a wide pane and one on a narrow one; true if that changed. */
+const fitColumns = (renderer: FoliateRenderer, paneWidth: number) => {
+  const count = paneWidth >= TWO_COLUMNS_FROM ? "2" : "1";
+  if (renderer.getAttribute("max-column-count") === count) return false;
+  renderer.setAttribute("max-column-count", count);
+  return true;
+};
 
 /** EPUB metadata values are strings, language maps, or contributor objects. */
 const metaText = (value: unknown): string | null => {
@@ -90,7 +101,8 @@ const pageFontFaces = (): string => {
   return rules.join("\n");
 };
 
-const readingCss = (literata: string) => `
+/* Scroll mode pads the section's column top and bottom; in Pages mode foliate keeps its own page margins. */
+const readingCss = (literata: string, paged: boolean) => `
 ${pageFontFaces()}
 html { color-scheme: dark; }
 html, body { background: transparent !important; }
@@ -99,7 +111,7 @@ body {
   font-family: ${literata}, Georgia, serif !important;
   font-size: 18px !important;
   line-height: 1.7 !important;
-  padding: 56px 0 160px !important;
+  padding: ${paged ? "0" : "56px 0 160px"} !important;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -120,6 +132,7 @@ export function EpubReader({
   ref,
   bookId,
   initialPosition,
+  mode,
   onReady,
   onSelectionChange,
   onPositionChange,
@@ -135,6 +148,8 @@ export function EpubReader({
   const sectionRef = useRef<{ doc: Document; index: number } | null>(null);
   /* The book's table of contents, keyed by the foliate item each entry came from. */
   const tocRef = useRef(new Map<FoliateTocItem, TocEntry>());
+  /* Pages mode: foliate lays sections out in columns and turns page by page, crossing sections itself. */
+  const pagedRef = useRef(false);
   const [atSectionEnd, setAtSectionEnd] = useState(false);
 
   const chapterOf = (item: FoliateTocItem | null | undefined) => (item && tocRef.current.get(item)) ?? null;
@@ -169,6 +184,10 @@ export function EpubReader({
     async goToEntry(entry) {
       if (entry.target.kind === "epub") await viewRef.current?.goTo(entry.target.href);
     },
+    turnPage(direction) {
+      const renderer = openRef.current ? viewRef.current?.renderer : null;
+      void (direction === 1 ? renderer?.next() : renderer?.prev());
+    },
     showHighlight(highlight) {
       highlightsRef.current.set(highlight.id, highlight);
       if (openRef.current && highlight.anchor.kind === "epub") {
@@ -194,6 +213,24 @@ export function EpubReader({
   const emitError = useEffectEvent(onError);
   const emitHighlightClick = useEffectEvent(onHighlightClick);
   const initialCfi = useEffectEvent(() => (initialPosition?.kind === "epub" ? initialPosition.cfi : null));
+  const modeNow = useEffectEvent(() => mode);
+
+  /* Foliate re-lays out the open section and returns to the passage that was in view. */
+  const applyMode = useEffectEvent((paged: boolean) => {
+    const renderer = viewRef.current?.renderer;
+    const host = hostRef.current;
+    if (!renderer || !host) return;
+    pagedRef.current = paged;
+    if (paged) setAtSectionEnd(false);
+    const literata = getComputedStyle(document.documentElement).getPropertyValue("--font-literata").trim() || "Literata";
+    renderer.setStyles(readingCss(literata, paged));
+    fitColumns(renderer, host.clientWidth);
+    renderer.setAttribute("flow", paged ? "paginated" : "scrolled");
+  });
+
+  useEffect(() => {
+    if (openRef.current) applyMode(mode === "pages");
+  }, [mode]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -205,6 +242,10 @@ export function EpubReader({
     let lastWheel = 0;
     let turning = false;
     let frame = 0;
+    const columns = new ResizeObserver(() => {
+      const renderer = openRef.current ? view?.renderer : null;
+      if (renderer && fitColumns(renderer, host.clientWidth) && pagedRef.current) renderer.render();
+    });
 
     const isLastSection = () => {
       const section = sectionRef.current;
@@ -213,7 +254,7 @@ export function EpubReader({
 
     const updateEdge = () => {
       const renderer = view?.renderer;
-      setAtSectionEnd(!!renderer && renderer.end >= renderer.viewSize - 2 && !isLastSection());
+      setAtSectionEnd(!pagedRef.current && !!renderer && renderer.end >= renderer.viewSize - 2 && !isLastSection());
     };
 
     const turn = (direction: 1 | -1) => {
@@ -226,10 +267,10 @@ export function EpubReader({
       });
     };
 
-    /* Scrolled mode shows one section at a time; keep scrolling past an edge to turn. */
+    /* Scroll mode shows one section at a time; keep scrolling past an edge to turn. */
     const onWheel = (event: WheelEvent) => {
       const renderer = view?.renderer;
-      if (!renderer || turning) return;
+      if (!renderer || turning || pagedRef.current) return;
       const now = performance.now();
       if (now - lastWheel > GESTURE_GAP_MS) overscroll = 0;
       lastWheel = now;
@@ -331,11 +372,10 @@ export function EpubReader({
       if (disposed) return;
       openRef.current = true;
       const { renderer } = view;
-      renderer.setAttribute("flow", "scrolled");
       renderer.setAttribute("max-inline-size", COLUMN_WIDTH);
-      const literata = getComputedStyle(document.documentElement).getPropertyValue("--font-literata").trim() || "Literata";
-      renderer.setStyles(readingCss(literata));
+      applyMode(modeNow() === "pages");
       renderer.addEventListener("scroll", onScroll);
+      columns.observe(host);
       const { metadata, toc } = view.book;
       tocRef.current = epubToc(toc);
       emitReady({ title: metaText(metadata?.title), author: metaText(metadata?.author), toc: [...tocRef.current.values()], pageCount: null });
@@ -347,6 +387,7 @@ export function EpubReader({
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
+      columns.disconnect();
       view?.close();
       view?.remove();
       viewRef.current = null;

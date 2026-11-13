@@ -205,6 +205,27 @@
   }
 }
 
+/* Pages mode: each page fits the pane's height, centred in a sheet one screen
+   tall, and scrolling snaps a sheet at a time. Unlayered, so it overrides the
+   column's spacing utilities. */
+.pdf-scroller[data-paged] {
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+
+  > .pdf-column {
+    gap: 0;
+    padding: 0;
+  }
+
+  .pdf-sheet {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+}
+
 /* A page's canvas appears once it has rendered and its tone is known, so dark
    mode never flashes a white page. White pages are inverted with their hues
    turned back; photos and dark pages keep their own colours. */

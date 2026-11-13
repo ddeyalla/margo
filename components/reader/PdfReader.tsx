@@ -28,6 +28,8 @@ import type { ReaderProps } from "./types";
 const MAX_PAGE_WIDTH = 960;
 /** Space kept on each side of the page column. */
 const GUTTER = 32;
+/** Space kept above and below the page in Pages mode, where each page fits the pane's height. */
+const PAGE_MARGIN = 20;
 /** Space left above a chapter's heading when jumping to it. */
 const ENTRY_MARGIN = 24;
 /** Pages within two screens of the viewport are drawn; the rest are released. */
@@ -37,9 +39,13 @@ type PdfPosition = Extract<Position, { kind: "pdf" }>;
 
 interface Slot {
   page: number;
+  /** Holds the page. In Pages mode it is one screen tall with the page centred, and its top is where scrolling snaps. */
+  sheet: HTMLDivElement;
   el: HTMLDivElement;
   /** Height over width, once the page has been measured. */
   ratio: number | null;
+  /** The width the page is drawn at, in CSS pixels. */
+  width: number;
   /** Bumped on every release so a stale render stops. */
   generation: number;
   task: RenderTask | null;
@@ -52,7 +58,23 @@ interface Engine {
   slots: Slot[];
   texts: Map<number, string>;
   outline: OutlineEntry[];
+  /** Switches between one continuous column and one page per screen, keeping the page in view. */
+  setPaged(paged: boolean): void;
 }
+
+const emptyEngine = (): Engine => ({ slots: [], texts: new Map(), outline: [], setPaged: () => undefined });
+
+/** The slot whose sheet holds a vertical offset in the scroller, by binary search over sheet tops. */
+const slotAt = (slots: Slot[], y: number): Slot => {
+  let low = 0;
+  let high = slots.length - 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (slots[mid].sheet.offsetTop <= y) low = mid;
+    else high = mid - 1;
+  }
+  return slots[low];
+};
 
 /** PDF info titles are often a source filename; those are worse than our cleaned file title. */
 const usableTitle = (value: unknown): string | null => {
@@ -116,6 +138,7 @@ export function PdfReader({
   ref,
   bookId,
   initialPosition,
+  mode,
   onReady,
   onSelectionChange,
   onPositionChange,
@@ -124,7 +147,7 @@ export function PdfReader({
 }: ReaderProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnRef = useRef<HTMLDivElement>(null);
-  const engineRef = useRef<Engine>({ slots: [], texts: new Map(), outline: [] });
+  const engineRef = useRef<Engine>(emptyEngine());
   /* Outlives page renders and document loads: pages read it each time they draw. */
   const highlightsRef = useRef(new Map<string, Highlight>());
   /* No sampled page has any text: the PDF is pictures of pages. */
@@ -171,6 +194,10 @@ export function PdfReader({
       const scroller = scrollRef.current;
       const slot = anchor.kind === "pdf" ? engineRef.current.slots[anchor.page - 1] : null;
       if (!scroller || !slot || anchor.kind !== "pdf") return;
+      if (mode === "pages") {
+        scroller.scrollTo({ top: slot.sheet.offsetTop, behavior: "smooth" });
+        return;
+      }
       const length = engineRef.current.texts.get(anchor.page)?.length;
       const within = length ? (anchor.start / length) * slot.el.offsetHeight : 0;
       scroller.scrollTo({ top: Math.max(0, slot.el.offsetTop + within - scroller.clientHeight / 3), behavior: "smooth" });
@@ -179,7 +206,15 @@ export function PdfReader({
       const scroller = scrollRef.current;
       const slot = entry.target.kind === "pdf" ? engineRef.current.slots[entry.target.page - 1] : null;
       if (!scroller || !slot || entry.target.kind !== "pdf") return;
-      scroller.scrollTop = Math.max(0, slot.el.offsetTop + entry.target.top * slot.el.offsetHeight - ENTRY_MARGIN);
+      scroller.scrollTop =
+        mode === "pages" ? slot.sheet.offsetTop : Math.max(0, slot.el.offsetTop + entry.target.top * slot.el.offsetHeight - ENTRY_MARGIN);
+    },
+    turnPage(direction) {
+      const scroller = scrollRef.current;
+      const { slots } = engineRef.current;
+      if (!scroller || !slots.length) return;
+      const next = slots[slotAt(slots, scroller.scrollTop + scroller.clientHeight / 2).page - 1 + direction];
+      if (next) scroller.scrollTo({ top: next.sheet.offsetTop, behavior: "smooth" });
     },
     showHighlight(highlight) {
       highlightsRef.current.set(highlight.id, highlight);
@@ -201,12 +236,17 @@ export function PdfReader({
   const emitError = useEffectEvent(onError);
   const emitHighlightClick = useEffectEvent(onHighlightClick);
   const startPosition = useEffectEvent(() => (initialPosition?.kind === "pdf" ? initialPosition : null));
+  const pagedNow = useEffectEvent(() => mode === "pages");
+
+  useEffect(() => {
+    engineRef.current.setPaged(mode === "pages");
+  }, [mode]);
 
   useEffect(() => {
     const scroller = scrollRef.current;
     const column = columnRef.current;
     if (!scroller || !column) return;
-    const engine: Engine = { slots: [], texts: new Map(), outline: [] };
+    const engine = emptyEngine();
     engineRef.current = engine;
     const { slots, texts } = engine;
     let disposed = false;
@@ -214,7 +254,10 @@ export function PdfReader({
     let doc: PDFDocumentProxy | null = null;
     let observer: IntersectionObserver | null = null;
     let resizer: ResizeObserver | null = null;
+    let paged = pagedNow();
+    /* The column's fitted width, and in Pages mode the pane height each page fits. */
     let width = 0;
+    let height = 0;
     let baseRatio = Math.SQRT2;
     let frame = 0;
     let resizeTimer = 0;
@@ -223,8 +266,11 @@ export function PdfReader({
     const fitWidth = () => Math.max(240, Math.min(MAX_PAGE_WIDTH, scroller.clientWidth - GUTTER * 2));
 
     const sizeSlot = (slot: Slot) => {
-      slot.el.style.width = `${width}px`;
-      slot.el.style.height = `${Math.round(width * (slot.ratio ?? baseRatio))}px`;
+      const ratio = slot.ratio ?? baseRatio;
+      slot.width = paged ? Math.max(120, Math.min(width, Math.floor((height - PAGE_MARGIN * 2) / ratio))) : width;
+      slot.el.style.width = `${slot.width}px`;
+      slot.el.style.height = `${Math.round(slot.width * ratio)}px`;
+      slot.sheet.style.height = paged ? `${height}px` : "";
     };
 
     const release = (slot: Slot) => {
@@ -250,7 +296,7 @@ export function PdfReader({
         const unscaled = page.getViewport({ scale: 1 });
         slot.ratio = unscaled.height / unscaled.width;
         sizeSlot(slot);
-        const viewport = page.getViewport({ scale: width / unscaled.width });
+        const viewport = page.getViewport({ scale: slot.width / unscaled.width });
         const pixelRatio = window.devicePixelRatio || 1;
         const canvas = document.createElement("canvas");
         canvas.width = Math.floor(viewport.width * pixelRatio);
@@ -287,29 +333,18 @@ export function PdfReader({
       }
     };
 
-    /** The slot at a vertical offset in the scroller, by binary search over page tops. */
-    const slotAt = (y: number): Slot => {
-      let low = 0;
-      let high = slots.length - 1;
-      while (low < high) {
-        const mid = Math.ceil((low + high) / 2);
-        if (slots[mid].el.offsetTop <= y) low = mid;
-        else high = mid - 1;
-      }
-      return slots[low];
-    };
-
+    /* Scroll mode reads the page at the top edge; Pages mode reads the page filling the screen. */
     const currentPosition = (): PdfPosition => {
       const top = scroller.scrollTop;
-      const slot = slotAt(top + 1);
-      const offset = Math.min(1, Math.max(0, (top - slot.el.offsetTop) / Math.max(1, slot.el.offsetHeight)));
+      const slot = slotAt(slots, paged ? top + scroller.clientHeight / 2 : top + 1);
+      const offset = paged ? 0 : Math.min(1, Math.max(0, (top - slot.el.offsetTop) / Math.max(1, slot.el.offsetHeight)));
       const max = scroller.scrollHeight - scroller.clientHeight;
       return { kind: "pdf", page: slot.page, offset, fraction: max > 0 ? Math.min(1, top / max) : 0 };
     };
 
     const restore = (position: { page: number; offset: number }) => {
       const slot = slots[Math.min(slots.length, Math.max(1, position.page)) - 1];
-      if (slot) scroller.scrollTop = slot.el.offsetTop + position.offset * slot.el.offsetHeight;
+      if (slot) scroller.scrollTop = paged ? slot.sheet.offsetTop : slot.el.offsetTop + position.offset * slot.el.offsetHeight;
     };
 
     const observeAll = () => {
@@ -327,11 +362,20 @@ export function PdfReader({
       for (const slot of slots) observer.observe(slot.el);
     };
 
-    const relayout = () => {
-      const next = fitWidth();
-      if (!slots.length || Math.abs(next - width) < 1) return;
+    /* Sizes every page for the pane and the mode, keeping the same page in view. The position is read before anything moves. */
+    const relayout = (nextPaged = paged) => {
+      const nextWidth = fitWidth();
+      const nextHeight = scroller.clientHeight;
+      const unchanged = nextPaged === paged && Math.abs(nextWidth - width) < 1 && (!paged || Math.abs(nextHeight - height) < 1);
+      if (!slots.length || unchanged) {
+        paged = nextPaged;
+        return;
+      }
       const position = currentPosition();
-      width = next;
+      paged = nextPaged;
+      width = nextWidth;
+      height = nextHeight;
+      scroller.toggleAttribute("data-paged", paged);
       for (const slot of slots) {
         release(slot);
         sizeSlot(slot);
@@ -339,6 +383,7 @@ export function PdfReader({
       restore(position);
       observeAll();
     };
+    engine.setPaged = (next) => relayout(next);
 
     const onScroll = () => {
       cancelAnimationFrame(frame);
@@ -402,21 +447,26 @@ export function PdfReader({
       const first = (await doc.getPage(1)).getViewport({ scale: 1 });
       baseRatio = first.height / first.width;
       width = fitWidth();
+      height = scroller.clientHeight;
+      scroller.toggleAttribute("data-paged", paged);
       for (let page = 1; page <= doc.numPages; page += 1) {
+        const sheet = document.createElement("div");
+        sheet.className = "pdf-sheet";
         const el = document.createElement("div");
         el.className = "pdf-page";
         el.dataset.page = String(page);
-        const slot: Slot = { page, el, ratio: null, generation: 0, task: null, textLayer: null, textReady: false };
+        sheet.append(el);
+        const slot: Slot = { page, sheet, el, ratio: null, width, generation: 0, task: null, textLayer: null, textReady: false };
         sizeSlot(slot);
         slots.push(slot);
       }
-      column.replaceChildren(...slots.map((slot) => slot.el));
+      column.replaceChildren(...slots.map((slot) => slot.sheet));
       const start = startPosition();
       if (start) restore(start);
       observeAll();
       resizer = new ResizeObserver(() => {
         clearTimeout(resizeTimer);
-        resizeTimer = window.setTimeout(relayout, 120);
+        resizeTimer = window.setTimeout(() => relayout(), 120);
       });
       resizer.observe(scroller);
 
@@ -461,8 +511,8 @@ export function PdfReader({
 
   return (
     <div className="relative size-full">
-      <div ref={scrollRef} className="relative size-full overflow-y-auto bg-page">
-        <div ref={columnRef} className="flex flex-col items-center gap-4 px-8 py-10" />
+      <div ref={scrollRef} className="pdf-scroller relative size-full overflow-y-auto bg-page">
+        <div ref={columnRef} className="pdf-column flex flex-col items-center gap-4 px-8 py-10" />
       </div>
       {scanned ? (
         <div

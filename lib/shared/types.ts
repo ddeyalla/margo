@@ -126,11 +126,17 @@ export const emptyBookState = (): BookState => ({
   cards: [],
 });
 
+/** How the reader lays out a book: one continuous column, or a page at a time. */
+export type ReadingMode = "scroll" | "pages";
+
+export const isReadingMode = (value: unknown): value is ReadingMode => value === "scroll" || value === "pages";
+
 export interface AppSettings {
   provider: ProviderId | null;
   models: Partial<Record<ProviderId, string>>;
   /** Show white PDF pages as dark pages. On unless turned off. */
   pdfDarkPages: boolean;
+  readingMode: ReadingMode;
 }
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";

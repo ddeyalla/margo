@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CircleAlert, FileWarning, Moon, PanelRight, TableOfContents, X } from "lucide-react";
+import clsx from "clsx";
+import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, FileWarning, Moon, PanelRight, TableOfContents, X } from "lucide-react";
 import { createResizableController, Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
@@ -16,8 +17,7 @@ import type { OpenFailure } from "@/components/reader/errors";
 import type { ReaderHandle, ReaderMeta, SelectionRect, TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
-import { placeLabel } from "@/lib/shared/place";
-import type { Anchor, BookFormat, BookId, BookState, ProviderId, SelectionContext, TutorAction } from "@/lib/shared/types";
+import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingMode, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { SidePanel, type PanelTab } from "./SidePanel";
 import { TocDrawer } from "./TocDrawer";
 import { usePositionSaver } from "./usePositionSaver";
@@ -32,20 +32,38 @@ export interface WorkspaceBook {
 const PANEL_ID = "tutor-panel";
 const TOC_SHORTCUT = "⌘⇧L";
 
+const MODES: { value: ReadingMode; label: string }[] = [
+  { value: "scroll", label: "Scroll" },
+  { value: "pages", label: "Pages" },
+];
+
+/** Keys that turn the page in Pages mode. */
+const PAGE_KEYS: Record<string, 1 | -1> = { ArrowRight: 1, ArrowDown: 1, PageDown: 1, ArrowLeft: -1, ArrowUp: -1, PageUp: -1 };
+
 /** Typing here keeps its own keys, such as Esc in the note editor or ⌘⇧H in a question. */
 const isTextEntry = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"));
+
+/** Lists, toolbars and the side panel use the arrow keys themselves, so those keys don't turn pages there. */
+const usesArrows = (target: EventTarget | null) =>
+  target instanceof Element && !!target.closest(`nav, [role="toolbar"], [role="tablist"], [role="menu"], #${PANEL_ID}`);
+
+/** How far into the book: the page of a PDF, the share of an EPUB. */
+const progressLabel = (position: Position, pageCount: number | null) =>
+  position.kind === "pdf" ? `p. ${position.page}${pageCount ? ` of ${pageCount}` : ""}` : `${Math.round(position.fraction * 100)}%`;
 
 export function BookWorkspace({
   book,
   initialState,
   savedProvider,
   savedDarkPages,
+  savedReadingMode,
 }: {
   book: WorkspaceBook;
   initialState: BookState;
   savedProvider: ProviderId | null;
   savedDarkPages: boolean;
+  savedReadingMode: ReadingMode;
 }) {
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
@@ -61,9 +79,11 @@ export function BookWorkspace({
   const [toc, setToc] = useState<TocEntry[] | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
   const closeToc = useCallback(() => setTocOpen(false), []);
-  /* The entry of the table of contents being read, and the header's label for it. */
+  /* The entry of the table of contents being read, and how far into the book that is. */
   const [chapter, setChapter] = useState<TocEntry | null>(null);
-  const [place, setPlace] = useState<string | null>(null);
+  const [pageCount, setPageCount] = useState<number | null>(null);
+  const [position, setPosition] = useState<Position | null>(null);
+  const [mode, setMode] = useState(savedReadingMode);
   const [error, setError] = useState<OpenFailure | null>(null);
   const [darkPages, setDarkPages] = useState(savedDarkPages);
   const title = meta.title || book.fileTitle;
@@ -86,6 +106,7 @@ export function BookWorkspace({
   /* The book's own title and author replace the file name once it has been opened. */
   const handleReady = (next: ReaderMeta) => {
     setToc(next.toc);
+    setPageCount(next.pageCount);
     const merged = { title: next.title ?? meta.title, author: next.author ?? meta.author };
     setMeta(merged);
     const stored = initialState.meta;
@@ -108,6 +129,12 @@ export function BookWorkspace({
   const toggleDarkPages = () => {
     setDarkPages(!darkPages);
     void patchSettings({ pdfDarkPages: !darkPages });
+  };
+
+  const chooseMode = (next: ReadingMode) => {
+    if (next === mode) return;
+    setMode(next);
+    void patchSettings({ readingMode: next });
   };
 
   const showTab = (next: PanelTab) => {
@@ -158,6 +185,17 @@ export function BookWorkspace({
       if (selection) highlight(selection);
     } else if (event.key === "Escape" && !isTextEntry(event.target)) {
       readerRef.current?.clearSelection();
+    } else if (
+      mode === "pages" &&
+      event.key in PAGE_KEYS &&
+      !mod &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !isTextEntry(event.target) &&
+      !usesArrows(event.target)
+    ) {
+      event.preventDefault();
+      readerRef.current?.turnPage(PAGE_KEYS[event.key]);
     }
   });
 
@@ -196,7 +234,23 @@ export function BookWorkspace({
         </IconButton>
         <div className="ml-1 flex min-w-0 flex-1 items-baseline gap-2">
           <h1 className="truncate text-[13px] font-medium text-paper">{title}</h1>
-          {place ? <span className="truncate text-label text-dim">{place}</span> : null}
+          {chapter ? <span className="truncate text-label text-dim">{chapter.label}</span> : null}
+        </div>
+        {position && !error ? (
+          <span className="shrink-0 px-1.5 text-label text-dim tabular-nums">{progressLabel(position, pageCount)}</span>
+        ) : null}
+        <div role="group" aria-label="Reading mode" className="flex h-7 shrink-0 items-center gap-0.5 rounded-sm bg-panel-raised p-0.5">
+          {MODES.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={mode === value}
+              onClick={() => chooseMode(value)}
+              className="press h-6 rounded-xs px-2.5 text-label text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-panel-hover aria-pressed:text-paper"
+            >
+              {label}
+            </button>
+          ))}
         </div>
         {book.format === "pdf" ? (
           <IconButton label={darkPages ? "Show pages in their own colours" : "Show white pages dark"} active={darkPages} onClick={toggleDarkPages}>
@@ -246,16 +300,23 @@ export function BookWorkspace({
                 initialPosition={initialState.position}
                 onReady={handleReady}
                 onSelectionChange={handleSelection}
-                onPositionChange={(position, entry) => {
+                mode={mode}
+                onPositionChange={(next, entry) => {
                   setChapter(entry);
-                  setPlace(placeLabel(entry?.label ?? null, position));
-                  savePosition(position);
+                  setPosition(next);
+                  savePosition(next);
                   setMenu(null);
                 }}
                 onError={setError}
                 onHighlightClick={(id, rect) => setMenu({ id, rect })}
               />
             )}
+            {mode === "pages" && !error ? (
+              <>
+                <PageTurn direction={-1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
+                <PageTurn direction={1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
+              </>
+            ) : null}
             {tocOpen && !error ? (
               <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} onSelect={openEntry} onClose={closeToc} />
             ) : null}
@@ -321,5 +382,24 @@ export function BookWorkspace({
         />
       ) : null}
     </div>
+  );
+}
+
+/** A quiet strip along the reader's left or right edge that turns the page in Pages mode. */
+function PageTurn({ direction, onTurn }: { direction: 1 | -1; onTurn(direction: 1 | -1): void }) {
+  const Icon = direction === 1 ? ChevronRight : ChevronLeft;
+  return (
+    <button
+      type="button"
+      aria-label={direction === 1 ? "Next page" : "Previous page"}
+      title={direction === 1 ? "Next page (→)" : "Previous page (←)"}
+      onClick={() => onTurn(direction)}
+      className={clsx(
+        "group absolute inset-y-0 z-20 flex w-10 items-center justify-center text-dim/60 outline-none transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.02] hover:text-paper focus-visible:text-paper",
+        direction === 1 ? "right-0" : "left-0",
+      )}
+    >
+      <Icon className="size-5 transition-transform duration-[var(--duration-fast)] group-active:scale-90" />
+    </button>
   );
 }

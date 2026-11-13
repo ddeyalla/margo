@@ -8,10 +8,12 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 
 /**
  * Places a floating bar above a passage (below it when there's no room),
- * kept inside the reader area. Hidden while the passage is scrolled out of view.
+ * kept inside the reader area. Hidden while the passage is out of view, such
+ * as scrolled away or on a page turned past.
  */
 export const placeFloating = (box: HTMLElement, rect: SelectionRect, area: DOMRect) => {
-  const outside = rect.top + rect.height < area.top || rect.top > area.bottom;
+  const outside =
+    rect.top + rect.height < area.top || rect.top > area.bottom || rect.left + rect.width < area.left || rect.left > area.right;
   const { offsetWidth: width, offsetHeight: height } = box;
   let top = rect.top - height - GAP;
   if (top < area.top + EDGE) top = rect.top + rect.height + GAP;

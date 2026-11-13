@@ -35,6 +35,7 @@ async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
       initialState={state}
       savedProvider={settings.provider}
       savedDarkPages={settings.pdfDarkPages}
+      savedReadingMode={settings.readingMode}
     />
   );
 }
