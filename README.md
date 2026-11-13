@@ -110,8 +110,8 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 | What | Where |
 | --- | --- |
 | Your books | `BOOKS_DIR`. Never changed. |
-| Reading place, chats, highlights and notes | `data/<book id>.json`, one file per book |
-| Your tutor choice, scroll or pages, the page colours for EPUBs and PDFs, bold starts and the book font | `data/settings.json` |
+| Reading place, chats and the one you had open, highlights and notes | `data/<book id>.json`, one file per book |
+| Your tutor choice, scroll or pages, the page colours for EPUBs and PDFs, bold starts, the book font, whether the chapters column is open, and which side panel tab you were on | `data/settings.json` |
 | Book covers, made from each book the first time it's shown | `data/covers/`. Safe to delete; they're made again. |
 | Images you show the tutor | `data/attachments/<book id>/`. Nothing deletes them yet, so images you removed before sending stay here too. |
 | The markdown copy of each book's notes | `NOTES_DIR/<book title>.md` |

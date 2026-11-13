@@ -18,10 +18,10 @@ import type { ReaderHandle, ReaderMeta, ReaderPlace, ReaderProps, SelectionRect,
 import { EmptyState, IconButton, Segmented } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
 import { anchorAt } from "@/lib/shared/place";
-import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingFont, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
+import type { Anchor, BookFormat, BookId, BookState, PanelTab, Position, ProviderId, ReadingFont, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { ReadingFooter } from "./ReadingFooter";
 import { ReadingSettings } from "./ReadingSettings";
-import { SidePanel, type PanelTab } from "./SidePanel";
+import { SidePanel } from "./SidePanel";
 import { TocDrawer } from "./TocDrawer";
 import { usePositionSaver } from "./usePositionSaver";
 
@@ -70,6 +70,8 @@ export function BookWorkspace({
   savedEpubTheme,
   savedBoldStarts,
   savedReadingFont,
+  savedChaptersOpen,
+  savedPanelTab,
 }: {
   book: WorkspaceBook;
   initialState: BookState;
@@ -79,6 +81,8 @@ export function BookWorkspace({
   savedEpubTheme: ReadingTheme;
   savedBoldStarts: boolean;
   savedReadingFont: ReadingFont;
+  savedChaptersOpen: boolean;
+  savedPanelTab: PanelTab;
 }) {
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
@@ -86,15 +90,20 @@ export function BookWorkspace({
   const readerPaneRef = useRef<HTMLDivElement>(null);
   const [layout] = useState(createResizableController);
   const [panelOpen, setPanelOpen] = useState(true);
-  const [tab, setTab] = useState<PanelTab>("chat");
+  const [tab, setTab] = useState(savedPanelTab);
   const [meta, setMeta] = useState({
     title: initialState.meta?.title ?? null,
     author: initialState.meta?.author ?? null,
   });
   /* The table of contents, null until the reader has opened the book. */
   const [toc, setToc] = useState<TocEntry[] | null>(null);
-  const [tocOpen, setTocOpen] = useState(false);
-  const closeToc = useCallback(() => setTocOpen(false), []);
+  const [tocOpen, setTocOpen] = useState(savedChaptersOpen);
+  /* Opening or closing the column by hand is remembered; a sliding column closing itself after a pick is not. */
+  const chooseToc = useCallback((open: boolean) => {
+    setTocOpen(open);
+    void patchSettings({ chaptersOpen: open });
+  }, []);
+  const closeToc = useCallback(() => chooseToc(false), [chooseToc]);
   /* Whether the reader pane has room for the chapters as a column beside the book. */
   const [tocDocked, setTocDocked] = useState(true);
   /* How far into the book the reader is, and the chapter and page that is. */
@@ -111,7 +120,7 @@ export function BookWorkspace({
   const [previewFont, setPreviewFont] = useState<ReadingFont | undefined>(undefined);
   const title = meta.title || book.fileTitle;
   const savePosition = usePositionSaver(book.id);
-  const tutor = useTutor(book.id, initialState.threads);
+  const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId);
   const { providers, current: provider, choose: chooseProvider, unavailable } = useProviders(savedProvider);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
@@ -184,8 +193,14 @@ export function BookWorkspace({
     void patchSettings({ readingMode: next });
   };
 
-  const showTab = (next: PanelTab) => {
+  const chooseTab = (next: PanelTab) => {
+    if (next === tab) return;
     setTab(next);
+    void patchSettings({ panelTab: next });
+  };
+
+  const showTab = (next: PanelTab) => {
+    chooseTab(next);
     if (layout.isCollapsed(PANEL_ID)) layout.expand(PANEL_ID);
   };
 
@@ -232,7 +247,7 @@ export function BookWorkspace({
       togglePanel();
     } else if (mod && event.shiftKey && !event.altKey && event.code === "KeyL") {
       event.preventDefault();
-      if (!error) setTocOpen((open) => !open);
+      if (!error) chooseToc(!tocOpen);
     } else if (mod && event.shiftKey && !event.altKey && event.code === "KeyH" && !isTextEntry(event.target)) {
       event.preventDefault();
       const selection = readerRef.current?.getSelection();
@@ -296,7 +311,7 @@ export function BookWorkspace({
           label={tocOpen ? `Hide chapters (${TOC_SHORTCUT})` : `Show chapters (${TOC_SHORTCUT})`}
           active={tocOpen}
           disabled={!!error}
-          onClick={() => setTocOpen(!tocOpen)}
+          onClick={() => chooseToc(!tocOpen)}
           data-toc-toggle
         >
           <TableOfContents />
@@ -404,7 +419,7 @@ export function BookWorkspace({
         >
           <SidePanel
             tab={tab}
-            onTabChange={setTab}
+            onTabChange={chooseTab}
             tutor={tutor}
             providers={providers}
             provider={provider}

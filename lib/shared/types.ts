@@ -138,6 +138,8 @@ export interface BookState {
   meta: BookMeta | null;
   position: Position | null;
   threads: Thread[];
+  /** The tutor thread the reader last had open, or null for the list of threads. */
+  activeThreadId: string | null;
   highlights: Highlight[];
   notes: Note[];
   cards: Card[];
@@ -147,6 +149,7 @@ export const emptyBookState = (): BookState => ({
   meta: null,
   position: null,
   threads: [],
+  activeThreadId: null,
   highlights: [],
   notes: [],
   cards: [],
@@ -169,6 +172,11 @@ export type ReadingFont = string | null;
 export const isReadingFont = (value: unknown): value is ReadingFont =>
   value === null || (typeof value === "string" && value.length > 0 && value.length <= 200 && value.trim() === value && !/\p{Cc}/u.test(value));
 
+/** The tab showing in the side panel. */
+export type PanelTab = "chat" | "notes" | "highlights";
+
+export const isPanelTab = (value: unknown): value is PanelTab => value === "chat" || value === "notes" || value === "highlights";
+
 export interface AppSettings {
   provider: ProviderId | null;
   models: Partial<Record<ProviderId, string>>;
@@ -179,10 +187,13 @@ export interface AppSettings {
   /** Set the start of each word in EPUB text in bold. Off unless turned on. */
   boldStarts: boolean;
   readingFont: ReadingFont;
+  /** The chapters column beside the book. Closed unless opened. */
+  chaptersOpen: boolean;
+  panelTab: PanelTab;
 }
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode" | "epubTheme" | "boldStarts" | "readingFont">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode" | "epubTheme" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 

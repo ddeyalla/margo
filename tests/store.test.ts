@@ -25,7 +25,7 @@ const thread = (n: number): Thread => ({
 describe("book state store", () => {
   it("starts empty for a book that was never opened", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
-    expect(await readBookState(id, dir)).toMatchObject({ meta: null, position: null, threads: [] });
+    expect(await readBookState(id, dir)).toMatchObject({ meta: null, position: null, threads: [], activeThreadId: null });
   });
 
   it("keeps every concurrent update and leaves valid JSON", async () => {

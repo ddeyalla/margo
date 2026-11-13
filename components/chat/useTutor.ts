@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { patchBookState } from "@/lib/client/api";
 import { streamChat } from "@/lib/client/chat";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
 import type { BookId, ImageAttachment, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
@@ -31,9 +32,14 @@ export const awaitsAnswer = (thread: Thread) => thread.messages.at(-1)?.role ===
  * reader's message before the tutor starts, so a thread appears as soon as the
  * stream opens; the answer streams beside it until it is saved too.
  */
-export function useTutor(bookId: BookId, initialThreads: Thread[]) {
+export function useTutor(bookId: BookId, initialThreads: Thread[], initialActiveId: string | null = null) {
   const [threads, setThreads] = useState(initialThreads);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveIdState] = useState(initialActiveId);
+  /* The open thread is remembered for the next visit to this book. */
+  const setActiveId = (id: string | null) => {
+    setActiveIdState(id);
+    void patchBookState(bookId, { activeThreadId: id });
+  };
   const [live, setLive] = useState<{ threadId: string; text: string } | null>(null);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<FailedTurn | null>(null);

@@ -3,6 +3,7 @@ import type { BookId, Position, SettingsChange } from "@/lib/shared/types";
 interface StatePatch {
   position?: Position;
   meta?: { title: string; author: string | null };
+  activeThreadId?: string | null;
 }
 
 /** Saves part of a book's state. `keepalive` lets the request finish while the page unloads. */

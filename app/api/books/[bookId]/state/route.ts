@@ -11,7 +11,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/books/[book
   return Response.json(await readBookState(found.book.id));
 }
 
-/** Saves the reading position and, on first open, the book's real title and author. */
+/** Saves the reading position, the open tutor thread and, on first open, the book's real title and author. */
 export async function PATCH(request: Request, ctx: RouteContext<"/api/books/[bookId]/state">) {
   const found = await findBook((await ctx.params).bookId);
   if (!found) return notFound();
@@ -38,10 +38,21 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/books/[boo
     };
   }
 
+  let activeThreadId: string | null | undefined;
+  if ("activeThreadId" in body) {
+    if (body.activeThreadId !== null && typeof body.activeThreadId !== "string") {
+      return Response.json({ error: "Invalid activeThreadId." }, { status: 400 });
+    }
+    activeThreadId = body.activeThreadId;
+  }
+
   await updateBookState(book.id, (state) => ({
     ...state,
     position: position ?? state.position,
     meta: meta ?? state.meta,
+    /* Only a thread the book has; anything else falls back to the list. */
+    activeThreadId:
+      activeThreadId === undefined ? state.activeThreadId : state.threads.some((t) => t.id === activeThreadId) ? activeThreadId : null,
   }));
   return new Response(null, { status: 204 });
 }

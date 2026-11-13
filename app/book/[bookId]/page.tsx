@@ -39,6 +39,8 @@ async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
       savedEpubTheme={settings.epubTheme}
       savedBoldStarts={settings.boldStarts}
       savedReadingFont={settings.readingFont}
+      savedChaptersOpen={settings.chaptersOpen}
+      savedPanelTab={settings.panelTab}
     />
   );
 }

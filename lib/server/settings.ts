@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isReadingFont, isReadingMode, isReadingTheme, type AppSettings, type SettingsChange } from "@/lib/shared/types";
+import { isPanelTab, isReadingFont, isReadingMode, isReadingTheme, type AppSettings, type SettingsChange } from "@/lib/shared/types";
 import { getConfig } from "./config";
 import { readJson, updateJson } from "./store";
 import { isProviderId } from "./tutor/providers";
@@ -23,6 +23,8 @@ const normalize = (raw: unknown): AppSettings => {
     epubTheme: isReadingTheme(value.epubTheme) ? value.epubTheme : "dark",
     boldStarts: value.boldStarts === true,
     readingFont: isReadingFont(value.readingFont) ? value.readingFont : null,
+    chaptersOpen: value.chaptersOpen === true,
+    panelTab: isPanelTab(value.panelTab) ? value.panelTab : "chat",
   };
 };
 

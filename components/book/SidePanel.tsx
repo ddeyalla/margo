@@ -7,9 +7,7 @@ import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
 import { ChatTab } from "@/components/chat/ChatTab";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
-import type { Anchor, ProviderId, ProviderInfo } from "@/lib/shared/types";
-
-export type PanelTab = "chat" | "notes" | "highlights";
+import type { Anchor, PanelTab, ProviderId, ProviderInfo } from "@/lib/shared/types";
 
 const TABS: { value: PanelTab; label: string }[] = [
   { value: "chat", label: "Chat" },
