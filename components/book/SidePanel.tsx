@@ -4,6 +4,8 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
 import { HighlightsTab } from "@/components/annotations/HighlightsTab";
 import { NotesTab, type NoteDraft } from "@/components/annotations/NotesTab";
 import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
+import { CardsTab } from "@/components/cards/CardsTab";
+import type { CardsApi } from "@/components/cards/useCards";
 import { ChatTab } from "@/components/chat/ChatTab";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
@@ -13,9 +15,10 @@ const TABS: { value: PanelTab; label: string }[] = [
   { value: "chat", label: "Chat" },
   { value: "notes", label: "Notes" },
   { value: "highlights", label: "Highlights" },
+  { value: "cards", label: "Cards" },
 ];
 
-/** The right panel: the tutor chat, and the book's notes and highlights. */
+/** The right panel: the tutor chat, and the book's notes, highlights and cards. */
 export function SidePanel({
   tab,
   onTabChange,
@@ -33,6 +36,8 @@ export function SidePanel({
   noteFocus,
   onNoteDraft,
   onOpenNote,
+  cards,
+  onReview,
 }: {
   tab: PanelTab;
   onTabChange(tab: PanelTab): void;
@@ -50,6 +55,8 @@ export function SidePanel({
   noteFocus: { id: string; at: number } | null;
   onNoteDraft(draft: NoteDraft | null): void;
   onOpenNote(noteId: string): void;
+  cards: CardsApi;
+  onReview(): void;
 }) {
   return (
     <Tabs value={tab} onValueChange={(value) => value && onTabChange(value as PanelTab)} className="flex h-full min-w-0 flex-col bg-panel">
@@ -99,6 +106,9 @@ export function SidePanel({
           onRemove={annotations.removeHighlight}
           onOpenNote={onOpenNote}
         />
+      </TabsPanel>
+      <TabsPanel value="cards" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
+        <CardsTab cards={cards} onReview={onReview} onJump={onJump} />
       </TabsPanel>
     </Tabs>
   );

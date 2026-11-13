@@ -8,6 +8,8 @@ import { createResizableController, Resizable, ResizableHandle, ResizablePanel }
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
+import { ReviewSheet } from "@/components/cards/ReviewSheet";
+import { useCards } from "@/components/cards/useCards";
 import { useProviders } from "@/components/chat/useProviders";
 import { useTutor, type MessageDraft } from "@/components/chat/useTutor";
 import { EpubReader } from "@/components/reader/EpubReader";
@@ -17,6 +19,7 @@ import type { OpenFailure } from "@/components/reader/errors";
 import type { ReaderHandle, ReaderMeta, ReaderPlace, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton, Segmented } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
+import { isTextEntry } from "@/lib/client/keys";
 import { anchorAt } from "@/lib/shared/place";
 import type { Anchor, BookFormat, BookId, BookState, PanelTab, Position, ProviderId, ReadingFont, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { ReadingFooter } from "./ReadingFooter";
@@ -52,10 +55,6 @@ const PDF_THEMES: { value: ReadingTheme; label: string; icon: ReactNode }[] = [
 
 /** Keys that turn the page in Pages mode. */
 const PAGE_KEYS: Record<string, 1 | -1> = { ArrowRight: 1, ArrowDown: 1, PageDown: 1, ArrowLeft: -1, ArrowUp: -1, PageUp: -1 };
-
-/** Typing here keeps its own keys, such as Esc in the note editor or ⌘⇧H in a question. */
-const isTextEntry = (target: EventTarget | null) =>
-  target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"));
 
 /** Lists, toolbars, the progress bar and the side panel use the arrow keys themselves, so those keys don't turn pages there. */
 const usesArrows = (target: EventTarget | null) =>
@@ -123,6 +122,8 @@ export function BookWorkspace({
   const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId);
   const { providers, current: provider, choose: chooseProvider, unavailable } = useProviders(savedProvider);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
+  const cards = useCards(book.id, initialState.cardSets);
+  const [reviewing, setReviewing] = useState(false);
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -228,6 +229,13 @@ export function BookWorkspace({
     showTab("notes");
   };
 
+  const makeCards = (selection: SelectionContext) => {
+    if (!provider) return;
+    readerRef.current?.clearSelection();
+    showTab("cards");
+    void cards.make(selection, provider);
+  };
+
   const openNote = (noteId: string) => {
     showTab("notes");
     setNoteFocus({ id: noteId, at: Date.now() });
@@ -242,6 +250,8 @@ export function BookWorkspace({
   /* Keys from the EPUB's frame are forwarded here too. */
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
     const mod = event.metaKey || event.ctrlKey;
+    /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
+    if (reviewing && !mod) return;
     if (mod && !event.shiftKey && !event.altKey && event.code === "Backslash") {
       event.preventDefault();
       togglePanel();
@@ -399,6 +409,7 @@ export function BookWorkspace({
                   <ReadingFooter fraction={position?.fraction ?? 0} place={place} onSeek={(fraction) => readerRef.current?.seek(fraction)} />
                 </>
               )}
+              {reviewing ? <ReviewSheet cards={cards} onClose={() => setReviewing(false)} onJump={jumpTo} /> : null}
               {!tocDocked && !error ? (
                 <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
@@ -434,6 +445,8 @@ export function BookWorkspace({
             noteFocus={noteFocus}
             onNoteDraft={setNoteDraft}
             onOpenNote={openNote}
+            cards={cards}
+            onReview={() => setReviewing(true)}
           />
         </ResizablePanel>
       </Resizable>
@@ -446,6 +459,7 @@ export function BookWorkspace({
         onAsk={(question, selection) => startThread("ask", selection, question)}
         onHighlight={highlight}
         onNote={writeNote}
+        onCard={makeCards}
         onDismiss={() => readerRef.current?.clearSelection()}
       />
       {menu ? (

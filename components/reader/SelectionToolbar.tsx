@@ -2,7 +2,7 @@
 
 import { useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { ArrowUp, BookOpenText, Highlighter, Layers, MessageCircleQuestion, NotebookPen, Sparkles } from "lucide-react";
-import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
+import { Toolbar, ToolbarButton, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
 import type { SelectionContext } from "@/lib/shared/types";
 import { placeFloating } from "./floating";
 import type { SelectionRect } from "./types";
@@ -23,6 +23,8 @@ interface SelectionToolbarProps {
   onAsk(question: string, selection: SelectionContext): void;
   onHighlight(selection: SelectionContext): void;
   onNote(selection: SelectionContext): void;
+  /** Asks the tutor for flashcards on the passage. */
+  onCard(selection: SelectionContext): void;
   onDismiss(): void;
 }
 
@@ -52,6 +54,7 @@ export function SelectionToolbar({
   onAsk,
   onHighlight,
   onNote,
+  onCard,
   onDismiss,
 }: SelectionToolbarProps) {
   const [rect, setRect] = useState<SelectionRect | null>(null);
@@ -200,15 +203,15 @@ export function SelectionToolbar({
             <ToolbarButton aria-label="Note" title="Write a note on this passage" onClick={() => keep(onNote)} className={`${itemClass} w-7 justify-center px-0`}>
               <NotebookPen />
             </ToolbarButton>
-            <ToolbarSeparator className="mx-1 h-4 w-px shrink-0 bg-line-strong" />
-            <ToolbarGroup disabled aria-label="Coming soon" className="flex items-center gap-0.5">
-              <ToolbarButton aria-label="Card (coming soon)" title="Card · coming soon" className={`${itemClass} w-7 justify-center px-0`}>
-                <BookOpenText />
-              </ToolbarButton>
-            </ToolbarGroup>
-            <span aria-hidden className="pl-1 pr-1.5 text-[11px] text-dim">
-              Soon
-            </span>
+            <ToolbarButton
+              aria-label="Make cards"
+              title={disabledReason ?? "Make flashcards from this passage"}
+              disabled={disabled}
+              onClick={() => keep(onCard)}
+              className={`${itemClass} w-7 justify-center px-0`}
+            >
+              <BookOpenText />
+            </ToolbarButton>
           </>
         )}
       </Toolbar>

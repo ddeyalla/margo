@@ -2,7 +2,7 @@
 
 Read your own EPUB and PDF books with an AI tutor beside you.
 
-Select a passage and ask the tutor to explain it, go deeper, or answer a question. Highlight what matters. Write notes in markdown. Everything you save is also copied to a markdown file, so your notes show up in Obsidian.
+Select a passage and ask the tutor to explain it, go deeper, or answer a question. Highlight what matters. Write notes in markdown. Turn a passage into cards and review them when they're due. Everything you save is also copied to a markdown file, so your notes show up in Obsidian.
 
 The app runs on your own computer. Your books stay there.
 
@@ -94,7 +94,9 @@ Stop the app with `Ctrl+C` in the terminal.
 - **Show the tutor an image.** Paste one with `⌘V`, drop it on the chat, or choose the image button in the message box. A message can carry up to 4 PNG, JPEG, WebP or GIF images. Ask about them, or send them alone and the tutor explains them. Images work in a follow-up on a passage, and in the box under the list of threads, where you can also ask about the book without selecting anything. Click an image in the chat to see it larger.
 - **Highlight.** Select text and choose the highlighter, or press `⌘⇧H`. Click a highlight to remove it or open its note.
 - **Write a note.** Select text and choose the notebook button. Notes are markdown. `⌘↩` saves.
-- **Find them again.** The Notes and Highlights tabs list everything for the book. Click a quote to jump to it.
+- **Make cards.** Select text and choose the card button. The tutor picks one fact the passage supports and writes up to three questions on it. They show in the Cards tab, where you can edit or delete any of them. Making cards from the same passage again adds only new questions.
+- **Review.** Choose Review in the Cards tab. Cards come up over the book, which keeps your place. Press `Space` to show the answer, then `1` to `4` for Again, Hard, Good or Easy. Each button shows when you'll see the card next. A card you miss comes back in a minute. Up to 10 new passages a day per book; due reviews have no cap. `Esc` closes.
+- **Find them again.** The Notes, Highlights and Cards tabs list everything for the book. Click a quote to jump to it.
 - **Chapters.** The list button at the top left, or `⌘⇧L`, opens the table of contents in a column beside the book. The book makes room for it and keeps your place. The chapter you're in is marked. Click any chapter to go there. In a narrow window the list slides over the book instead.
 - **Scroll or pages.** Switch at the top right. Pages shows one page at a time, or two side by side in an EPUB when there's room. Turn pages with the arrow keys, `Page Up` and `Page Down`, or the arrows at the edges. Your place is kept when you switch, and the app remembers your choice.
 - **Where you are.** A thin bar along the bottom of the book shows how far through it you are. Click or drag it to jump, or focus it and use the arrow keys. Under it are the page and the percent. An EPUB shows its printed page number when the book has one, and otherwise its location, a fixed slice of the text. In Pages view the middle says how many pages are left in the chapter, when the book's files make that clear.
@@ -110,11 +112,11 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 | What | Where |
 | --- | --- |
 | Your books | `BOOKS_DIR`. Never changed. |
-| Reading place, chats and the one you had open, highlights and notes | `data/<book id>.json`, one file per book |
+| Reading place, chats and the one you had open, highlights, notes, and cards with when each is due | `data/<book id>.json`, one file per book |
 | Your tutor choice, scroll or pages, the page colours for EPUBs and PDFs, bold starts, the book font, whether the chapters column is open, and which side panel tab you were on | `data/settings.json` |
 | Book covers, made from each book the first time it's shown | `data/covers/`. Safe to delete; they're made again. |
 | Images you show the tutor | `data/attachments/<book id>/`. Nothing deletes them yet, so images you removed before sending stay here too. |
-| The markdown copy of each book's notes | `NOTES_DIR/<book title>.md` |
+| The markdown copy of each book's highlights, notes and cards | `NOTES_DIR/<book title>.md` |
 
 The `data/` folder is the real record. Git ignores it. Back it up if your notes matter to you.
 
@@ -124,7 +126,6 @@ To use a different model, add it to `data/settings.json` under the tutor's name 
 
 Order, effort and what was rejected first: [roadmap.md](roadmap.md).
 
-- Flashcards made from your highlights. The Card button is there, marked "Soon".
 - Reading your Obsidian edits back into the app.
 - Search across your books and notes.
 - A light theme for the whole app. EPUB pages can already be light.
@@ -144,7 +145,9 @@ It's a [Next.js](https://nextjs.org) app. The browser shows the books and the pa
 | Tutor | `app/api/chat/route.ts`, `lib/server/tutor/` | One adapter per tutor (Claude Code, Codex, API). Answers stream back to the panel. |
 | Images | `lib/client/images.ts`, `lib/server/attachments.ts` | The browser shrinks each image to 1568 px on its longest side before upload. The server reads its type from its bytes, not its name, and keeps it under a random id. |
 | Saving | `lib/server/store.ts` | Writes `data/<book id>.json` safely: to a temp file first, one write at a time per book. |
-| Obsidian copy | `lib/server/vault.ts` | Rewrites the book's markdown file after every highlight or note change. |
+| Obsidian copy | `lib/server/vault.ts` | Rewrites the book's markdown file after every highlight, note or card change. |
+| Cards | `app/api/books/[bookId]/cards/route.ts`, `lib/server/cards/` | Sends the passage to the chosen tutor with the card prompt in `lib/server/cards/prompt.md`, outside any chat, and checks the JSON it returns. A bad reply goes back once with what was wrong. |
+| Review schedule | `lib/shared/schedule.ts` | [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) with 90 % retention. Each passage has one schedule; its questions take turns, the ones you rate lower more often. The study day starts at 04:00. |
 | Covers | `lib/server/covers.ts` | Takes the cover from the EPUB, or draws page 1 of a PDF, and caches it. |
 
 Claude Code and Codex run as separate programs with no tools turned on, in an empty temp folder, and with only a short list of environment variables. They can answer, but they can't read or change your files. Images reach Claude Code through its input, and Codex as copies in its temp folder that are deleted after each answer.
