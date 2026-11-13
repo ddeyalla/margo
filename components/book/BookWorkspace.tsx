@@ -12,6 +12,7 @@ import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/read
 import type { ReaderHandle, ReaderMeta, SelectionRect } from "@/components/reader/types";
 import { EmptyState, IconButton } from "@/components/ui";
 import { patchBookState } from "@/lib/client/api";
+import { placeLabel } from "@/lib/shared/place";
 import type { Anchor, BookFormat, BookId, BookState, ProviderId, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { SidePanel, type PanelTab } from "./SidePanel";
 import { usePositionSaver } from "./usePositionSaver";
@@ -132,7 +133,7 @@ export function BookWorkspace({
                 onReady={handleReady}
                 onSelectionChange={handleSelection}
                 onPositionChange={(position, chapterTitle) => {
-                  setChapter(chapterTitle);
+                  setChapter(placeLabel(chapterTitle, position));
                   savePosition(position);
                 }}
                 onError={setError}

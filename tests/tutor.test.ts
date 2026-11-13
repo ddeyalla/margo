@@ -105,7 +105,7 @@ describe("tutor turns", () => {
     quote: "The selected words.",
     before: "Words before.",
     after: "Words after.",
-    chapterTitle: "Chapter 2, p. 3",
+    chapterTitle: "Chapter 2",
     action: "ask",
     provider: "claude",
     sessionId: null,

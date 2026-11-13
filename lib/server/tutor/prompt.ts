@@ -1,3 +1,4 @@
+import { placeLabel } from "@/lib/shared/place";
 import type { Thread, TutorAction } from "@/lib/shared/types";
 import type { TutorMessage, TutorTurn } from "./types";
 
@@ -28,10 +29,11 @@ export interface BookLabel {
 
 /** The first user turn: the book, where the passage sits, the passage with its surroundings, and the request. */
 export const contextMessage = (book: BookLabel, thread: Thread): string => {
+  const where = placeLabel(thread.chapterTitle, thread.anchor);
   const request = thread.action === "ask" ? `My question: ${thread.messages[0]?.content ?? ""}` : ACTION_REQUESTS[thread.action];
   return [
     `Book: ${book.title}${book.author ? `, by ${book.author}` : ""}`,
-    thread.chapterTitle ? `Where: ${thread.chapterTitle}` : null,
+    where ? `Where: ${where}` : null,
     "",
     "Text just before the selection:",
     `<before>\n${thread.before || "(start of the section)"}\n</before>`,

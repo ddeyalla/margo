@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { ChevronLeft, CircleAlert, CornerDownRight, MessageSquareText } from "lucide-react";
 import { Button, EmptyState, Spinner } from "@/components/ui";
+import { placeLabel } from "@/lib/shared/place";
 import type { Anchor, Thread, TutorAction } from "@/lib/shared/types";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
@@ -77,19 +78,20 @@ function ThreadList({ threads, onOpen }: { threads: Thread[]; onOpen(thread: Thr
       <ul className="flex flex-col gap-0.5">
         {threads.map((thread) => {
           const label = thread.action === "ask" ? thread.messages[0]?.content : ACTION_LABELS[thread.action];
+          const place = placeLabel(thread.chapterTitle, thread.anchor);
           return (
             <li key={thread.id}>
               <button
                 type="button"
                 onClick={() => onOpen(thread)}
-                title={thread.chapterTitle ?? undefined}
+                title={place ?? undefined}
                 className="press flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-panel-raised focus-visible:bg-panel-raised"
               >
                 <span className="line-clamp-2 font-reading text-[13px] leading-snug text-prose">{thread.quote}</span>
                 <span className="flex min-w-0 items-center gap-2 text-[11px] text-dim">
                   <span className="min-w-0 flex-1 truncate">
                     {label}
-                    {thread.chapterTitle ? ` · ${thread.chapterTitle}` : ""}
+                    {place ? ` · ${place}` : ""}
                   </span>
                   <span className="shrink-0 tabular-nums">{when.format(new Date(thread.createdAt))}</span>
                 </span>
@@ -163,7 +165,7 @@ function ThreadView({
           <span className="line-clamp-6 whitespace-pre-line font-reading text-[14px] leading-relaxed text-prose">{thread.quote}</span>
           <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-dim group-hover:text-fog">
             <CornerDownRight className="size-3 shrink-0" aria-hidden />
-            <span className="truncate">{thread.chapterTitle ?? "Go to passage"}</span>
+            <span className="truncate">{placeLabel(thread.chapterTitle, thread.anchor) ?? "Go to passage"}</span>
           </span>
         </button>
 

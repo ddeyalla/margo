@@ -63,6 +63,7 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
     if (!range || !rect || !startLayer) return null;
     const { texts, outline } = engineRef.current;
     const page = Number(startLayer.dataset.page);
+    const pageBox = startLayer.getBoundingClientRect();
     const text = texts.get(page) ?? "";
     const endLayer = layerOf(range.endContainer);
     const endPage = endLayer ? Number(endLayer.dataset.page) : page;
@@ -74,7 +75,7 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
       before: trimBefore(flowText((texts.get(page - 1) ?? "") + "\n" + text.slice(0, start))),
       after: trimAfter(flowText(endText.slice(endInEndPage) + "\n" + (texts.get(endPage + 1) ?? ""))),
       anchor: { kind: "pdf", page, start, end: endPage === page ? endInEndPage : text.length },
-      chapterTitle: chapterAt(outline, page),
+      chapterTitle: chapterAt(outline, page, (rect.top - pageBox.top) / Math.max(1, pageBox.height)),
       rect,
     };
   };
@@ -237,7 +238,7 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
         if (!slots.length) return;
         emitSelectionRect();
         const position = currentPosition();
-        emitPosition(position, chapterAt(engine.outline, position.page));
+        emitPosition(position, chapterAt(engine.outline, position.page, position.offset));
       });
     };
 
