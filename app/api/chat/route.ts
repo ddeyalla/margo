@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { findBook, type FoundBook } from "@/lib/server/library";
 import { readSettings } from "@/lib/server/settings";
-import { readBookState, updateBookState } from "@/lib/server/store";
+import { readBookState } from "@/lib/server/store";
+import { openTurn, type TurnRequest } from "@/lib/server/turns";
 import { CODEX_DEFAULT_MODEL } from "@/lib/server/tutor/codex";
 import { ACTION_MESSAGES, buildTurn } from "@/lib/server/tutor/prompt";
 import { PROVIDERS, isProviderId } from "@/lib/server/tutor/providers";
 import { isObject, parseAnchor, shortText } from "@/lib/server/validate";
 import { trimAfter, trimBefore } from "@/lib/shared/context";
-import type { ChatMessage, ChatStreamEvent, ProviderId, Thread, TutorAction } from "@/lib/shared/types";
+import type { ChatStreamEvent, ProviderId, TutorAction } from "@/lib/shared/types";
 
 const MAX_QUOTE = 12_000;
 const MAX_MESSAGE = 8_000;
@@ -16,10 +17,10 @@ const DEFAULT_MODELS: Partial<Record<ProviderId, string>> = { codex: CODEX_DEFAU
 
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
 
-/** The thread this request continues or starts, with the reader's new message appended. Nothing is saved yet. */
-const threadFor = async (body: Record<string, unknown>, found: FoundBook, provider: ProviderId): Promise<Thread | string> => {
-  const now = new Date().toISOString();
+/** The validated turn this request asks for. Nothing is read or saved yet. */
+const parseTurn = (body: Record<string, unknown>, found: FoundBook, provider: ProviderId): TurnRequest | string => {
   if (body.kind === "new") {
+    const now = new Date().toISOString();
     const action = ACTIONS.find((a) => a === body.action);
     const selection = isObject(body.selection) ? body.selection : null;
     const anchor = selection && parseAnchor(selection.anchor, found.book.format);
@@ -28,39 +29,36 @@ const threadFor = async (body: Record<string, unknown>, found: FoundBook, provid
     const question = action === "ask" ? shortText(body.question, MAX_MESSAGE) : null;
     if (action === "ask" && !question) return "A question is required.";
     return {
-      id: randomUUID(),
-      anchor,
-      quote,
-      before: trimBefore(typeof selection.before === "string" ? selection.before : ""),
-      after: trimAfter(typeof selection.after === "string" ? selection.after : ""),
-      chapterTitle: shortText(selection.chapterTitle, 500),
-      action,
-      provider,
-      sessionId: null,
-      createdAt: now,
-      messages: [{ role: "user", content: question ?? ACTION_MESSAGES[action as Exclude<TutorAction, "ask">], createdAt: now }],
+      kind: "new",
+      thread: {
+        id: randomUUID(),
+        anchor,
+        quote,
+        before: trimBefore(typeof selection.before === "string" ? selection.before : ""),
+        after: trimAfter(typeof selection.after === "string" ? selection.after : ""),
+        chapterTitle: shortText(selection.chapterTitle, 500),
+        action,
+        provider,
+        sessionId: null,
+        createdAt: now,
+        messages: [{ role: "user", content: question ?? ACTION_MESSAGES[action as Exclude<TutorAction, "ask">], createdAt: now }],
+      },
     };
   }
+  if (typeof body.threadId !== "string") return "Invalid thread.";
+  if (body.kind === "retry") return { kind: "retry", threadId: body.threadId };
   if (body.kind === "reply") {
     const text = shortText(body.text, MAX_MESSAGE);
-    if (!text || typeof body.threadId !== "string") return "Invalid reply.";
-    const existing = (await readBookState(found.book.id)).threads.find((t) => t.id === body.threadId);
-    if (!existing) return "This thread no longer exists.";
-    return {
-      ...existing,
-      /* A different provider can't resume another's session; it replays the transcript instead. */
-      provider,
-      sessionId: existing.provider === provider ? existing.sessionId : null,
-      messages: [...existing.messages, { role: "user", content: text, createdAt: now }],
-    };
+    return text ? { kind: "reply", threadId: body.threadId, text } : "Invalid reply.";
   }
   return "Unknown request.";
 };
 
 /**
  * Streams the tutor's answer as newline-delimited ChatStreamEvent JSON: the
- * thread first, then text deltas, then the saved thread. The answer is saved
- * when the stream ends, or marked partial if the reader leaves mid-answer.
+ * thread with the reader's saved message first, then text deltas, then the
+ * saved thread. The answer is saved when the stream ends, marked partial if
+ * the reader stopped it or left mid-answer.
  */
 export async function POST(request: Request) {
   const body: unknown = await request.json().catch(() => null);
@@ -70,16 +68,22 @@ export async function POST(request: Request) {
   const found = await findBook(body.bookId);
   if (!found) return Response.json({ error: "Book not found." }, { status: 404 });
 
-  const thread = await threadFor(body, found, providerId);
-  if (typeof thread === "string") return badRequest(thread);
+  const parsed = parseTurn(body, found, providerId);
+  if (typeof parsed === "string") return badRequest(parsed);
 
   const [state, settings] = await Promise.all([readBookState(found.book.id), readSettings()]);
   const label = { title: state.meta?.title ?? found.book.fileTitle, author: state.meta?.author ?? found.book.fileAuthor };
   const model = settings.models[providerId] ?? DEFAULT_MODELS[providerId] ?? null;
-  const turn = buildTurn(label, thread, model);
+
+  /* Waits for this thread's previous turn to finish saving, then saves the reader's message. */
+  const turn = await openTurn(found.book.id, parsed, providerId);
+  if (typeof turn === "string") return badRequest(turn);
+  const { thread } = turn;
+  const prompt = buildTurn(label, thread, model);
 
   const abort = new AbortController();
-  request.signal.addEventListener("abort", () => abort.abort(), { once: true });
+  if (request.signal.aborted) abort.abort();
+  else request.signal.addEventListener("abort", () => abort.abort(), { once: true });
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -98,7 +102,7 @@ export async function POST(request: Request) {
       let sessionId = thread.sessionId;
       let failure: string | null = null;
       try {
-        for await (const event of PROVIDERS[providerId].run(turn, abort.signal)) {
+        for await (const event of PROVIDERS[providerId].run(prompt, abort.signal)) {
           if (event.type === "text") {
             answer += event.delta;
             send({ type: "text", delta: event.delta });
@@ -112,19 +116,7 @@ export async function POST(request: Request) {
         if (!abort.signal.aborted) failure = error instanceof Error ? error.message : "The tutor stopped unexpectedly.";
       }
 
-      /* Only an answer with text is saved; a failed first turn leaves no empty thread behind. */
-      let saved = thread;
-      if (answer.trim()) {
-        const reply: ChatMessage = { role: "assistant", content: answer, createdAt: new Date().toISOString() };
-        if (abort.signal.aborted || failure) reply.partial = true;
-        saved = { ...thread, sessionId, messages: [...thread.messages, reply] };
-        await updateBookState(found.book.id, (current) => ({
-          ...current,
-          threads: current.threads.some((t) => t.id === saved.id)
-            ? current.threads.map((t) => (t.id === saved.id ? saved : t))
-            : [...current.threads, saved],
-        }));
-      }
+      const saved = await turn.close({ text: answer, sessionId, partial: abort.signal.aborted || failure !== null });
       if (failure) send({ type: "error", message: failure });
       send({ type: "done", thread: saved });
       try {

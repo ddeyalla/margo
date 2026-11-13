@@ -6,7 +6,7 @@ import { Button, EmptyState, Spinner } from "@/components/ui";
 import type { Anchor, Thread, TutorAction } from "@/lib/shared/types";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
-import type { FailedTurn, Tutor } from "./useTutor";
+import { awaitsAnswer, type FailedTurn, type Tutor } from "./useTutor";
 
 const ACTION_LABELS: Record<Exclude<TutorAction, "ask">, string> = { explain: "Explain", deeper: "Go deeper" };
 
@@ -48,7 +48,7 @@ export function ChatTab({
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {failure ? <FailureNote failure={failure} onRetry={onRetry} className="mx-3 mt-1" /> : null}
+      {failure ? <FailureNote failure={failure} onRetry={failure.request ? onRetry : null} className="mx-3 mt-1" /> : null}
       {tutor.threads.length ? (
         <ThreadList
           threads={tutor.threads}
@@ -131,8 +131,8 @@ function ThreadView({
     if (scroller && pinned.current) scroller.scrollTop = scroller.scrollHeight;
   }, [thread.messages.length, streaming, failure]);
 
-  /* A first turn that failed was never saved, so there is nothing to reply to; Try again starts it. */
-  const unsaved = failure?.retry?.kind === "new";
+  /* The reader's last message went unanswered: stopped before the first word, or failed. */
+  const unanswered = streaming === null && awaitsAnswer(thread);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -192,12 +192,25 @@ function ThreadView({
               <Markdown text={streaming} />
             </div>
           ) : null}
-          {failure ? <FailureNote failure={failure} onRetry={onRetry} /> : null}
+          {failure ? (
+            <FailureNote failure={failure} onRetry={unanswered ? onRetry : null} />
+          ) : unanswered ? (
+            <p className="flex items-center gap-2 text-[11px] text-dim">
+              Stopped before the tutor answered.
+              <button
+                type="button"
+                onClick={onRetry}
+                className="press rounded-xs px-1 text-fog underline decoration-dim underline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-paper"
+              >
+                Ask again
+              </button>
+            </p>
+          ) : null}
         </div>
       </div>
       <Composer
         placeholder="Ask a follow-up…"
-        disabledReason={unsaved ? "Try again to start this thread" : unavailable}
+        disabledReason={unavailable}
         sending={streaming !== null}
         onSend={onReply}
         onStop={onStop}
@@ -206,7 +219,7 @@ function ThreadView({
   );
 }
 
-function FailureNote({ failure, onRetry, className }: { failure: FailedTurn; onRetry(): void; className?: string }) {
+function FailureNote({ failure, onRetry, className }: { failure: FailedTurn; onRetry: (() => void) | null; className?: string }) {
   return (
     <div role="alert" className={`flex items-start gap-2.5 rounded-lg bg-panel-raised px-3 py-2.5 ${className ?? ""}`}>
       <CircleAlert className="mt-px size-3.5 shrink-0 text-danger" aria-hidden />
@@ -214,7 +227,7 @@ function FailureNote({ failure, onRetry, className }: { failure: FailedTurn; onR
         <p className="text-label font-medium text-paper">The tutor couldn’t answer</p>
         <p className="mt-0.5 text-label leading-relaxed text-dim [overflow-wrap:anywhere]">{failure.message}</p>
       </div>
-      {failure.retry ? (
+      {onRetry ? (
         <Button size="sm" onClick={onRetry} className="-my-0.5 shrink-0">
           Try again
         </Button>

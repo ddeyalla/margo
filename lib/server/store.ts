@@ -24,6 +24,12 @@ const serialized = <T>(key: string, task: () => Promise<T>): Promise<T> => {
   return run;
 };
 
+/** Waits until no one else holds `key`, then holds it until the returned release is called. */
+export const hold = (key: string): Promise<() => void> =>
+  new Promise((acquired) => {
+    void serialized(key, () => new Promise<void>((release) => acquired(release)));
+  });
+
 export const readJson = async <T>(file: string): Promise<T | null> => {
   let text: string;
   try {

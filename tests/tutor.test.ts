@@ -134,6 +134,16 @@ describe("tutor turns", () => {
     expect(cliPrompt(fresh).endsWith("The reader's new message:\nWhy?")).toBe(true);
     expect(cliPrompt({ ...fresh, sessionId: "s1" })).toBe("Why?");
   });
+
+  it("joins a message sent after an unanswered one, so roles alternate", () => {
+    const unanswered: Thread = {
+      ...thread,
+      messages: [...thread.messages, { role: "user", content: "Are you there?", createdAt: "" }],
+    };
+    const turn = buildTurn({ title: "A Book", author: null }, unanswered, null);
+    expect(turn.messages.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+    expect(turn.messages[2].content).toBe("Why?\n\nAre you there?");
+  });
 });
 
 describe("child environment", () => {

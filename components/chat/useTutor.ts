@@ -5,28 +5,28 @@ import { streamChat } from "@/lib/client/chat";
 import type { ChatRequest } from "@/lib/shared/chat";
 import type { BookId, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
 
-/** A turn that ended without an answer. Its thread (with the unanswered message) is shown but was never saved. */
+/** A turn that ended without a full answer. */
 export interface FailedTurn {
   threadId: string | null;
-  thread: Thread | null;
   message: string;
-  /** Resends the same request; absent when part of an answer was saved. */
-  retry: ChatRequest | null;
+  /** The request to resend when it failed before the server saved a thread. */
+  request: ChatRequest | null;
 }
-
-const isSaved = (thread: Thread) => thread.messages.at(-1)?.role === "assistant";
 
 const newestFirst = (a: Thread, b: Thread) => b.createdAt.localeCompare(a.createdAt);
 
+/** The reader's last message has no answer yet: the turn was stopped early or failed. */
+export const awaitsAnswer = (thread: Thread) => thread.messages.at(-1)?.role === "user";
+
 /**
- * The book's tutor threads. Saved threads mirror the server; the turn in
- * flight and the last failed turn live beside them until the server has
- * saved an answer, so an unanswered message never looks saved.
+ * The book's tutor threads, mirroring the server. The server saves the
+ * reader's message before the tutor starts, so a thread appears as soon as the
+ * stream opens; the answer streams beside it until it is saved too.
  */
 export function useTutor(bookId: BookId, initialThreads: Thread[]) {
   const [threads, setThreads] = useState(initialThreads);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [live, setLive] = useState<{ thread: Thread; text: string } | null>(null);
+  const [live, setLive] = useState<{ threadId: string; text: string } | null>(null);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<FailedTurn | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -50,17 +50,18 @@ export function useTutor(bookId: BookId, initialThreads: Thread[]) {
       for await (const event of streamChat(request, controller.signal)) {
         if (event.type === "thread") {
           thread = event.thread;
+          upsert(thread);
           setActiveId(thread.id);
-          setLive({ thread, text });
+          setLive({ threadId: thread.id, text });
         } else if (event.type === "text") {
           text += event.delta;
-          if (thread) setLive({ thread, text });
+          if (thread) setLive({ threadId: thread.id, text });
         } else if (event.type === "error") {
           error = event.message;
         } else {
           finished = true;
           thread = event.thread;
-          if (isSaved(event.thread)) upsert(event.thread);
+          upsert(thread);
         }
       }
       if (!finished) error ??= "The connection to the tutor dropped before the answer finished.";
@@ -80,12 +81,10 @@ export function useTutor(bookId: BookId, initialThreads: Thread[]) {
     setSending(false);
     setLive(null);
     if (error && !controller.signal.aborted) {
-      const answered = text.trim().length > 0;
       setFailure({
-        threadId: thread?.id ?? (request.kind === "reply" ? request.threadId : null),
-        thread: answered ? null : thread,
+        threadId: thread?.id ?? (request.kind === "new" ? null : request.threadId),
         message: error,
-        retry: answered ? null : request,
+        request: thread || request.kind !== "new" ? null : request,
       });
     }
   };
@@ -95,12 +94,17 @@ export function useTutor(bookId: BookId, initialThreads: Thread[]) {
     void run({ kind: "new", bookId, provider, action, question, selection: { text, before, after, anchor, chapterTitle } });
   };
 
+  const active = threads.find((t) => t.id === activeId) ?? null;
+  const shownFailure = failure && (failure.threadId === null || failure.threadId === activeId) ? failure : null;
+
   const reply = (text: string, provider: ProviderId) => {
     if (activeId) void run({ kind: "reply", bookId, provider, threadId: activeId, text });
   };
 
+  /** Asks again for the active thread's unanswered message, or resends a first turn the server never saved. */
   const retry = (provider: ProviderId) => {
-    if (failure?.retry) void run({ ...failure.retry, provider });
+    if (active && awaitsAnswer(active)) void run({ kind: "retry", bookId, provider, threadId: active.id });
+    else if (shownFailure?.request) void run({ ...shownFailure.request, provider });
   };
 
   const stop = () => abortRef.current?.abort();
@@ -110,22 +114,13 @@ export function useTutor(bookId: BookId, initialThreads: Thread[]) {
     setActiveId(id);
   };
 
-  const liveThread = live?.thread ?? null;
-  const active =
-    (liveThread?.id === activeId ? liveThread : null) ??
-    (failure?.thread?.id === activeId ? failure.thread : null) ??
-    threads.find((t) => t.id === activeId) ??
-    null;
-  const listed = [...threads];
-  if (liveThread && !threads.some((t) => t.id === liveThread.id)) listed.push(liveThread);
-
   return {
-    threads: listed.sort(newestFirst),
+    threads: [...threads].sort(newestFirst),
     active,
     /** The answer streaming into the active thread, or null when it isn't the one answering. */
-    streaming: live && live.thread.id === activeId ? live.text : null,
+    streaming: live && live.threadId === activeId ? live.text : null,
     sending,
-    failure: failure && (failure.threadId === null || failure.threadId === activeId) ? failure : null,
+    failure: shownFailure,
     start,
     reply,
     retry,

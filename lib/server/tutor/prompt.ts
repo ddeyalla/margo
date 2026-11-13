@@ -48,13 +48,20 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
     .join("\n");
 };
 
-/** The provider-facing conversation: the stored thread, with its first message expanded into the full context. */
+/**
+ * The provider-facing conversation: the stored thread, with its first message
+ * expanded into the full context. A message sent after an unanswered one joins
+ * it, so roles still alternate.
+ */
 export const buildTurn = (book: BookLabel, thread: Thread, model: string | null): TutorTurn => ({
   system: TUTOR_SYSTEM,
-  messages: thread.messages.map((message, index) => ({
-    role: message.role,
-    content: index === 0 ? contextMessage(book, thread) : message.content,
-  })),
+  messages: thread.messages.reduce<TutorMessage[]>((merged, message, index) => {
+    const content = index === 0 ? contextMessage(book, thread) : message.content;
+    const last = merged.at(-1);
+    if (last?.role === message.role) last.content += `\n\n${content}`;
+    else merged.push({ role: message.role, content });
+    return merged;
+  }, []),
   sessionId: thread.sessionId,
   model,
 });
