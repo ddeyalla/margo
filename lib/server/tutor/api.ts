@@ -1,7 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { BetaMessageParam } from "@anthropic-ai/sdk/resources/beta/messages";
+import { imageBlock } from "./prompt";
 import type { Provider, TutorEvent, TutorTurn } from "./types";
 
 export const API_DEFAULT_MODEL = "claude-sonnet-5-5";
+
+/**
+ * The conversation as API messages. The API keeps no session, so every turn
+ * carries its own images each time. Earlier turns come out the same on every
+ * request, so the cached prefix still matches.
+ */
+export const apiMessages = (turn: TutorTurn): BetaMessageParam[] =>
+  turn.messages.map(({ role, content, images }) => ({
+    role,
+    content: images.length ? [...images.map(imageBlock), { type: "text" as const, text: content }] : content,
+  }));
 
 /** The key is read here and nowhere else. */
 const apiKey = () => process.env.ANTHROPIC_API_KEY?.trim() || null;
@@ -20,7 +33,7 @@ async function* run(turn: TutorTurn, signal: AbortSignal): AsyncGenerator<TutorE
         max_tokens: 64000,
         output_config: { effort: "medium" },
         system: turn.system,
-        messages: turn.messages,
+        messages: apiMessages(turn),
         /* Retry on a backup model if this one declines the request. */
         fallbacks: "default",
         betas: ["server-side-fallback-2026-07-01"],

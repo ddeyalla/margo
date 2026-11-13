@@ -50,15 +50,29 @@ interface StreamOptions {
   args: string[];
   cwd: string;
   signal: AbortSignal;
+  /**
+   * Written to the child's stdin, which then closes. Without it stdin is never
+   * opened: codex would read a piped stdin as more of its prompt.
+   */
+  input?: string;
   parseLine(line: string): TutorEvent[];
   /** Turns a failed exit with no error event into a message. */
   describeExit(code: number | null, stderr: string): string;
 }
 
 /** Spawns a CLI and yields events parsed from its stdout lines. The child dies on abort or when the caller stops reading. */
-export async function* streamCli({ command, args, cwd, signal, parseLine, describeExit }: StreamOptions): AsyncGenerator<TutorEvent> {
+export async function* streamCli({ command, args, cwd, signal, input, parseLine, describeExit }: StreamOptions): AsyncGenerator<TutorEvent> {
   if (signal.aborted) return;
-  const child = spawn(command, args, { cwd, env: childEnv(), stdio: ["ignore", "pipe", "pipe"] });
+  const options = { cwd, env: childEnv() };
+  const child =
+    input === undefined
+      ? spawn(command, args, { ...options, stdio: ["ignore", "pipe", "pipe"] })
+      : spawn(command, args, { ...options, stdio: "pipe" });
+  if (input !== undefined && child.stdin) {
+    /* A child that exits before reading everything breaks the pipe; its exit reports why. */
+    child.stdin.on("error", () => undefined);
+    child.stdin.end(input);
+  }
   let stderr = "";
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk: string) => {

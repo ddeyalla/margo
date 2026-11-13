@@ -1,20 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { IMAGE_TYPES, MAX_IMAGE_BYTES } from "@/lib/shared/attachments";
+import { IMAGE_EXTENSIONS, IMAGE_TYPES, MAX_IMAGE_BYTES } from "@/lib/shared/attachments";
 import type { BookId, ChatMessage, ImageAttachment, ImageMediaType } from "@/lib/shared/types";
 import { getConfig } from "./config";
 import { writeFileAtomic } from "./store";
 import { isAttachmentId } from "./validate";
 
 export const TOO_LARGE = "This image is over 5 MB, even after resizing.";
-
-const EXTENSIONS: Record<ImageMediaType, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
 
 /** The longest side the tutors accept. */
 const MAX_SIDE = 8000;
@@ -83,7 +76,7 @@ export const sniffImage = (bytes: Uint8Array): ImageInfo | null => {
 };
 
 const imageFile = (bookId: BookId, id: string, mediaType: ImageMediaType, dataDir: string) =>
-  path.join(dataDir, "attachments", bookId, `${id}.${EXTENSIONS[mediaType]}`);
+  path.join(dataDir, "attachments", bookId, `${id}.${IMAGE_EXTENSIONS[mediaType]}`);
 
 /** Keeps an uploaded image under a new id, or says why it can't. */
 export const saveAttachment = async (

@@ -1,16 +1,18 @@
-import { cliPrompt } from "./prompt";
+import { cliInput, imageBlock } from "./prompt";
 import { lastErrorLine, parseJsonLine, runQuiet, scratchDir, streamCli } from "./process";
 import type { Provider, TutorEvent, TutorTurn } from "./types";
 
 /**
- * Flags for a tools-free, streamed answer. --safe-mode skips the user's hooks,
- * plugins and CLAUDE.md, which would otherwise leak into the tutor. The prompt
- * sits right after --print because --tools takes every value that follows it.
+ * Flags for a tools-free, streamed answer. The message goes on stdin as
+ * stream-json, the one way to hand the CLI images; --print with
+ * --input-format stream-json also works with --resume. --safe-mode skips the
+ * user's hooks, plugins and CLAUDE.md, which would otherwise leak into the
+ * tutor. --tools comes last because it takes every value that follows it.
  */
 export const claudeArgs = (turn: TutorTurn): string[] => {
-  const prompt = cliPrompt(turn);
   const args = [
-    "--print", prompt.startsWith("-") ? ` ${prompt}` : prompt,
+    "--print",
+    "--input-format", "stream-json",
     "--output-format", "stream-json",
     "--verbose",
     "--include-partial-messages",
@@ -22,6 +24,13 @@ export const claudeArgs = (turn: TutorTurn): string[] => {
   if (turn.sessionId) args.push("--resume", turn.sessionId);
   args.push("--tools", "");
   return args;
+};
+
+/** The reader's message as the one stream-json line the CLI reads from stdin: images first, then the words. */
+export const claudeInput = (turn: TutorTurn): string => {
+  const { text, images } = cliInput(turn);
+  const content = [...images.map(imageBlock), { type: "text", text }];
+  return `${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`;
 };
 
 /**
@@ -58,6 +67,7 @@ async function* run(turn: TutorTurn, signal: AbortSignal): AsyncGenerator<TutorE
     args: claudeArgs(turn),
     cwd: await scratchDir("claude"),
     signal,
+    input: claudeInput(turn),
     parseLine: parseClaudeLine,
     describeExit: (code, stderr) => lastErrorLine(stderr) ?? `Claude Code exited with code ${code}.`,
   })) {

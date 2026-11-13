@@ -1,6 +1,6 @@
 import { placeLabel } from "@/lib/shared/place";
 import type { Thread, TutorAction } from "@/lib/shared/types";
-import type { TutorMessage, TutorTurn } from "./types";
+import type { TutorImage, TutorMessage, TutorTurn } from "./types";
 
 export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who is reading a book. They select a passage, or share an image such as a figure, a screenshot or a photo of their working, and ask you about it. Some questions come with no passage at all.
 
@@ -67,32 +67,67 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
 
 /**
  * The provider-facing conversation: the stored thread, with its first message
- * expanded into the full context. A message sent after an unanswered one joins
- * it, so roles still alternate.
+ * expanded into the full context and each message's images read from `images`,
+ * the stored bytes by id. A message sent after an unanswered one joins it, so
+ * roles still alternate.
  */
-export const buildTurn = (book: BookLabel, thread: Thread, model: string | null): TutorTurn => ({
+export const buildTurn = (book: BookLabel, thread: Thread, model: string | null, images: ReadonlyMap<string, Buffer>): TutorTurn => ({
   system: TUTOR_SYSTEM,
   messages: thread.messages.reduce<TutorMessage[]>((merged, message, index) => {
     const content = index === 0 ? contextMessage(book, thread) : message.content;
+    const attached = (message.attachments ?? []).flatMap((attachment): TutorImage[] => {
+      const bytes = images.get(attachment.id);
+      return bytes ? [{ mediaType: attachment.mediaType, data: bytes.toString("base64") }] : [];
+    });
     const last = merged.at(-1);
-    if (last?.role === message.role) last.content += `\n\n${content}`;
-    else merged.push({ role: message.role, content });
+    if (last?.role === message.role) {
+      last.content += `\n\n${content}`;
+      last.images.push(...attached);
+    } else {
+      merged.push({ role: message.role, content, images: attached });
+    }
     return merged;
   }, []),
   sessionId: thread.sessionId,
   model,
 });
 
-const transcript = (messages: TutorMessage[]): string =>
-  messages.map((message) => `${message.role === "user" ? "Reader" : "Tutor"}:\n${message.content}`).join("\n\n");
+/** An image as an Anthropic content block, used by the API and by Claude Code's stream-json input. */
+export const imageBlock = (image: TutorImage) => ({
+  type: "image" as const,
+  source: { type: "base64" as const, media_type: image.mediaType, data: image.data },
+});
+
+/** A message as transcript text. Each image becomes a numbered marker where it was shared. */
+const transcriptEntry = (message: TutorMessage, firstImage: number): string => {
+  const markers = message.images.map((_, index) => `[Image ${firstImage + index}]`).join(" ");
+  return markers ? `${markers}\n${message.content}` : message.content;
+};
 
 /**
- * What a CLI receives as its prompt. Resuming its own session, it needs only
- * the new message. Otherwise it gets the whole conversation, which also covers
- * a thread that moved here from another provider.
+ * What a CLI receives: one message of text and images. Resuming its own
+ * session, it needs only the new message and its images; the session holds
+ * the rest. Otherwise it gets the whole conversation as a transcript with every
+ * image in the thread, numbered where it was shared. That also covers a thread
+ * that moved here from another provider, so a tutor always sees every image.
  */
-export const cliPrompt = (turn: TutorTurn): string => {
-  const latest = turn.messages.at(-1)?.content ?? "";
-  if (turn.sessionId || turn.messages.length === 1) return latest;
-  return `${transcript(turn.messages.slice(0, -1))}\n\nThe reader's new message:\n${latest}`;
+export const cliInput = (turn: TutorTurn): { text: string; images: TutorImage[] } => {
+  const latest = turn.messages.at(-1);
+  if (!latest) return { text: "", images: [] };
+  if (turn.sessionId || turn.messages.length === 1) return { text: latest.content, images: latest.images };
+  let imageCount = 0;
+  const entries = turn.messages.map((message) => {
+    const entry = transcriptEntry(message, imageCount + 1);
+    imageCount += message.images.length;
+    return entry;
+  });
+  const earlier = turn.messages
+    .slice(0, -1)
+    .map((message, index) => `${message.role === "user" ? "Reader" : "Tutor"}:\n${entries[index]}`)
+    .join("\n\n");
+  const lead = imageCount ? "The attached images are numbered in the order they were shared.\n\n" : "";
+  return {
+    text: `${lead}${earlier}\n\nThe reader's new message:\n${entries.at(-1)}`,
+    images: turn.messages.flatMap((message) => message.images),
+  };
 };

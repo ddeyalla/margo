@@ -1,6 +1,13 @@
 import type { ImageMediaType } from "./types";
 
-export const IMAGE_TYPES: readonly ImageMediaType[] = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+export const IMAGE_EXTENSIONS: Record<ImageMediaType, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+export const IMAGE_TYPES = Object.keys(IMAGE_EXTENSIONS) as ImageMediaType[];
 
 export const MAX_IMAGES_PER_MESSAGE = 4;
 

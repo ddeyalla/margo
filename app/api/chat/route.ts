@@ -1,3 +1,4 @@
+import { readMessageImages } from "@/lib/server/attachments";
 import { findBook } from "@/lib/server/library";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
   const turn = await openTurn(found.book.id, parsed, providerId);
   if (typeof turn === "string") return badRequest(turn);
   const { thread } = turn;
-  const prompt = buildTurn(label, thread, model);
+  const prompt = buildTurn(label, thread, model, await readMessageImages(found.book.id, thread.messages));
 
   const abort = new AbortController();
   if (request.signal.aborted) abort.abort();
