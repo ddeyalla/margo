@@ -1,4 +1,4 @@
-import type { BookId, Position } from "@/lib/shared/types";
+import type { AppSettings, BookId, Position } from "@/lib/shared/types";
 
 interface StatePatch {
   position?: Position;
@@ -12,4 +12,12 @@ export const patchBookState = (bookId: BookId, patch: StatePatch, keepalive = fa
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
     keepalive,
+  }).catch(() => undefined);
+
+/** Saves app settings the reader changed, such as the tutor or the PDF dark pages switch. */
+export const patchSettings = (change: Partial<Pick<AppSettings, "provider" | "pdfDarkPages">>) =>
+  fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(change),
   }).catch(() => undefined);

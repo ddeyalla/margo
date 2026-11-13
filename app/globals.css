@@ -194,6 +194,26 @@
   }
 }
 
+/* A page's canvas appears once it has rendered and its tone is known, so dark
+   mode never flashes a white page. White pages are inverted with their hues
+   turned back; photos and dark pages keep their own colours. */
+.pdf-page > canvas {
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.pdf-page[data-tone] > canvas {
+  opacity: 1;
+}
+
+[data-dark-pages] .pdf-page {
+  background: #1a1a1c;
+}
+
+[data-dark-pages] .pdf-page[data-tone="light"] > canvas {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+
 /* Saved highlights, painted between the canvas and the text layer so selecting still works. */
 .pdf-page > .pdf-marks {
   position: absolute;

@@ -5,6 +5,7 @@ import { ArrowDown } from "lucide-react";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
 import type { Highlight, SelectionContext } from "@/lib/shared/types";
 import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
+import { openFailure } from "./errors";
 import { mergeLineBoxes, type Box } from "./rects";
 import type { ReaderProps } from "./types";
 
@@ -331,7 +332,7 @@ export function EpubReader({
       emitReady({ title: metaText(metadata?.title), author: metaText(metadata?.author) });
       await view.init({ lastLocation: initialCfi(), showTextStart: true });
     })().catch((error: unknown) => {
-      if (!disposed) emitError(error instanceof Error ? error.message : "This book could not be opened.");
+      if (!disposed) emitError(openFailure("epub", error));
     });
 
     return () => {

@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import type { Anchor, BookId, Highlight, Position, SelectionContext } from "@/lib/shared/types";
+import type { OpenFailure } from "./errors";
 
 /** Where the selection sits on screen, in viewport coordinates, for placing the toolbar. */
 export type SelectionRect = SelectionContext["rect"];
@@ -29,7 +30,8 @@ export interface ReaderProps {
   onSelectionChange(rect: SelectionRect | null): void;
   /** Fires as the reader scrolls; callers debounce. */
   onPositionChange(position: Position, chapterTitle: string | null): void;
-  onError(message: string): void;
+  /** The book could not be opened. */
+  onError(failure: OpenFailure): void;
   /** The reader clicked a drawn highlight (with no text selected); `rect` is its box in the viewport. */
   onHighlightClick(id: string, rect: SelectionRect): void;
 }

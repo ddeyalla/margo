@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CircleAlert, FileWarning, PanelRight, X } from "lucide-react";
+import { ArrowLeft, CircleAlert, FileWarning, Moon, PanelRight, X } from "lucide-react";
 import { createResizableController, Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
@@ -12,9 +12,10 @@ import { useTutor } from "@/components/chat/useTutor";
 import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/reader/SelectionToolbar";
+import type { OpenFailure } from "@/components/reader/errors";
 import type { ReaderHandle, ReaderMeta, SelectionRect } from "@/components/reader/types";
 import { EmptyState, IconButton } from "@/components/ui";
-import { patchBookState } from "@/lib/client/api";
+import { patchBookState, patchSettings } from "@/lib/client/api";
 import { placeLabel } from "@/lib/shared/place";
 import type { Anchor, BookFormat, BookId, BookState, ProviderId, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { SidePanel, type PanelTab } from "./SidePanel";
@@ -29,14 +30,20 @@ export interface WorkspaceBook {
 
 const PANEL_ID = "tutor-panel";
 
+/** Typing here keeps its own keys, such as Esc in the note editor or ⌘⇧H in a question. */
+const isTextEntry = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"));
+
 export function BookWorkspace({
   book,
   initialState,
   savedProvider,
+  savedDarkPages,
 }: {
   book: WorkspaceBook;
   initialState: BookState;
   savedProvider: ProviderId | null;
+  savedDarkPages: boolean;
 }) {
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
@@ -49,7 +56,8 @@ export function BookWorkspace({
     author: initialState.meta?.author ?? null,
   });
   const [chapter, setChapter] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<OpenFailure | null>(null);
+  const [darkPages, setDarkPages] = useState(savedDarkPages);
   const title = meta.title || book.fileTitle;
   const savePosition = usePositionSaver(book.id);
   const tutor = useTutor(book.id, initialState.threads);
@@ -86,6 +94,13 @@ export function BookWorkspace({
   const readerBounds = useCallback(() => readerAreaRef.current?.getBoundingClientRect() ?? null, []);
   const readSelection = useCallback(() => readerRef.current?.getSelection() ?? null, []);
 
+  const togglePanel = () => (layout.isCollapsed(PANEL_ID) ? layout.expand(PANEL_ID) : layout.collapse(PANEL_ID));
+
+  const toggleDarkPages = () => {
+    setDarkPages(!darkPages);
+    void patchSettings({ pdfDarkPages: !darkPages });
+  };
+
   const showTab = (next: PanelTab) => {
     setTab(next);
     if (layout.isCollapsed(PANEL_ID)) layout.expand(PANEL_ID);
@@ -114,6 +129,27 @@ export function BookWorkspace({
     setNoteFocus({ id: noteId, at: Date.now() });
   };
 
+  /* Keys from the EPUB's frame are forwarded here too. */
+  const onShortcut = useEffectEvent((event: KeyboardEvent) => {
+    const mod = event.metaKey || event.ctrlKey;
+    if (mod && !event.shiftKey && !event.altKey && event.code === "Backslash") {
+      event.preventDefault();
+      togglePanel();
+    } else if (mod && event.shiftKey && !event.altKey && event.code === "KeyH" && !isTextEntry(event.target)) {
+      event.preventDefault();
+      const selection = readerRef.current?.getSelection();
+      if (selection) highlight(selection);
+    } else if (event.key === "Escape" && !isTextEntry(event.target)) {
+      readerRef.current?.clearSelection();
+    }
+  });
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onShortcut(event);
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, []);
+
   const menuNote = menu ? annotations.notes.find((note) => note.highlightId === menu.id) : undefined;
 
   const jumpTo = (anchor: Anchor) => void readerRef.current?.goTo(anchor);
@@ -136,11 +172,16 @@ export function BookWorkspace({
           <h1 className="truncate text-[13px] font-medium text-paper">{title}</h1>
           {chapter ? <span className="truncate text-label text-dim">{chapter}</span> : null}
         </div>
+        {book.format === "pdf" ? (
+          <IconButton label={darkPages ? "Show pages in their own colours" : "Show white pages dark"} active={darkPages} onClick={toggleDarkPages}>
+            <Moon />
+          </IconButton>
+        ) : null}
         <IconButton
-          label={panelOpen ? "Hide the tutor panel" : "Show the tutor panel"}
+          label={panelOpen ? "Hide the tutor panel (⌘\\)" : "Show the tutor panel (⌘\\)"}
           active={panelOpen}
           aria-controls={PANEL_ID}
-          onClick={() => (layout.isCollapsed(PANEL_ID) ? layout.expand(PANEL_ID) : layout.collapse(PANEL_ID))}
+          onClick={togglePanel}
         >
           <PanelRight />
         </IconButton>
@@ -152,7 +193,7 @@ export function BookWorkspace({
         className="min-h-0 flex-1"
       >
         <ResizablePanel id="reader-panel" minSize="360px" className="min-w-0">
-          <main ref={readerAreaRef} className="relative h-full min-w-0">
+          <main ref={readerAreaRef} data-dark-pages={darkPages || undefined} className="relative h-full min-w-0">
             {annotations.error ? (
               <div
                 role="alert"
@@ -166,7 +207,12 @@ export function BookWorkspace({
               </div>
             ) : null}
             {error ? (
-              <EmptyState icon={<FileWarning />} title="This book could not be opened" body={error} />
+              <EmptyState icon={<FileWarning />} title="This book could not be opened" body={error.message}>
+                {error.detail ? <p className="mt-2 max-w-[48ch] font-mono text-[11px] leading-relaxed text-dim/80 [overflow-wrap:anywhere]">{error.detail}</p> : null}
+                <Link href="/" className="press mt-3 rounded-sm bg-panel-raised px-2.5 py-1.5 text-label font-medium text-fog transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover hover:text-paper">
+                  Back to library
+                </Link>
+              </EmptyState>
             ) : (
               <Reader
                 ref={readerRef}

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { BookFormat, BookId, LibraryBook } from "@/lib/shared/types";
-import { getConfig } from "./config";
+import { ConfigError, getConfig } from "./config";
 import { parseFileName } from "./filename";
 
 const FORMATS: Record<string, BookFormat> = { ".epub": "epub", ".pdf": "pdf" };
@@ -63,4 +63,13 @@ export const findBook = async (id: unknown, root: string = getConfig().booksDir)
   const absPath = path.resolve(root, book.relPath);
   if (!absPath.startsWith(path.resolve(root) + path.sep)) return null;
   return { book, absPath };
+};
+
+/** Plain words for why the books folder can't be listed, for the library and book pages alike. */
+export const libraryProblem = (error: unknown, root?: string): string => {
+  if (error instanceof ConfigError) return error.message;
+  const missing = error instanceof Error && "code" in error && error.code === "ENOENT";
+  return missing
+    ? `The books folder ${root ?? getConfig().booksDir} does not exist. Check BOOKS_DIR in .env.local.`
+    : "The books folder could not be read. Check BOOKS_DIR in .env.local.";
 };

@@ -150,3 +150,31 @@ export const chapterAt = (outline: OutlineEntry[], page: number, top: number): s
   }
   return title;
 };
+
+/** Brightness at or above which a sampled pixel counts as paper. */
+const PAPER = 0.8;
+/** Share of paper pixels that makes a page "light": text on white, not a photo or a dark cover. */
+const LIGHT_PAGE_SHARE = 0.6;
+
+/**
+ * Whether a page is mostly white paper, from a small RGBA sample of its
+ * canvas. Only such pages are inverted in dark mode; photos and dark
+ * pages keep their own colours.
+ */
+export const isLightPage = (pixels: Uint8ClampedArray): boolean => {
+  let paper = 0;
+  let counted = 0;
+  for (let i = 0; i + 3 < pixels.length; i += 4) {
+    if (pixels[i + 3] < 128) continue;
+    counted += 1;
+    const luma = (0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]) / 255;
+    if (luma >= PAPER) paper += 1;
+  }
+  return counted > 0 && paper / counted >= LIGHT_PAGE_SHARE;
+};
+
+/** Up to `count` page numbers spread evenly through a document, first and last included. */
+export const samplePages = (total: number, count: number): number[] => {
+  if (total <= count) return Array.from({ length: total }, (_, i) => i + 1);
+  return [...new Set(Array.from({ length: count }, (_, i) => 1 + Math.round((i * (total - 1)) / (count - 1))))];
+};

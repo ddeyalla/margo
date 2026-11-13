@@ -1,8 +1,11 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import { FolderX } from "lucide-react";
 import { BookWorkspace } from "@/components/book/BookWorkspace";
-import { findBook } from "@/lib/server/library";
+import { EmptyState } from "@/components/ui";
+import { findBook, libraryProblem, type FoundBook } from "@/lib/server/library";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
 
@@ -17,7 +20,12 @@ export default function BookPage({ params }: PageProps<"/book/[bookId]">) {
 async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
   await connection();
   const { bookId } = await params;
-  const found = await findBook(bookId);
+  let found: FoundBook | null;
+  try {
+    found = await findBook(bookId);
+  } catch (error) {
+    return <LibraryUnavailable message={libraryProblem(error)} />;
+  }
   if (!found) notFound();
   const { book } = found;
   const [state, settings] = await Promise.all([readBookState(book.id), readSettings()]);
@@ -26,7 +34,23 @@ async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
       book={{ id: book.id, format: book.format, relPath: book.relPath, fileTitle: book.fileTitle }}
       initialState={state}
       savedProvider={settings.provider}
+      savedDarkPages={settings.pdfDarkPages}
     />
+  );
+}
+
+function LibraryUnavailable({ message }: { message: string }) {
+  return (
+    <div className="flex h-dvh flex-col bg-ink">
+      <EmptyState icon={<FolderX />} title="Your library is not set up yet" body={message}>
+        <Link
+          href="/"
+          className="press mt-3 rounded-sm bg-panel-raised px-2.5 py-1.5 text-label font-medium text-fog transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover hover:text-paper"
+        >
+          Back to library
+        </Link>
+      </EmptyState>
+    </div>
   );
 }
 

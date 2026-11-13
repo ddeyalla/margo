@@ -129,6 +129,8 @@ export const emptyBookState = (): BookState => ({
 export interface AppSettings {
   provider: ProviderId | null;
   models: Partial<Record<ProviderId, string>>;
+  /** Show white PDF pages as dark pages. On unless turned off. */
+  pdfDarkPages: boolean;
 }
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";

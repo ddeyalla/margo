@@ -3,8 +3,7 @@ import { connection } from "next/server";
 import { BookOpen, FolderX } from "lucide-react";
 import { BookList, type Shelf, type ShelfBook } from "@/components/library/BookList";
 import { EmptyState } from "@/components/ui";
-import { ConfigError, getConfig } from "@/lib/server/config";
-import { scanLibrary } from "@/lib/server/library";
+import { libraryProblem, scanLibrary } from "@/lib/server/library";
 import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
 
 const RECENT_LIMIT = 4;
@@ -15,17 +14,10 @@ async function Library() {
   try {
     books = await scanLibrary();
   } catch (error) {
-    const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
-    const message =
-      error instanceof ConfigError
-        ? error.message
-        : missing
-          ? `The books folder ${getConfig().booksDir} does not exist. Check BOOKS_DIR in .env.local.`
-          : "The books folder could not be read.";
     return (
       <>
         <Heading />
-        <EmptyState icon={<FolderX />} title="Your library is not set up yet" body={message} />
+        <EmptyState icon={<FolderX />} title="Your library is not set up yet" body={libraryProblem(error)} />
       </>
     );
   }

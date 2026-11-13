@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useEffectEvent, useImperativeHandle, useRef } from "react";
+import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
+import { ScanText, X } from "lucide-react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
+import { IconButton } from "@/components/ui";
 import type { Highlight, Position, SelectionContext } from "@/lib/shared/types";
 import { blockText, selectedRange, viewportRect } from "./dom";
+import { openFailure } from "./errors";
 import {
   PDFJS_ASSETS,
   chapterAt,
   flowText,
+  isLightPage,
   loadPdfJs,
   offsetInLayer,
   pageText,
   rangeInLayer,
   readOutline,
+  samplePages,
   type OutlineEntry,
 } from "./pdf";
 import { mergeLineBoxes, unionBox } from "./rects";
@@ -58,6 +63,22 @@ const isCancelled = (error: unknown) =>
   error instanceof Error && (error.name === "RenderingCancelledException" || error.name === "AbortException");
 
 const percent = (value: number, total: number) => `${(value / Math.max(1, total)) * 100}%`;
+
+/** Pages checked for text before calling a PDF a scan. */
+const SCAN_SAMPLES = 8;
+
+/* One small canvas, reused, to read a rendered page's colours from. */
+let sampler: CanvasRenderingContext2D | null = null;
+
+/** "light" for a page of mostly white paper, which dark mode inverts; "dark" for anything else. */
+const toneOf = (canvas: HTMLCanvasElement): "light" | "dark" => {
+  sampler ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (!sampler) return "dark";
+  sampler.canvas.width = 24;
+  sampler.canvas.height = 32;
+  sampler.drawImage(canvas, 0, 0, 24, 32);
+  return isLightPage(sampler.getImageData(0, 0, 24, 32).data) ? "light" : "dark";
+};
 
 /**
  * Draws a rendered page's highlights as tinted boxes between the canvas and
@@ -104,6 +125,8 @@ export function PdfReader({
   const engineRef = useRef<Engine>({ slots: [], texts: new Map(), outline: [] });
   /* Outlives page renders and document loads: pages read it each time they draw. */
   const highlightsRef = useRef(new Map<string, Highlight>());
+  /* No sampled page has any text: the PDF is pictures of pages. */
+  const [scanned, setScanned] = useState(false);
 
   /** The selection, if it lies inside this reader's pages. */
   const ownRange = (): Range | null => {
@@ -205,6 +228,7 @@ export function PdfReader({
       slot.textReady = false;
       slot.el.replaceChildren();
       delete slot.el.dataset.rendered;
+      delete slot.el.dataset.tone;
     };
 
     const render = async (slot: Slot) => {
@@ -240,6 +264,7 @@ export function PdfReader({
         slot.textLayer = new pdfjs.TextLayer({ textContentSource: content, container: layer, viewport });
         await Promise.all([slot.task.promise, slot.textLayer.render()]);
         if (generation !== slot.generation) return;
+        slot.el.dataset.tone = toneOf(canvas);
         const endOfContent = document.createElement("div");
         endOfContent.className = "endOfContent";
         layer.append(endOfContent);
@@ -388,15 +413,19 @@ export function PdfReader({
       emitReady({ title: usableTitle(info?.Title), author });
       engine.outline = await readOutline(doc).catch(() => []);
       if (!disposed) onScroll();
-    })().catch((error: unknown) => {
-      if (disposed) return;
-      emitError(
-        error instanceof Error && error.name === "PasswordException"
-          ? "This PDF is password protected."
-          : error instanceof Error
-            ? error.message
-            : "This book could not be opened.",
+      const loaded = doc;
+      const pagesWithText = await Promise.all(
+        samplePages(loaded.numPages, SCAN_SAMPLES).map((n) =>
+          loaded
+            .getPage(n)
+            .then((page) => page.getTextContent())
+            .then((content) => content.items.some((item) => "str" in item && item.str.trim() !== ""))
+            .catch(() => true),
+        ),
       );
+      if (!disposed && !pagesWithText.some(Boolean)) setScanned(true);
+    })().catch((error: unknown) => {
+      if (!disposed) emitError(openFailure("pdf", error));
     });
 
     return () => {
@@ -418,8 +447,27 @@ export function PdfReader({
   }, [bookId]);
 
   return (
-    <div ref={scrollRef} className="relative size-full overflow-y-auto bg-page">
-      <div ref={columnRef} className="flex flex-col items-center gap-4 px-8 py-10" />
+    <div className="relative size-full">
+      <div ref={scrollRef} className="relative size-full overflow-y-auto bg-page">
+        <div ref={columnRef} className="flex flex-col items-center gap-4 px-8 py-10" />
+      </div>
+      {scanned ? (
+        <div
+          role="status"
+          className="animate-rise absolute bottom-5 left-1/2 flex w-max max-w-[min(460px,calc(100%-24px))] -translate-x-1/2 items-start gap-2.5 rounded-lg bg-panel-raised py-2.5 pl-3 pr-1.5 shadow-float ring-1 ring-white/[0.06]"
+        >
+          <ScanText aria-hidden className="mt-0.5 size-4 shrink-0 text-fog" />
+          <div className="min-w-0 py-px">
+            <p className="text-[13px] font-medium text-paper">This PDF has no selectable text</p>
+            <p className="mt-0.5 text-label leading-relaxed text-dim">
+              Its pages are scanned images. You can read it here, but highlights, notes and the tutor need text to select.
+            </p>
+          </div>
+          <IconButton label="Dismiss" size="sm" onClick={() => setScanned(false)}>
+            <X />
+          </IconButton>
+        </div>
+      ) : null}
     </div>
   );
 }

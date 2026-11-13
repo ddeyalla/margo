@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chapterAt, destinationTop, locateOffset, type OutlineEntry } from "@/components/reader/pdf";
+import { chapterAt, destinationTop, isLightPage, locateOffset, samplePages, type OutlineEntry } from "@/components/reader/pdf";
 import { mergeLineBoxes } from "@/components/reader/rects";
 import { placeLabel } from "@/lib/shared/place";
 
@@ -131,5 +131,36 @@ describe("highlight boxes", () => {
         { left: 320, top: 100, width: 200, height: 12 },
       ]),
     ).toHaveLength(2);
+  });
+});
+
+describe("dark pages", () => {
+  const sample = (...pixels: [number, number, number, number][]) => new Uint8ClampedArray(pixels.flat());
+  const white: [number, number, number, number] = [250, 250, 248, 255];
+  const ink: [number, number, number, number] = [20, 20, 20, 255];
+  const photo: [number, number, number, number] = [90, 60, 40, 255];
+
+  it("calls text on white paper light", () => {
+    expect(isLightPage(sample(white, white, white, ink))).toBe(true);
+  });
+
+  it("leaves dark covers and photo pages alone", () => {
+    expect(isLightPage(sample(ink, ink, white, ink))).toBe(false);
+    expect(isLightPage(sample(photo, photo, white, photo))).toBe(false);
+  });
+
+  it("ignores transparent pixels and an empty sample", () => {
+    expect(isLightPage(sample(white, [0, 0, 0, 0], [0, 0, 0, 0]))).toBe(true);
+    expect(isLightPage(new Uint8ClampedArray())).toBe(false);
+  });
+});
+
+describe("scanned PDF check", () => {
+  it("samples every page of a short document", () => {
+    expect(samplePages(3, 8)).toEqual([1, 2, 3]);
+  });
+
+  it("spreads samples through a long one, first and last included", () => {
+    expect(samplePages(500, 5)).toEqual([1, 126, 251, 375, 500]);
   });
 });

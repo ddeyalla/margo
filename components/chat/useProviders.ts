@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { patchSettings } from "@/lib/client/api";
 import type { ProviderId, ProviderInfo } from "@/lib/shared/types";
 
 /**
@@ -29,11 +30,7 @@ export function useProviders(saved: ProviderId | null) {
 
   const choose = (id: ProviderId) => {
     setChosen(id);
-    void fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: id }),
-    }).catch(() => undefined);
+    void patchSettings({ provider: id });
   };
 
   /** Why nothing can be sent yet, or null when a tutor is ready. */

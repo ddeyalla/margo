@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parseFileName } from "@/lib/server/filename";
-import { bookIdOf, findBook, scanLibrary } from "@/lib/server/library";
+import { bookIdOf, findBook, libraryProblem, scanLibrary } from "@/lib/server/library";
 
 describe("parseFileName", () => {
   it("moves a trailing author parenthetical into the author line", () => {
@@ -154,5 +154,11 @@ describe("library lookup", () => {
   it("lists only books, grouped by their folder", async () => {
     const books = await scanLibrary(root);
     expect(books.map((book) => [book.folder, book.relPath, book.format])).toEqual([["Fiction", "Fiction/Dune.epub", "epub"]]);
+  });
+
+  it("names a missing books folder the same way on every page", async () => {
+    const missing = path.join(root, "Nowhere");
+    const error = await findBook(bookIdOf("Fiction/Dune.epub"), missing).catch((cause: unknown) => cause);
+    expect(libraryProblem(error, missing)).toBe(`The books folder ${missing} does not exist. Check BOOKS_DIR in .env.local.`);
   });
 });
