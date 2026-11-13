@@ -1,0 +1,41 @@
+import type { Anchor, BookFormat, Position } from "@/lib/shared/types";
+
+/* Hand-written checks for what the browser sends. Each returns the value in
+   its exact shape, or null, so nothing unchecked reaches the store. */
+
+type Json = Record<string, unknown>;
+
+export const isObject = (value: unknown): value is Json =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isFraction = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+
+const isCount = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0;
+
+const isCfi = (value: unknown): value is string =>
+  typeof value === "string" && value.startsWith("epubcfi(") && value.length <= 4000;
+
+/** A string of at most `max` characters, trimmed; null if absent, empty or too long. */
+export const shortText = (value: unknown, max: number): string | null =>
+  typeof value === "string" && value.trim() && value.length <= max ? value.trim() : null;
+
+export const parsePosition = (value: unknown, format: BookFormat): Position | null => {
+  if (!isObject(value) || value.kind !== format) return null;
+  if (value.kind === "epub" && isCfi(value.cfi) && isFraction(value.fraction)) {
+    return { kind: "epub", cfi: value.cfi, fraction: value.fraction };
+  }
+  if (value.kind === "pdf" && isCount(value.page) && value.page >= 1 && isFraction(value.offset) && isFraction(value.fraction)) {
+    return { kind: "pdf", page: value.page, offset: value.offset, fraction: value.fraction };
+  }
+  return null;
+};
+
+export const parseAnchor = (value: unknown, format: BookFormat): Anchor | null => {
+  if (!isObject(value) || value.kind !== format) return null;
+  if (value.kind === "epub" && isCfi(value.cfi)) return { kind: "epub", cfi: value.cfi };
+  if (value.kind === "pdf" && isCount(value.page) && value.page >= 1 && isCount(value.start) && isCount(value.end) && value.start <= value.end) {
+    return { kind: "pdf", page: value.page, start: value.start, end: value.end };
+  }
+  return null;
+};

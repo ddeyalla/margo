@@ -295,7 +295,8 @@ export function PdfReader({ ref, bookId, initialPosition, onReady, onSelectionCh
       resizer.observe(scroller);
 
       const info = (await doc.getMetadata().catch(() => null))?.info as Record<string, unknown> | undefined;
-      emitReady({ title: usableTitle(info?.Title), author: usableTitle(info?.Author) });
+      const author = usableTitle(info?.Author)?.split(/\s*;\s*/).filter(Boolean).join(", ") || null;
+      emitReady({ title: usableTitle(info?.Title), author });
       engine.outline = await readOutline(doc).catch(() => []);
       if (!disposed) onScroll();
     })().catch((error: unknown) => {

@@ -7,8 +7,10 @@ import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import type { ReaderHandle, ReaderMeta } from "@/components/reader/types";
 import { EmptyState } from "@/components/ui";
+import { patchBookState } from "@/lib/client/api";
 import type { BookFormat, BookId, BookState } from "@/lib/shared/types";
 import { FileWarning } from "lucide-react";
+import { usePositionSaver } from "./usePositionSaver";
 
 export interface WorkspaceBook {
   id: BookId;
@@ -26,6 +28,19 @@ export function BookWorkspace({ book, initialState }: { book: WorkspaceBook; ini
   const [chapter, setChapter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const title = meta.title || book.fileTitle;
+  const savePosition = usePositionSaver(book.id);
+
+  /* The book's own title and author replace the file name once it has been opened. */
+  const handleReady = (next: ReaderMeta) => {
+    const merged = { title: next.title ?? meta.title, author: next.author ?? meta.author };
+    setMeta(merged);
+    const stored = initialState.meta;
+    const title = merged.title ?? book.fileTitle;
+    if (stored?.title !== title || stored?.author !== merged.author) {
+      void patchBookState(book.id, { meta: { title, author: merged.author } });
+    }
+  };
+
   const Reader = book.format === "epub" ? EpubReader : PdfReader;
 
   return (
@@ -53,9 +68,12 @@ export function BookWorkspace({ book, initialState }: { book: WorkspaceBook; ini
             ref={readerRef}
             bookId={book.id}
             initialPosition={initialState.position}
-            onReady={(next) => setMeta((current) => ({ title: next.title ?? current.title, author: next.author ?? current.author }))}
+            onReady={handleReady}
             onSelectionChange={() => {}}
-            onPositionChange={(_, chapterTitle) => setChapter(chapterTitle)}
+            onPositionChange={(position, chapterTitle) => {
+              setChapter(chapterTitle);
+              savePosition(position);
+            }}
             onError={setError}
           />
         )}
