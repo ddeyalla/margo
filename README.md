@@ -122,6 +122,8 @@ To use a different model, add it to `data/settings.json` under the tutor's name 
 
 ## What Phase 2 might add
 
+Order, effort and what was rejected first: [roadmap.md](roadmap.md).
+
 - Flashcards made from your highlights. The Card button is there, marked "Soon".
 - Reading your Obsidian edits back into the app.
 - Search across your books and notes.
