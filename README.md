@@ -94,6 +94,7 @@ Stop the app with `Ctrl+C` in the terminal.
 - **Find them again.** The Notes and Highlights tabs list everything for the book. Click a quote to jump to it.
 - **Chapters.** The list button at the top left, or `⌘⇧L`, opens the table of contents in a column beside the book. The book makes room for it and keeps your place. The chapter you're in is marked. Click any chapter to go there. In a narrow window the list slides over the book instead.
 - **Scroll or pages.** Switch at the top right. Pages shows one page at a time, or two side by side in an EPUB when there's room. Turn pages with the arrow keys, `Page Up` and `Page Down`, or the arrows at the edges. Your place is kept when you switch, and the app remembers your choice.
+- **Where you are.** A thin bar along the bottom of the book shows how far through it you are. Click or drag it to jump, or focus it and use the arrow keys. Under it are the page and the percent. An EPUB shows its printed page number when the book has one, and otherwise its location, a fixed slice of the text. In Pages view the middle says how many pages are left in the chapter, when the book's files make that clear.
 - **Page colours.** The moon and sun at the top right switch an EPUB between a dark page and a warm light one. Only the page changes; the app around it stays dark. Your place is kept. In a PDF, the moon shows white pages dark and the sun shows them in their own colours. Photos keep their colours.
 - **More room.** `⌘\` hides or shows the side panel. `Esc` closes the toolbar.
 

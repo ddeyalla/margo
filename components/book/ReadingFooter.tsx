@@ -1,0 +1,82 @@
+"use client";
+
+import { useState, type KeyboardEvent, type PointerEvent } from "react";
+import type { ReaderPlace } from "@/components/reader/types";
+import { pageLabel, pagesLeftLabel, percentLabel } from "./progress";
+
+/** How far each key moves the progress bar. */
+const SEEK_KEYS: Record<string, (fraction: number) => number> = {
+  ArrowRight: (f) => f + 0.01,
+  ArrowUp: (f) => f + 0.01,
+  ArrowLeft: (f) => f - 0.01,
+  ArrowDown: (f) => f - 0.01,
+  PageUp: (f) => f + 0.1,
+  PageDown: (f) => f - 0.1,
+  Home: () => 0,
+  End: () => 1,
+};
+
+const clamp = (fraction: number) => Math.min(1, Math.max(0, fraction));
+
+const fractionAt = (event: PointerEvent<HTMLElement>) => {
+  const box = event.currentTarget.getBoundingClientRect();
+  return clamp((event.clientX - box.left) / Math.max(1, box.width));
+};
+
+/**
+ * A slim progress bar along the bottom of the book, with the page, what's left
+ * of the chapter and how far through the book you are. Click or drag the bar
+ * to jump; the jump happens when you let go.
+ */
+export function ReadingFooter({ fraction, place, onSeek }: { fraction: number; place: ReaderPlace | null; onSeek(fraction: number): void }) {
+  /* Where a drag on the bar would land, while it lasts. */
+  const [dragAt, setDragAt] = useState<number | null>(null);
+  const shown = dragAt ?? fraction;
+  const page = place?.page ? pageLabel(place.page) : null;
+  const left = place?.pagesLeftInChapter != null ? pagesLeftLabel(place.pagesLeftInChapter) : null;
+
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const step = SEEK_KEYS[event.key];
+    if (!step || event.metaKey || event.ctrlKey || event.altKey) return;
+    event.preventDefault();
+    onSeek(clamp(step(fraction)));
+  };
+
+  return (
+    <footer className="relative shrink-0 bg-page">
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label="Reading progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(shown * 100)}
+        aria-valuetext={[percentLabel(shown), page].filter(Boolean).join(", ")}
+        data-dragging={dragAt !== null || undefined}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setDragAt(fractionAt(event));
+        }}
+        onPointerMove={(event) => {
+          if (dragAt !== null) setDragAt(fractionAt(event));
+        }}
+        onPointerUp={(event) => {
+          if (dragAt !== null) onSeek(fractionAt(event));
+        }}
+        onLostPointerCapture={() => setDragAt(null)}
+        onKeyDown={onKeyDown}
+        className="group absolute inset-x-0 -top-1.5 z-20 h-3 cursor-pointer touch-none outline-none"
+      >
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-page-dim/20 transition-[height] duration-[var(--duration-fast)] ease-out group-hover:h-1 group-focus-visible:h-1 group-data-[dragging]:h-1">
+          <div className="h-full bg-page-dim" style={{ width: `${shown * 100}%` }} />
+        </div>
+      </div>
+      <div className="flex h-8 items-center gap-4 px-4 text-label text-page-dim tabular-nums">
+        <span className="shrink-0">{page}</span>
+        <span className="min-w-0 flex-1 truncate text-center">{left}</span>
+        <span className="shrink-0">{percentLabel(shown)}</span>
+      </div>
+    </footer>
+  );
+}

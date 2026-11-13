@@ -1,7 +1,7 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { describe, expect, it } from "vitest";
 import { readOutline } from "@/components/reader/pdf";
-import { epubToc, type FoliateTocItem } from "@/components/reader/toc";
+import { epubToc, wholeChapterSections, type FoliateTocItem } from "@/components/reader/toc";
 
 describe("EPUB table of contents", () => {
   const toc: FoliateTocItem[] = [
@@ -77,5 +77,47 @@ describe("PDF outline", () => {
 
   it("is empty for a PDF without an outline", async () => {
     expect(await readOutline(fakeDoc(null))).toEqual([]);
+  });
+});
+
+describe("sections that are one whole chapter", () => {
+  const linear = (count: number) => Array.from({ length: count }, () => true);
+
+  it("counts a chapter file with its own sub-entries, but not a part that spans later files", () => {
+    /* Part I in section 1, chapters 1 and 2 in sections 2 and 3, Part II in section 4. */
+    const entries = [
+      { depth: 0, section: 1 },
+      { depth: 1, section: 2 },
+      { depth: 2, section: 2 },
+      { depth: 2, section: 2 },
+      { depth: 1, section: 3 },
+      { depth: 0, section: 4 },
+    ];
+    expect([...wholeChapterSections(entries, linear(5))].sort()).toEqual([2, 3, 4]);
+  });
+
+  it("leaves out a chapter that runs on into a file with no entry of its own", () => {
+    const entries = [
+      { depth: 0, section: 0 },
+      { depth: 0, section: 2 },
+    ];
+    expect([...wholeChapterSections(entries, linear(3))]).toEqual([2]);
+  });
+
+  it("leaves out a file that holds two chapters", () => {
+    const entries = [
+      { depth: 0, section: 0 },
+      { depth: 0, section: 0 },
+      { depth: 0, section: 1 },
+    ];
+    expect([...wholeChapterSections(entries, linear(2))]).toEqual([1]);
+  });
+
+  it("skips sections outside the reading order when finding the next one", () => {
+    const entries = [
+      { depth: 0, section: 0 },
+      { depth: 0, section: 2 },
+    ];
+    expect([...wholeChapterSections(entries, [true, false, true])].sort()).toEqual([0, 2]);
   });
 });

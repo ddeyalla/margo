@@ -7,14 +7,17 @@ import type { Highlight, ReadingTheme, SelectionContext } from "@/lib/shared/typ
 import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
 import { openFailure } from "./errors";
 import { mergeLineBoxes, type Box } from "./rects";
-import { epubToc, type FoliateTocItem } from "./toc";
-import type { ReaderProps, TocEntry } from "./types";
+import { epubToc, wholeChapterSections, type FoliateTocItem } from "./toc";
+import type { PageNumber, ReaderProps, TocEntry } from "./types";
 
 /* foliate-js ships no types. These cover the parts this adapter uses. */
 interface FoliateRenderer extends HTMLElement {
   start: number;
   end: number;
   viewSize: number;
+  /** In Pages mode, the page of the section on screen, and the section's page count. */
+  page: number;
+  pages: number;
   next(): Promise<void>;
   prev(): Promise<void>;
   render(): void;
@@ -28,6 +31,8 @@ interface FoliateView extends HTMLElement {
   init(options: { lastLocation: string | null; showTextStart: boolean }): Promise<void>;
   close(): void;
   goTo(target: string): Promise<unknown>;
+  goToFraction(fraction: number): Promise<void>;
+  resolveNavigation(target: string): { index: number } | undefined;
   getCFI(index: number, range: Range): string;
   addAnnotation(annotation: { value: string }): Promise<unknown>;
   deleteAnnotation(annotation: { value: string }): Promise<unknown>;
@@ -47,7 +52,24 @@ interface RelocateDetail {
   cfi: string;
   fraction?: number;
   tocItem?: FoliateTocItem | null;
+  /** The entry of the book's print page list the passage falls on. */
+  pageItem?: { label?: string | null } | null;
+  location?: { current: number; total: number };
+  section?: { current: number };
 }
+
+/** The print page when the book has a page list, else foliate's location. */
+const pageNumber = ({ pageItem, location }: RelocateDetail): PageNumber | null => {
+  const label = pageItem?.label?.trim();
+  if (label) return { kind: "print", label };
+  return location ? { kind: "location", current: location.current, total: location.total } : null;
+};
+
+/** Page turns left in the section on screen. foliate pads each paginated section with a blank page at either end. */
+const pagesLeftInSection = (renderer: FoliateRenderer): number | null => {
+  const textPages = renderer.pages - 2;
+  return textPages > 0 ? Math.max(0, textPages - renderer.page) : null;
+};
 
 /** Served from public/ and imported at runtime, never bundled. */
 const FOLIATE_VIEW = "/vendor/foliate-js/view.js";
@@ -162,6 +184,8 @@ export function EpubReader({
   const sectionRef = useRef<{ doc: Document; index: number } | null>(null);
   /* The book's table of contents, keyed by the foliate item each entry came from. */
   const tocRef = useRef(new Map<FoliateTocItem, TocEntry>());
+  /* Sections that are one whole chapter, where the pages left in the section are the pages left in the chapter. */
+  const wholeChaptersRef = useRef(new Set<number>());
   /* Pages mode: foliate lays sections out in columns and turns page by page, crossing sections itself. */
   const pagedRef = useRef(false);
   const [atSectionEnd, setAtSectionEnd] = useState(false);
@@ -201,6 +225,9 @@ export function EpubReader({
     turnPage(direction) {
       const renderer = openRef.current ? viewRef.current?.renderer : null;
       void (direction === 1 ? renderer?.next() : renderer?.prev());
+    },
+    seek(fraction) {
+      if (openRef.current) void viewRef.current?.goToFraction(fraction);
     },
     showHighlight(highlight) {
       highlightsRef.current.set(highlight.id, highlight);
@@ -349,8 +376,18 @@ export function EpubReader({
     };
 
     const onRelocate = (event: Event) => {
-      const { cfi, fraction, tocItem } = (event as CustomEvent<RelocateDetail>).detail;
-      emitPosition({ kind: "epub", cfi, fraction: fraction ?? 0 }, (tocItem && tocRef.current.get(tocItem)) ?? null);
+      const detail = (event as CustomEvent<RelocateDetail>).detail;
+      const { cfi, fraction, tocItem, section } = detail;
+      const renderer = view?.renderer;
+      const counted = pagedRef.current && renderer && section && wholeChaptersRef.current.has(section.current);
+      emitPosition(
+        { kind: "epub", cfi, fraction: fraction ?? 0 },
+        {
+          chapter: (tocItem && tocRef.current.get(tocItem)) ?? null,
+          page: pageNumber(detail),
+          pagesLeftInChapter: counted ? pagesLeftInSection(renderer) : null,
+        },
+      );
       updateEdge();
     };
 
@@ -400,9 +437,14 @@ export function EpubReader({
       applyMode(modeNow() === "pages");
       renderer.addEventListener("scroll", onScroll);
       columns.observe(host);
-      const { metadata, toc } = view.book;
+      const { metadata, toc, sections } = view.book;
       tocRef.current = epubToc(toc);
-      emitReady({ title: metaText(metadata?.title), author: metaText(metadata?.author), toc: [...tocRef.current.values()], pageCount: null });
+      const entries = [...tocRef.current.values()].flatMap(({ depth, target }) => {
+        const section = target.kind === "epub" ? view?.resolveNavigation(target.href)?.index : undefined;
+        return section !== undefined && section >= 0 ? [{ depth, section }] : [];
+      });
+      wholeChaptersRef.current = wholeChapterSections(entries, sections.map((s) => s.linear !== "no"));
+      emitReady({ title: metaText(metadata?.title), author: metaText(metadata?.author), toc: [...tocRef.current.values()] });
       await view.init({ lastLocation: initialCfi(), showTextStart: true });
     })().catch((error: unknown) => {
       if (!disposed) emitError(openFailure("epub", error));

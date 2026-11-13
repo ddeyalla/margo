@@ -14,10 +14,11 @@ import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/reader/SelectionToolbar";
 import type { OpenFailure } from "@/components/reader/errors";
-import type { ReaderHandle, ReaderMeta, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
+import type { ReaderHandle, ReaderMeta, ReaderPlace, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton, Segmented } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
 import type { Anchor, BookFormat, BookId, BookState, Position, ProviderId, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
+import { ReadingFooter } from "./ReadingFooter";
 import { SidePanel, type PanelTab } from "./SidePanel";
 import { TocDrawer } from "./TocDrawer";
 import { usePositionSaver } from "./usePositionSaver";
@@ -59,13 +60,9 @@ const PAGE_KEYS: Record<string, 1 | -1> = { ArrowRight: 1, ArrowDown: 1, PageDow
 const isTextEntry = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || target.matches("input, textarea, select"));
 
-/** Lists, toolbars and the side panel use the arrow keys themselves, so those keys don't turn pages there. */
+/** Lists, toolbars, the progress bar and the side panel use the arrow keys themselves, so those keys don't turn pages there. */
 const usesArrows = (target: EventTarget | null) =>
-  target instanceof Element && !!target.closest(`nav, [role="toolbar"], [role="tablist"], [role="menu"], #${PANEL_ID}`);
-
-/** How far into the book: the page of a PDF, the share of an EPUB. */
-const progressLabel = (position: Position, pageCount: number | null) =>
-  position.kind === "pdf" ? `p. ${position.page}${pageCount ? ` of ${pageCount}` : ""}` : `${Math.round(position.fraction * 100)}%`;
+  target instanceof Element && !!target.closest(`nav, [role="toolbar"], [role="tablist"], [role="menu"], [role="slider"], #${PANEL_ID}`);
 
 export function BookWorkspace({
   book,
@@ -99,10 +96,10 @@ export function BookWorkspace({
   const closeToc = useCallback(() => setTocOpen(false), []);
   /* Whether the reader pane has room for the chapters as a column beside the book. */
   const [tocDocked, setTocDocked] = useState(true);
-  /* The entry of the table of contents being read, and how far into the book that is. */
-  const [chapter, setChapter] = useState<TocEntry | null>(null);
-  const [pageCount, setPageCount] = useState<number | null>(null);
+  /* How far into the book the reader is, and the chapter and page that is. */
   const [position, setPosition] = useState<Position | null>(null);
+  const [place, setPlace] = useState<ReaderPlace | null>(null);
+  const chapter = place?.chapter ?? null;
   const [mode, setMode] = useState(savedReadingMode);
   const [error, setError] = useState<OpenFailure | null>(null);
   const [darkPages, setDarkPages] = useState(savedDarkPages);
@@ -136,7 +133,6 @@ export function BookWorkspace({
   /* The book's own title and author replace the file name once it has been opened. */
   const handleReady = (next: ReaderMeta) => {
     setToc(next.toc);
-    setPageCount(next.pageCount);
     const merged = { title: next.title ?? meta.title, author: next.author ?? meta.author };
     setMeta(merged);
     const stored = initialState.meta;
@@ -252,8 +248,8 @@ export function BookWorkspace({
     onReady: handleReady,
     onSelectionChange: handleSelection,
     mode,
-    onPositionChange: (next, entry) => {
-      setChapter(entry);
+    onPositionChange: (next, nextPlace) => {
+      setPlace(nextPlace);
       setPosition(next);
       savePosition(next);
       setMenu(null);
@@ -287,9 +283,6 @@ export function BookWorkspace({
           <h1 className="truncate text-[13px] font-medium text-paper">{title}</h1>
           {chapter ? <span className="truncate text-label text-dim">{chapter.label}</span> : null}
         </div>
-        {position && !error ? (
-          <span className="shrink-0 px-1.5 text-label text-dim tabular-nums">{progressLabel(position, pageCount)}</span>
-        ) : null}
         <Segmented label="Reading mode" options={MODES} value={mode} onChange={chooseMode} />
         {book.format === "epub" ? (
           <Segmented label="Page colours" options={EPUB_THEMES} value={epubTheme} onChange={chooseEpubTheme} />
@@ -326,7 +319,7 @@ export function BookWorkspace({
               ref={readerAreaRef}
               data-dark-pages={(book.format === "pdf" && darkPages) || undefined}
               data-reading-theme={book.format === "epub" ? epubTheme : undefined}
-              className="relative h-full min-w-0 flex-1"
+              className="relative flex h-full min-w-0 flex-1 flex-col"
             >
               {annotations.error ? (
                 <div
@@ -347,17 +340,20 @@ export function BookWorkspace({
                     Back to library
                   </Link>
                 </EmptyState>
-              ) : book.format === "epub" ? (
-                <EpubReader {...readerProps} theme={epubTheme} />
               ) : (
-                <PdfReader {...readerProps} />
-              )}
-              {mode === "pages" && !error ? (
                 <>
-                  <PageTurn direction={-1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
-                  <PageTurn direction={1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
+                  <div className="relative min-h-0 flex-1">
+                    {book.format === "epub" ? <EpubReader {...readerProps} theme={epubTheme} /> : <PdfReader {...readerProps} />}
+                    {mode === "pages" ? (
+                      <>
+                        <PageTurn direction={-1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
+                        <PageTurn direction={1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
+                      </>
+                    ) : null}
+                  </div>
+                  <ReadingFooter fraction={position?.fraction ?? 0} place={place} onSeek={(fraction) => readerRef.current?.seek(fraction)} />
                 </>
-              ) : null}
+              )}
               {!tocDocked && !error ? (
                 <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}

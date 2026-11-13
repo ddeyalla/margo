@@ -216,6 +216,13 @@ export function PdfReader({
       const next = slots[slotAt(slots, scroller.scrollTop + scroller.clientHeight / 2).page - 1 + direction];
       if (next) scroller.scrollTo({ top: next.sheet.offsetTop, behavior: "smooth" });
     },
+    seek(fraction) {
+      const scroller = scrollRef.current;
+      const { slots } = engineRef.current;
+      if (!scroller || !slots.length) return;
+      const top = fraction * (scroller.scrollHeight - scroller.clientHeight);
+      scroller.scrollTop = mode === "pages" ? slotAt(slots, top + scroller.clientHeight / 2).sheet.offsetTop : top;
+    },
     showHighlight(highlight) {
       highlightsRef.current.set(highlight.id, highlight);
       if (highlight.anchor.kind === "pdf") paintPage(engineRef.current.slots[highlight.anchor.page - 1], highlightsRef.current);
@@ -391,8 +398,12 @@ export function PdfReader({
         if (!slots.length) return;
         emitSelectionRect();
         const position = currentPosition();
-        /* Pages mode shows the whole page, so its chapter is the one in effect at the page's middle. */
-        emitPosition(position, chapterAt(engine.outline, position.page, paged ? 0.5 : position.offset));
+        emitPosition(position, {
+          /* Pages mode shows the whole page, so its chapter is the one in effect at the page's middle. */
+          chapter: chapterAt(engine.outline, position.page, paged ? 0.5 : position.offset),
+          page: { kind: "pdf", page: position.page, total: slots.length },
+          pagesLeftInChapter: null,
+        });
       });
     };
 
@@ -475,7 +486,7 @@ export function PdfReader({
       const author = usableTitle(info?.Author)?.split(/\s*;\s*/).filter(Boolean).join(", ") || null;
       engine.outline = await readOutline(doc).catch(() => []);
       if (disposed) return;
-      emitReady({ title: usableTitle(info?.Title), author, toc: engine.outline, pageCount: doc.numPages });
+      emitReady({ title: usableTitle(info?.Title), author, toc: engine.outline });
       onScroll();
       const loaded = doc;
       const pagesWithText = await Promise.all(
