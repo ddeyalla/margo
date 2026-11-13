@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, FileWarning, Moon, PanelRight, TableOfContents, X } from "lucide-react";
@@ -31,6 +31,10 @@ export interface WorkspaceBook {
 
 const PANEL_ID = "tutor-panel";
 const TOC_SHORTCUT = "⌘⇧L";
+/** The chapters column's width. */
+const TOC_WIDTH = 280;
+/** The narrowest the book may get beside the chapters column; below this the chapters slide over the book instead. */
+const READER_MIN_WIDTH = 480;
 
 const MODES: { value: ReadingMode; label: string }[] = [
   { value: "scroll", label: "Scroll" },
@@ -68,6 +72,7 @@ export function BookWorkspace({
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
   const readerAreaRef = useRef<HTMLElement>(null);
+  const readerPaneRef = useRef<HTMLDivElement>(null);
   const [layout] = useState(createResizableController);
   const [panelOpen, setPanelOpen] = useState(true);
   const [tab, setTab] = useState<PanelTab>("chat");
@@ -79,6 +84,8 @@ export function BookWorkspace({
   const [toc, setToc] = useState<TocEntry[] | null>(null);
   const [tocOpen, setTocOpen] = useState(false);
   const closeToc = useCallback(() => setTocOpen(false), []);
+  /* Whether the reader pane has room for the chapters as a column beside the book. */
+  const [tocDocked, setTocDocked] = useState(true);
   /* The entry of the table of contents being read, and how far into the book that is. */
   const [chapter, setChapter] = useState<TocEntry | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
@@ -102,6 +109,15 @@ export function BookWorkspace({
     const frame = requestAnimationFrame(() => setPanelOpen(!layout.isCollapsed(PANEL_ID)));
     return () => cancelAnimationFrame(frame);
   }, [layout]);
+
+  /* The pane's width holds still while the chapters column opens, since the column lives inside it. */
+  useEffect(() => {
+    const pane = readerPaneRef.current;
+    if (!pane) return;
+    const observer = new ResizeObserver(([entry]) => setTocDocked(entry.contentRect.width - TOC_WIDTH >= READER_MIN_WIDTH));
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, []);
 
   /* The book's own title and author replace the file name once it has been opened. */
   const handleReady = (next: ReaderMeta) => {
@@ -165,8 +181,9 @@ export function BookWorkspace({
     setNoteFocus({ id: noteId, at: Date.now() });
   };
 
+  /* The docked column stays open; the sliding one gets out of the way. */
   const openEntry = (entry: TocEntry) => {
-    setTocOpen(false);
+    if (!tocDocked) setTocOpen(false);
     void readerRef.current?.goToEntry(entry);
   };
 
@@ -273,54 +290,65 @@ export function BookWorkspace({
         className="min-h-0 flex-1"
       >
         <ResizablePanel id="reader-panel" minSize="360px" className="min-w-0">
-          <main ref={readerAreaRef} data-dark-pages={darkPages || undefined} className="relative h-full min-w-0">
-            {annotations.error ? (
+          <div ref={readerPaneRef} style={{ "--toc-width": `${TOC_WIDTH}px` } as CSSProperties} className="flex h-full min-w-0">
+            {tocDocked && !error ? (
               <div
-                role="alert"
-                className="animate-rise absolute left-1/2 top-3 z-20 flex w-max max-w-[min(520px,calc(100%-24px))] -translate-x-1/2 items-start gap-2 rounded-lg bg-panel-raised py-2 pl-3 pr-1.5 text-label text-fog shadow-float ring-1 ring-white/[0.06]"
+                inert={!tocOpen}
+                className="h-full shrink-0 overflow-hidden transition-[width] duration-[var(--duration-base)] ease-out"
+                style={{ width: tocOpen ? TOC_WIDTH : 0 }}
               >
-                <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-warn" />
-                <p className="min-w-0 py-px leading-relaxed [overflow-wrap:anywhere]">{annotations.error}</p>
-                <IconButton label="Dismiss" size="sm" onClick={annotations.dismissError}>
-                  <X />
-                </IconButton>
+                <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked onSelect={openEntry} onClose={closeToc} />
               </div>
             ) : null}
-            {error ? (
-              <EmptyState icon={<FileWarning />} title="This book could not be opened" body={error.message}>
-                {error.detail ? <p className="mt-2 max-w-[48ch] font-mono text-[11px] leading-relaxed text-dim/80 [overflow-wrap:anywhere]">{error.detail}</p> : null}
-                <Link href="/" className="press mt-3 rounded-sm bg-panel-raised px-2.5 py-1.5 text-label font-medium text-fog transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover hover:text-paper">
-                  Back to library
-                </Link>
-              </EmptyState>
-            ) : (
-              <Reader
-                ref={readerRef}
-                bookId={book.id}
-                initialPosition={initialState.position}
-                onReady={handleReady}
-                onSelectionChange={handleSelection}
-                mode={mode}
-                onPositionChange={(next, entry) => {
-                  setChapter(entry);
-                  setPosition(next);
-                  savePosition(next);
-                  setMenu(null);
-                }}
-                onError={setError}
-                onHighlightClick={(id, rect) => setMenu({ id, rect })}
-              />
-            )}
-            {mode === "pages" && !error ? (
-              <>
-                <PageTurn direction={-1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
-                <PageTurn direction={1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
-              </>
-            ) : null}
-            {tocOpen && !error ? (
-              <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} onSelect={openEntry} onClose={closeToc} />
-            ) : null}
-          </main>
+            <main ref={readerAreaRef} data-dark-pages={darkPages || undefined} className="relative h-full min-w-0 flex-1">
+              {annotations.error ? (
+                <div
+                  role="alert"
+                  className="animate-rise absolute left-1/2 top-3 z-20 flex w-max max-w-[min(520px,calc(100%-24px))] -translate-x-1/2 items-start gap-2 rounded-lg bg-panel-raised py-2 pl-3 pr-1.5 text-label text-fog shadow-float ring-1 ring-white/[0.06]"
+                >
+                  <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-warn" />
+                  <p className="min-w-0 py-px leading-relaxed [overflow-wrap:anywhere]">{annotations.error}</p>
+                  <IconButton label="Dismiss" size="sm" onClick={annotations.dismissError}>
+                    <X />
+                  </IconButton>
+                </div>
+              ) : null}
+              {error ? (
+                <EmptyState icon={<FileWarning />} title="This book could not be opened" body={error.message}>
+                  {error.detail ? <p className="mt-2 max-w-[48ch] font-mono text-[11px] leading-relaxed text-dim/80 [overflow-wrap:anywhere]">{error.detail}</p> : null}
+                  <Link href="/" className="press mt-3 rounded-sm bg-panel-raised px-2.5 py-1.5 text-label font-medium text-fog transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover hover:text-paper">
+                    Back to library
+                  </Link>
+                </EmptyState>
+              ) : (
+                <Reader
+                  ref={readerRef}
+                  bookId={book.id}
+                  initialPosition={initialState.position}
+                  onReady={handleReady}
+                  onSelectionChange={handleSelection}
+                  mode={mode}
+                  onPositionChange={(next, entry) => {
+                    setChapter(entry);
+                    setPosition(next);
+                    savePosition(next);
+                    setMenu(null);
+                  }}
+                  onError={setError}
+                  onHighlightClick={(id, rect) => setMenu({ id, rect })}
+                />
+              )}
+              {mode === "pages" && !error ? (
+                <>
+                  <PageTurn direction={-1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
+                  <PageTurn direction={1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
+                </>
+              ) : null}
+              {!tocDocked && !error ? (
+                <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked={false} onSelect={openEntry} onClose={closeToc} />
+              ) : null}
+            </main>
+          </div>
         </ResizablePanel>
         <ResizableHandle
           aria-label="Resize the tutor panel"

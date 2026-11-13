@@ -512,7 +512,7 @@ export function PdfReader({
 
   return (
     <div className="relative size-full">
-      <div ref={scrollRef} className="pdf-scroller relative size-full overflow-y-auto bg-page">
+      <div ref={scrollRef} className="pdf-scroller relative size-full overflow-y-auto overflow-x-hidden bg-page">
         <div ref={columnRef} className="pdf-column flex flex-col items-center gap-4 px-8 py-10" />
       </div>
       {scanned ? (
