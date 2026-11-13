@@ -391,7 +391,8 @@ export function PdfReader({
         if (!slots.length) return;
         emitSelectionRect();
         const position = currentPosition();
-        emitPosition(position, chapterAt(engine.outline, position.page, position.offset));
+        /* Pages mode shows the whole page, so its chapter is the one in effect at the page's middle. */
+        emitPosition(position, chapterAt(engine.outline, position.page, paged ? 0.5 : position.offset));
       });
     };
 
