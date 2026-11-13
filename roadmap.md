@@ -32,13 +32,17 @@ Done when `tests/tutor.test.ts` passes and five real questions read tighter.
 
 The risk is the prompt, not the code. Prove it before building any UI.
 
-- [ ] Draft the card prompt: pick one fact the passage supports, then write 1–3 questions
+- [x] Draft the card prompt: pick one fact the passage supports, then write 1–3 questions
       that each reach it a different way. Zero cards when the passage has no clear fact.
-- [ ] Run it on 20 passages from the books in `notes/` with one fixed model.
-- [ ] Score each: answer supported by the text · question answerable on its own · the
-      questions really differ.
+      `scripts/card-eval/prompt.md`.
+- [x] Run it on 20 passages (your tutor threads plus other books) with one fixed model.
+- [x] Score each: answer supported by the text · question answerable on its own · every
+      card recalls the same fact.
 
 Gate: **70 % pass on all three.** Below that, fix the prompt and rerun.
+
+Passed on round 2: 95 % · 85 % · 70 %. Scores and open issues in
+`scripts/card-eval/README.md`.
 
 ## Phase 3 — Scheduler · M
 
