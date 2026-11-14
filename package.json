@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
+  "main": "electron/main.cjs",
+  "description": "Read your own books with an AI tutor beside you.",
+  "author": "rigg",
   "scripts": {
     "predev": "node scripts/copy-pdfjs-assets.mjs",
     "dev": "next dev",
@@ -10,7 +13,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "app": "electron .",
+    "app:server": "next build && node electron/assemble-server.mjs",
+    "app:build": "npm run app:server && electron-builder --mac dmg --arm64"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
@@ -33,11 +39,53 @@
     "@types/node": "^22.20.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "45.2.0",
+    "electron-builder": "26.18.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "jsdom": "^26.1.0",
     "tailwindcss": "4.3.3",
     "typescript": "^5",
     "vitest": "^5.1.0"
+  },
+  "build": {
+    "appId": "app.rigglearn",
+    "productName": "rigg learn",
+    "directories": {
+      "output": "dist-app"
+    },
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "!electron/icon.svg",
+      "!electron/assemble-server.mjs",
+      "!electron/after-pack.cjs",
+      "package.json",
+      "!node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "dist-app/server",
+        "to": "server"
+      }
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "electron/icon.icns",
+      "identity": null,
+      "category": "public.app-category.education"
+    },
+    "dmg": {
+      "title": "rigg learn"
+    },
+    "npmRebuild": false,
+    "afterPack": "electron/after-pack.cjs"
   }
 }

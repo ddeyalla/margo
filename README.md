@@ -90,6 +90,31 @@ Then open [http://localhost:3000](http://localhost:3000). Your books are listed 
 
 Stop the app with `Ctrl+C` in the terminal.
 
+## Mac app
+
+The app puts the same reader in its own window, with a Dock icon and a native folder picker. It is built from this folder. It is not signed.
+
+Build it:
+
+```bash
+npm run app:build
+```
+
+The disk image lands in `dist-app/`, as `rigg learn-0.1.0-arm64.dmg`. It is for Apple silicon Macs. Open it and drag rigg learn to Applications.
+
+The first time, macOS says it can't verify the developer. Right-click the app and choose Open, then Open again. Or go to System Settings, then Privacy & Security, scroll down and choose Open Anyway.
+
+How it works:
+
+- The app starts its own copy of the server and stops it when you quit. If a rigg learn server is already running on port 3210, such as `npm run dev`, the app uses that one and leaves it running. If another program holds port 3210, the app tells you and quits.
+- While the app is open, the browser at [http://localhost:3210](http://localhost:3210) shows the same books and notes. **Open in Browser** in the File menu opens it.
+- The app keeps its data in `~/Library/Application Support/rigg learn/data`. To share it with `npm run dev`, start that with `DATA_DIR` set to the same full path.
+- Closing the window leaves the app running, as on any Mac app. Quit with `⌘Q`.
+- The app finds `claude` and `codex` the way your terminal does. For the API tutor, put `ANTHROPIC_API_KEY=` and your key in `~/Library/Application Support/rigg learn/.env`.
+- If the app won't start, read `~/Library/Application Support/rigg learn/server.log`.
+
+To try the app without making a disk image, run `npm run app:server` once, then `npm run app`.
+
 ## Read
 
 - **Ask the tutor.** Select text. A small toolbar appears. Choose Explain, Go deeper or Ask. Go deeper asks you one question first, so you can try before it explains. Say "just tell me" to skip it.
@@ -139,7 +164,6 @@ Order, effort and what was rejected first: [roadmap.md](roadmap.md).
 - Reading your Obsidian edits back into the app.
 - Search across your books and notes.
 - A light theme for the whole app. EPUB pages can already be light.
-- A Mac app with a Dock icon and a folder picker.
 
 ## How it works
 

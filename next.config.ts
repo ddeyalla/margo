@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  /* The Mac app opens the dev server at 127.0.0.1 rather than localhost. */
+  allowedDevOrigins: ["127.0.0.1"],
   cacheComponents: true,
   partialPrefetching: true,
   /* A self-contained server for the Mac app, in .next/standalone. */
@@ -10,6 +12,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/books/\\[bookId\\]/cards": ["./lib/server/cards/prompt.md"],
     "/api/books/\\[bookId\\]/cover": [
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
       "./node_modules/pdfjs-dist/standard_fonts/**",
       "./node_modules/pdfjs-dist/cmaps/**",
       "./node_modules/pdfjs-dist/wasm/**",

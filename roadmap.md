@@ -103,10 +103,11 @@ Questions joined by "and" still slip through; see `scripts/work-eval/README.md`.
 
 ## Phase 8 — Mac app · L
 
-- [ ] Electron shell around the Next server. Reference: learnharness `electron/`,
+- [x] Electron shell around the Next server. Reference: learnharness `electron/`,
       `docs/desktop-release.md`.
-- [ ] Folder picker instead of `BOOKS_DIR`, Dock icon, signed DMG.
-- [ ] No auto-update, no Windows or Linux builds.
+- [x] Folder picker instead of `BOOKS_DIR`, Dock icon.
+- [ ] Signed DMG. Unsigned for now: the first open needs right-click, Open.
+- [x] No auto-update, no Windows or Linux builds.
 
 ## Not building
 

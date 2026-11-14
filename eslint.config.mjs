@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Vendored third-party code, loaded at runtime and never bundled.
     "public/vendor/**",
+    // The Mac app shell is plain Node (CommonJS), outside the Next build.
+    "electron/**",
+    "dist-app/**",
   ]),
 ]);
 

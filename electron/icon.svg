@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1b1f"/>
+      <stop offset="1" stop-color="#111113"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS icon grid: an 824 px rounded square centred on the 1024 px canvas -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="#ededf0" stroke-opacity="0.08" stroke-width="2"/>
+  <!-- open book: two pages meeting at the spine -->
+  <path d="M512 330 C440 292 338 286 262 304 L262 668 C338 650 440 656 512 694 Z" fill="#ededf0"/>
+  <path d="M512 330 C584 292 686 286 762 304 L762 668 C686 650 584 656 512 694 Z" fill="#d9d9de"/>
+  <!-- text lines on the left page -->
+  <g stroke="#111113" stroke-opacity="0.22" stroke-width="14" stroke-linecap="round" fill="none">
+    <path d="M318 400 C366 392 410 394 452 410"/>
+    <path d="M318 462 C366 454 410 456 452 472"/>
+    <path d="M318 524 C366 516 410 518 452 534"/>
+  </g>
+  <!-- amber bookmark ribbon on the right page -->
+  <path d="M636 296 L636 520 L676 482 L716 520 L716 306 C690 296 662 293 636 296 Z" fill="#f0b429"/>
+  <!-- spine -->
+  <path d="M512 330 L512 694" stroke="#111113" stroke-opacity="0.35" stroke-width="6"/>
+  <!-- cover edge under the book -->
+  <path d="M236 690 C330 670 440 676 512 718 C584 676 694 670 788 690" fill="none" stroke="#f0b429" stroke-width="18" stroke-linecap="round"/>
+</svg>
