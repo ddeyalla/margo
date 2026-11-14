@@ -168,3 +168,7 @@ npm run build     # production build
 - [foliate-js](https://github.com/johnfactotum/foliate-js) by John Factotum, MIT licence. A copy is in `public/vendor/foliate-js` with its `LICENSE`.
 - [pdf.js](https://github.com/mozilla/pdf.js) by Mozilla, Apache 2.0.
 - [Literata](https://github.com/googlefonts/literata) for book text, [Inter](https://rsms.me/inter/) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/) for the interface. All SIL Open Font Licence.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

@@ -119,8 +119,3 @@ Questions joined by "and" still slip through; see `scripts/work-eval/README.md`.
 - Other questioning modes (find the flaw, counter-examples, argument maps, chapter
   debriefs, cold opens). Revisit only if Phase 6 gets used.
 - Model-graded free-text review.
-
-## Open decision
-
-- [ ] **Licence.** rigg-learn has none, so it's all rights reserved. Add MIT (or another)
-      before it's shared. Rewriting learnharness ideas, not code, keeps that choice open.
