@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   /* A self-contained server for the Mac app, in .next/standalone. */
   output: "standalone",
+  /* Build output and downloaded models never belong in the server bundle, whatever a path call looks like. */
+  outputFileTracingExcludes: { "*": ["./dist-app/**", "./models/**", "./data/**"] },
   /* Read by path at run time, so tracing cannot see them. */
   outputFileTracingIncludes: {
     "/api/books/\\[bookId\\]/cards": ["./lib/server/cards/prompt.md"],

@@ -31,8 +31,8 @@ export interface SpeechStatus {
 }
 
 /** Beside the data folder, so the app and a source checkout each keep their own. */
-export const modelsDir = () => path.join(path.dirname(getFolders().dataDir), "models");
-const modelDir = () => path.join(modelsDir(), MODEL_NAME);
+export const modelsDir = () => path.join(/*turbopackIgnore: true*/ path.dirname(/*turbopackIgnore: true*/ getFolders().dataDir), "models");
+const modelDir = () => path.join(/*turbopackIgnore: true*/ modelsDir(), MODEL_NAME);
 
 /* One download and one recognizer for the whole process, even across dev reloads. */
 const state = ((globalThis as { __riggSpeech?: { download: Promise<void> | null; done: number; error: string | null; recognizer: Promise<Recognizer> | null } }).__riggSpeech ??= {
@@ -45,7 +45,7 @@ const state = ((globalThis as { __riggSpeech?: { download: Promise<void> | null;
 /** The model counts as installed only when every file is there; the folder appears by rename, never half full. */
 export const isInstalled = async (dir = modelDir()) => {
   try {
-    await Promise.all(MODEL_FILES.map((file) => access(path.join(dir, file))));
+    await Promise.all(MODEL_FILES.map((file) => access(path.join(/*turbopackIgnore: true*/ dir, file))));
     return true;
   } catch {
     return false;
@@ -74,8 +74,8 @@ const extract = (archive: string, into: string) =>
 export const installModel = async (url = MODEL_URL, bytes = MODEL_BYTES, stallMs = STALL_MS) => {
   const root = modelsDir();
   await mkdir(root, { recursive: true });
-  for (const entry of await readdir(root)) if (entry.startsWith(".tmp-")) await rm(path.join(root, entry), { recursive: true, force: true });
-  const work = await mkdtemp(path.join(root, ".tmp-"));
+  for (const entry of await readdir(root)) if (entry.startsWith(".tmp-")) await rm(path.join(/*turbopackIgnore: true*/ root, entry), { recursive: true, force: true });
+  const work = await mkdtemp(path.join(/*turbopackIgnore: true*/ root, ".tmp-"));
   /* The timer restarts whenever bytes arrive; if it runs out the transfer is aborted. */
   const controller = new AbortController();
   let stalled = false;
@@ -91,7 +91,7 @@ export const installModel = async (url = MODEL_URL, bytes = MODEL_BYTES, stallMs
     watch();
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok || !response.body) throw new Error(`The download failed (HTTP ${response.status}).`);
-    const archive = path.join(work, "model.tar.bz2");
+    const archive = path.join(/*turbopackIgnore: true*/ work, "model.tar.bz2");
     const counted = Readable.fromWeb(response.body as import("node:stream/web").ReadableStream<Uint8Array>);
     counted.on("data", (chunk: Buffer) => {
       state.done += chunk.length;
@@ -100,10 +100,10 @@ export const installModel = async (url = MODEL_URL, bytes = MODEL_BYTES, stallMs
     await pipeline(counted, createWriteStream(archive));
     const size = (await stat(archive)).size;
     if (size !== bytes) throw new Error(`The download was ${size} bytes, expected ${bytes}.`);
-    const unpacked = path.join(work, "unpacked");
+    const unpacked = path.join(/*turbopackIgnore: true*/ work, "unpacked");
     await mkdir(unpacked);
     await extract(archive, unpacked);
-    const found = path.join(unpacked, MODEL_NAME);
+    const found = path.join(/*turbopackIgnore: true*/ unpacked, MODEL_NAME);
     if (!(await isInstalled(found))) throw new Error("The download did not contain the model.");
     await rm(modelDir(), { recursive: true, force: true });
     await rename(found, modelDir());
@@ -165,8 +165,8 @@ const loadRecognizer = async (): Promise<Recognizer> => {
   const recognizer = new sherpa.OfflineRecognizer({
     featConfig: { sampleRate: SAMPLE_RATE, featureDim: 80 },
     modelConfig: {
-      transducer: { encoder: path.join(dir, MODEL_FILES[0]), decoder: path.join(dir, MODEL_FILES[1]), joiner: path.join(dir, MODEL_FILES[2]) },
-      tokens: path.join(dir, MODEL_FILES[3]),
+      transducer: { encoder: path.join(/*turbopackIgnore: true*/ dir, MODEL_FILES[0]), decoder: path.join(/*turbopackIgnore: true*/ dir, MODEL_FILES[1]), joiner: path.join(/*turbopackIgnore: true*/ dir, MODEL_FILES[2]) },
+      tokens: path.join(/*turbopackIgnore: true*/ dir, MODEL_FILES[3]),
       numThreads: 4,
       provider: "cpu",
       modelType: "nemo_transducer",
