@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
   /* Read by path at run time, so tracing cannot see them. */
   outputFileTracingIncludes: {
     "/api/books/\\[bookId\\]/cards": ["./lib/server/cards/prompt.md"],
-    "/api/speech/transcribe": ["./node_modules/sherpa-onnx-node/**", "./node_modules/sherpa-onnx-darwin-arm64/**"],
+    "/api/speech/transcribe": ["./lib/server/speech-process.cjs", "./node_modules/sherpa-onnx-node/**", "./node_modules/sherpa-onnx-darwin-arm64/**"],
     "/api/books/\\[bookId\\]/cover": [
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
       "./node_modules/pdfjs-dist/standard_fonts/**",

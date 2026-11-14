@@ -499,9 +499,14 @@ export function BookWorkspace({
         ) : (
           <Segmented label="Page colours" options={PDF_THEMES} value={darkPages ? "dark" : "light"} onChange={(theme) => chooseDarkPages(theme === "dark")} />
         )}
-        <span title={book.format === "epub" ? undefined : "EPUB only for now"} className="inline-flex">
+        {/* A disabled button takes no pointer, so the reason it is off sits on this wrapper. */}
+        <span title={book.format === "epub" ? undefined : "Spotlight works in EPUB books for now"} className="inline-flex">
           <IconButton
-            label={`Spotlight: dim all but the paragraph you're reading (${SPOTLIGHT_SHORTCUT})`}
+            label={
+              book.format === "epub"
+                ? `Spotlight: dim all but the paragraph you're reading (${SPOTLIGHT_SHORTCUT})`
+                : "Spotlight works in EPUB books for now"
+            }
             active={spotlight}
             disabled={book.format !== "epub" || !!error}
             onClick={toggleSpotlight}

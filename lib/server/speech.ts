@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { fork, spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { access, mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
@@ -35,12 +35,19 @@ export const modelsDir = () => path.join(/*turbopackIgnore: true*/ path.dirname(
 const modelDir = () => path.join(/*turbopackIgnore: true*/ modelsDir(), MODEL_NAME);
 
 /* One download and one recognizer for the whole process, even across dev reloads. */
-const state = ((globalThis as { __riggSpeech?: { download: Promise<void> | null; done: number; error: string | null; recognizer: Promise<Recognizer> | null } }).__riggSpeech ??= {
-  download: null,
-  done: 0,
-  error: null,
-  recognizer: null,
-});
+interface SpeechState {
+  download: Promise<void> | null;
+  done: number;
+  error: string | null;
+  recognizer: Promise<Recognizer> | null;
+  /** Requests being decoded right now; the model is never unloaded under one. */
+  busy: number;
+  idle: ReturnType<typeof setTimeout> | null;
+}
+const state: SpeechState = ((globalThis as { __riggSpeech?: SpeechState }).__riggSpeech ??= { download: null, done: 0, error: null, recognizer: null, busy: 0, idle: null });
+/* A dev reload keeps the old state object, which may predate these fields. */
+state.busy ??= 0;
+state.idle ??= null;
 
 /** The model counts as installed only when every file is there; the folder appears by rename, never half full. */
 export const isInstalled = async (dir = modelDir()) => {
@@ -156,45 +163,104 @@ export const dropFillers = (text: string) =>
     .trim();
 
 export interface Recognizer {
-  transcribe(samples: Float32Array): string;
+  transcribe(samples: Float32Array): Promise<string>;
+  /** False once the process behind it has exited, so the next request starts a fresh one. */
+  readonly running: boolean;
+  close(): void;
 }
 
-const loadRecognizer = async (): Promise<Recognizer> => {
-  const sherpa = await import("sherpa-onnx-node");
-  const dir = modelDir();
-  const recognizer = new sherpa.OfflineRecognizer({
-    featConfig: { sampleRate: SAMPLE_RATE, featureDim: 80 },
-    modelConfig: {
-      transducer: { encoder: path.join(/*turbopackIgnore: true*/ dir, MODEL_FILES[0]), decoder: path.join(/*turbopackIgnore: true*/ dir, MODEL_FILES[1]), joiner: path.join(/*turbopackIgnore: true*/ dir, MODEL_FILES[2]) },
-      tokens: path.join(/*turbopackIgnore: true*/ dir, MODEL_FILES[3]),
-      numThreads: 4,
-      provider: "cpu",
-      modelType: "nemo_transducer",
-    },
-  });
-  return {
-    /* Decoding blocks this process for about a thirtieth of the audio's length. Only JS-owned arrays go in:
-       the library's own wave reader hands back native memory, which Electron's Node refuses. */
-    transcribe(samples) {
-      const stream = recognizer.createStream();
-      stream.acceptWaveform({ samples, sampleRate: SAMPLE_RATE });
-      recognizer.decode(stream);
-      return dropFillers(recognizer.getResult(stream).text);
-    },
-  };
-};
+/** The model is unloaded after this long without a request, giving back its memory (about 1.4 GB). */
+export const IDLE_MS = 5 * 60_000;
 
-/** The words in the recording. The model loads on the first call and stays loaded. Throws if it is not installed. */
-export const transcribe = async (samples: Float32Array, load: () => Promise<Recognizer> = loadRecognizer) => {
-  if (!(await isInstalled())) throw new Error("The speech model is not installed.");
-  state.recognizer ??= load().catch((error: unknown) => {
+/** Starts the model in its own process (lib/server/speech-process.cjs), so decoding never blocks this server. */
+const startRecognizer = () =>
+  new Promise<Recognizer>((resolve, reject) => {
+    const script = path.join(/*turbopackIgnore: true*/ process.cwd(), "lib", "server", "speech-process.cjs");
+    /* Under the Mac app, this is Electron's own Node, which the inherited ELECTRON_RUN_AS_NODE keeps a plain Node. */
+    const child = fork(script, [], {
+      serialization: "advanced",
+      execArgv: [],
+      env: { ...process.env, RIGG_SPEECH_MODEL: modelDir() },
+      stdio: ["ignore", "inherit", "inherit", "ipc"],
+    });
+    const waiting = new Map<number, { resolve(text: string): void; reject(error: Error): void }>();
+    let next = 0;
+    let running = true;
+    const recognizer: Recognizer = {
+      get running() {
+        return running;
+      },
+      transcribe: (samples) =>
+        new Promise((resolve, reject) => {
+          const id = next++;
+          waiting.set(id, { resolve, reject });
+          child.send({ id, samples }, (error) => {
+            if (!error) return;
+            waiting.delete(id);
+            reject(new Error("The speech model stopped. Try again."));
+          });
+        }),
+      close: () => {
+        running = false;
+        child.kill();
+      },
+    };
+    child.on("message", (message: { type?: string; id?: number; text?: string; error?: string }) => {
+      if (message.type === "ready") return resolve(recognizer);
+      if (message.type === "failed") return reject(new Error(`Could not load the speech model: ${message.error}`));
+      const asker = waiting.get(message.id ?? -1);
+      if (!asker) return;
+      waiting.delete(message.id!);
+      if (message.error) asker.reject(new Error(message.error));
+      else asker.resolve(message.text ?? "");
+    });
+    const stopped = (error: Error) => {
+      running = false;
+      reject(error);
+      for (const asker of waiting.values()) asker.reject(error);
+      waiting.clear();
+    };
+    child.on("error", (error) => stopped(new Error(`Could not start the speech model: ${error.message}`)));
+    child.on("exit", () => stopped(new Error("The speech model stopped. Try again.")));
+  });
+
+/** Unloads the model once nothing has asked for a while. */
+const scheduleUnload = () => {
+  clearTimeout(state.idle ?? undefined);
+  state.idle = setTimeout(() => {
+    const loaded = state.recognizer;
+    if (state.busy > 0 || !loaded) return;
     state.recognizer = null;
-    throw error;
-  });
-  return (await state.recognizer).transcribe(samples);
+    void loaded.then((recognizer) => recognizer.close(), () => {});
+  }, IDLE_MS);
+  state.idle.unref?.();
 };
 
-/** Forgets the loaded recognizer. For tests. */
+/** The words in the recording. The model loads on the first call and unloads after IDLE_MS unused. Throws if it is not installed. */
+export const transcribe = async (samples: Float32Array, load: () => Promise<Recognizer> = startRecognizer) => {
+  state.busy++;
+  clearTimeout(state.idle ?? undefined);
+  try {
+    if (!(await isInstalled())) throw new Error("The speech model is not installed.");
+    let loading = state.recognizer;
+    if (loading && !(await loading.catch(() => null))?.running) loading = null;
+    if (!loading) {
+      loading = state.recognizer = load();
+      loading.catch(() => {
+        if (state.recognizer === loading) state.recognizer = null;
+      });
+    }
+    return dropFillers(await (await loading).transcribe(samples));
+  } finally {
+    state.busy--;
+    scheduleUnload();
+  }
+};
+
+/** Unloads the model now. For tests. */
 export const resetRecognizer = () => {
+  clearTimeout(state.idle ?? undefined);
+  void state.recognizer?.then((recognizer) => recognizer.close(), () => {});
   state.recognizer = null;
+  state.busy = 0;
 };

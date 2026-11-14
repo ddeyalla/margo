@@ -168,23 +168,32 @@ export function PdfReader({
     const startLayer = range && layerOf(range.startContainer);
     if (!range || !rect || !startLayer) return null;
     const { texts, outline } = engineRef.current;
-    const page = Number(startLayer.dataset.page);
-    const pageBox = startLayer.getBoundingClientRect();
+    const endLayer = layerOf(range.endContainer) ?? startLayer;
+    const startPage = Number(startLayer.dataset.page);
+    const startOffset = offsetInLayer(startLayer, range.startContainer, range.startOffset);
+    const endOffset = offsetInLayer(endLayer, range.endContainer, range.endOffset);
+    /* An anchor lies on one page. A selection running across a page break keeps the page holding more of it,
+       so a word or two at the foot of one page doesn't stand in for the sentence on the next.
+       The quote and the words around it are cut at the same place as the anchor. */
+    const crosses = endLayer !== startLayer;
+    const onStartPage = (texts.get(startPage) ?? "").length - startOffset;
+    const keepEnd = crosses && endOffset > onStartPage;
+    const layer = keepEnd ? endLayer : startLayer;
+    const page = Number(layer.dataset.page);
     const text = texts.get(page) ?? "";
-    const endLayer = layerOf(range.endContainer);
-    /* An anchor lies on one page, so a selection running into the next page keeps only what is on this one;
-       the quote and the words around it are cut at the same place as the anchor. */
-    const crosses = !!endLayer && Number(endLayer.dataset.page) !== page;
+    const start = keepEnd ? 0 : startOffset;
+    const end = keepEnd || !crosses ? endOffset : text.length;
     const kept = range.cloneRange();
-    if (crosses) kept.setEnd(startLayer, startLayer.childNodes.length);
-    const start = offsetInLayer(startLayer, range.startContainer, range.startOffset);
-    const end = crosses || !endLayer ? text.length : offsetInLayer(endLayer, range.endContainer, range.endOffset);
+    if (keepEnd) kept.setStart(endLayer, 0);
+    else if (crosses) kept.setEnd(startLayer, startLayer.childNodes.length);
+    const pageBox = layer.getBoundingClientRect();
+    const top = keepEnd ? 0 : (rect.top - pageBox.top) / Math.max(1, pageBox.height);
     return {
       text: normalizeText(flowText(blockText(kept.cloneContents()))),
       before: trimBefore(flowText((texts.get(page - 1) ?? "") + "\n" + text.slice(0, start))),
       after: trimAfter(flowText(text.slice(end) + "\n" + (texts.get(page + 1) ?? ""))),
       anchor: { kind: "pdf", page, start, end },
-      chapterTitle: chapterAt(outline, page, (rect.top - pageBox.top) / Math.max(1, pageBox.height))?.label ?? null,
+      chapterTitle: chapterAt(outline, page, top)?.label ?? null,
       rect,
     };
   };

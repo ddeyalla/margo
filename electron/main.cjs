@@ -21,8 +21,9 @@ const START_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 3000;
 
 // The name sets the menu title. The path is set outright so it is exactly this folder.
+// RIGG_USER_DATA, like RIGG_PORT, lets a test copy run beside the real app with its own data.
 app.setName("rigg learn");
-app.setPath("userData", path.join(app.getPath("appData"), "rigg learn"));
+app.setPath("userData", process.env.RIGG_USER_DATA || path.join(app.getPath("appData"), "rigg learn"));
 const userData = app.getPath("userData");
 const dataDir = path.join(userData, "data");
 const logPath = path.join(userData, "server.log");

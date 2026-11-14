@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "public/vendor/**",
     // The Mac app shell is plain Node (CommonJS), outside the Next build.
     "electron/**",
+    // The speech model's process, also plain Node, started by lib/server/speech.ts.
+    "lib/server/speech-process.cjs",
     "dist-app/**",
   ]),
 ]);

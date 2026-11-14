@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { insertAtCaret, resample } from "@/lib/shared/dictation";
-import { MAX_PCM_BYTES, MODEL_BYTES, MODEL_NAME, installModel, isInstalled, modelsDir, parsePcm, resetRecognizer, speechStatus, startDownload, transcribe } from "@/lib/server/speech";
+import { IDLE_MS, MAX_PCM_BYTES, MODEL_BYTES, MODEL_NAME, installModel, isInstalled, modelsDir, parsePcm, resetRecognizer, speechStatus, startDownload, transcribe } from "@/lib/server/speech";
 
 const floats = (...values: number[]) => new Float32Array(values).buffer;
 
@@ -64,13 +64,85 @@ describe("the model folder", () => {
     expect(await speechStatus()).toMatchObject({ state: "ready" });
   });
 
+  const fakeRecognizer = (text = "hello there") => {
+    const recognizer = { running: true, transcribe: vi.fn(async () => text), close: vi.fn(() => void (recognizer.running = false)) };
+    return recognizer;
+  };
+
   it("refuses to transcribe without the model, and loads the recognizer once with it", async () => {
-    const load = vi.fn(async () => ({ transcribe: () => "hello there" }));
+    const recognizer = fakeRecognizer();
+    const load = vi.fn(async () => recognizer);
     await expect(transcribe(new Float32Array(10), load)).rejects.toThrow("not installed");
     await installFake();
     expect(await transcribe(new Float32Array(10), load)).toBe("hello there");
     await transcribe(new Float32Array(10), load);
     expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("unloads the model after it sits unused, and loads it again on the next request", async () => {
+    await installFake();
+    vi.useFakeTimers();
+    try {
+      const first = fakeRecognizer();
+      const load = vi.fn(async () => first);
+      await transcribe(new Float32Array(10), load);
+      vi.advanceTimersByTime(IDLE_MS - 1000);
+      expect(first.close).not.toHaveBeenCalled();
+      await transcribe(new Float32Array(10), load);
+      vi.advanceTimersByTime(IDLE_MS - 1000);
+      expect(first.close).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1000);
+      await vi.runAllTimersAsync();
+      expect(first.close).toHaveBeenCalledTimes(1);
+      const second = fakeRecognizer("again");
+      load.mockResolvedValue(second);
+      expect(await transcribe(new Float32Array(10), load)).toBe("again");
+      expect(load).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never unloads the model in the middle of a request", async () => {
+    await installFake();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const recognizer = fakeRecognizer();
+      const pending: { finish?: (text: string) => void } = {};
+      recognizer.transcribe.mockImplementationOnce(() => new Promise<string>((resolve) => (pending.finish = resolve)));
+      const load = vi.fn(async () => recognizer);
+      const slow = transcribe(new Float32Array(10), load);
+      while (!pending.finish) await new Promise((resolve) => setImmediate(resolve));
+      /* A quick request finishes while the slow one is still decoding, and starts the unload clock. */
+      await transcribe(new Float32Array(10), load);
+      vi.advanceTimersByTime(IDLE_MS * 2);
+      expect(recognizer.close).not.toHaveBeenCalled();
+      pending.finish("done");
+      expect(await slow).toBe("done");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts a fresh model when the last one has stopped", async () => {
+    await installFake();
+    const dead = fakeRecognizer();
+    const load = vi.fn(async () => dead);
+    await transcribe(new Float32Array(10), load);
+    dead.running = false;
+    load.mockResolvedValue(fakeRecognizer("fresh"));
+    expect(await transcribe(new Float32Array(10), load)).toBe("fresh");
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("forgets a model that failed to load, so the next request tries again", async () => {
+    await installFake();
+    const load = vi.fn(async (): Promise<ReturnType<typeof fakeRecognizer>> => {
+      throw new Error("bad model");
+    });
+    await expect(transcribe(new Float32Array(10), load)).rejects.toThrow("bad model");
+    load.mockImplementation(async () => fakeRecognizer("ok"));
+    expect(await transcribe(new Float32Array(10), load)).toBe("ok");
   });
 
   it("throws away a download of the wrong size and leaves nothing behind", async () => {

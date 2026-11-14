@@ -121,7 +121,7 @@ model.
 - [x] Download on first use (about 490 MB), with progress, into a `models` folder beside the data folder.
 - [x] Mic button in the Ask and Explain it back inputs and the chat box. The words land in
       the field for you to fix before sending.
-- [ ] Mac app asks for the microphone.
+- [x] Mac app asks for the microphone. The app is signed ad hoc so macOS can tie the permission to it.
 
 ## Phase 10 — Staying with the book · M
 
