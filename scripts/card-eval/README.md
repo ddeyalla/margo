@@ -32,7 +32,7 @@ Round 3 told the model to write the fact with one main verb, to card one-term se
 
 Still wrong in round 2:
 
-- A "fact" joined by "and" or "so" still carries two claims (Personal MBA, Refactoring UI, the pre-LLM NLP passage).
+- A "fact" joined by "and" or "so" still carries two claims (three passages).
 - One reply added a correction after the JSON. Phase 4's single repair round covers this.
 - A one-term selection got a card in one book and no card in another.
-- Dialogue with no stated point (Good Strategy Bad Strategy) got a card when it should have got none.
+- Dialogue with no stated point (one passage) got a card when it should have got none.
