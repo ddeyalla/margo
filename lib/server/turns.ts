@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { MAX_IMAGES_PER_MESSAGE } from "@/lib/shared/attachments";
 import { trimAfter, trimBefore } from "@/lib/shared/context";
-import type { BookId, BookState, ChatMessage, ImageAttachment, LibraryBook, ProviderId, Thread, TutorAction } from "@/lib/shared/types";
+import type { BookId, BookState, ChatMessage, ImageAttachment, LibraryBook, ProviderId, Thread, TutorAction, TypedAction } from "@/lib/shared/types";
 import { readAttachment } from "./attachments";
 import { getConfig } from "./config";
 import { hold, readBookState, updateBookState } from "./store";
@@ -16,7 +16,7 @@ export type TurnRequest =
 
 const MAX_QUOTE = 12_000;
 const MAX_MESSAGE = 8_000;
-const ACTIONS: TutorAction[] = ["explain", "deeper", "ask"];
+const ACTIONS: TutorAction[] = ["explain", "deeper", "work", "ask", "explainBack"];
 
 /** The images a message names, each one stored for this book. */
 const readAttachments = async (value: unknown, bookId: BookId, dataDir: string): Promise<ImageAttachment[] | string> => {
@@ -46,8 +46,9 @@ const passageThread = (body: Record<string, unknown>, book: LibraryBook, provide
   const anchor = selection && parseAnchor(selection.anchor, book.format);
   const quote = selection && shortText(selection.text, MAX_QUOTE);
   if (!action || !selection || !anchor || !quote) return "Invalid selection.";
-  const question = action === "ask" ? shortText(body.question, MAX_MESSAGE) : null;
-  if (action === "ask" && !question) return "A question is required.";
+  const typed = action === "ask" || action === "explainBack";
+  const question = typed ? shortText(body.question, MAX_MESSAGE) : null;
+  if (typed && !question) return action === "ask" ? "A question is required." : "An explanation is required.";
   return {
     kind: "passage",
     id: randomUUID(),
@@ -60,7 +61,7 @@ const passageThread = (body: Record<string, unknown>, book: LibraryBook, provide
     provider,
     sessionId: null,
     createdAt: now,
-    messages: [{ role: "user", content: question ?? ACTION_MESSAGES[action as Exclude<TutorAction, "ask">], createdAt: now }],
+    messages: [{ role: "user", content: question ?? ACTION_MESSAGES[action as Exclude<TutorAction, TypedAction>], createdAt: now }],
   };
 };
 

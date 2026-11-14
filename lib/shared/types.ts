@@ -42,7 +42,10 @@ export interface BookMeta {
 
 export type ProviderId = "claude" | "codex" | "api";
 
-export type TutorAction = "explain" | "deeper" | "ask";
+export type TutorAction = "explain" | "deeper" | "work" | "ask" | "explainBack";
+
+/** Actions whose first message is what the reader typed, not a fixed line. */
+export type TypedAction = "ask" | "explainBack";
 
 export type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 

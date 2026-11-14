@@ -3,15 +3,16 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, CircleAlert, CornerDownRight, ImageIcon, MessageSquareText } from "lucide-react";
 import { Button, EmptyState, Spinner } from "@/components/ui";
+import { JUST_TELL_ME, MAX_HINTS, workState } from "@/lib/shared/work";
 import { placeLabel } from "@/lib/shared/place";
-import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread, TutorAction } from "@/lib/shared/types";
+import { threadLabel } from "@/lib/shared/threads";
+import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread } from "@/lib/shared/types";
 import { Composer } from "./Composer";
 import { DropArea, Lightbox, MessageImages } from "./Images";
 import { Markdown } from "./Markdown";
 import { useImageDraft } from "./useImageDraft";
 import { awaitsAnswer, type FailedTurn, type MessageDraft, type Tutor } from "./useTutor";
 
-const ACTION_LABELS: Record<Exclude<TutorAction, "ask">, string> = { explain: "Explain", deeper: "Go deeper" };
 
 const when = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -88,7 +89,7 @@ function Threads({
         <EmptyState
           icon={<MessageSquareText />}
           title="Ask about a passage"
-          body="Select text in the book, then choose Explain, Go deeper or Ask… Or ask below, and paste or drop an image to show the tutor."
+          body="Select text in the book, then choose Explain, Go deeper, Work it out, Explain it back or Ask… Or ask below, and paste or drop an image to show the tutor."
         />
       )}
       <Composer
@@ -112,7 +113,7 @@ function ThreadList({ threads, onOpen }: { threads: Thread[]; onOpen(thread: Thr
       <ul className="flex flex-col gap-0.5">
         {threads.map((thread) => {
           const first = thread.messages[0]?.content ?? "";
-          const label = thread.kind === "general" ? "No passage" : thread.action === "ask" ? first : ACTION_LABELS[thread.action];
+          const label = threadLabel(thread);
           const place = thread.anchor && placeLabel(thread.chapterTitle, thread.anchor);
           return (
             <li key={thread.id}>
@@ -183,6 +184,8 @@ function ThreadView({
 
   /* The reader's last message went unanswered: stopped before the first word, or failed. */
   const unanswered = streaming === null && awaitsAnswer(thread);
+  const { leading, hintsUsed } = workState(thread);
+  const busy = streaming !== null || !!unavailable;
 
   return (
     <DropArea onFiles={images.add} enabled={!unavailable} className="flex min-h-0 flex-1 flex-col">
@@ -263,6 +266,20 @@ function ThreadView({
           ) : null}
         </div>
       </div>
+      {leading ? (
+        <div className="flex shrink-0 items-center gap-1.5 px-3 pb-1.5">
+          <Button
+            size="sm"
+            disabled={busy || hintsUsed >= MAX_HINTS}
+            onClick={() => onReply({ text: `Hint ${hintsUsed + 1}`, attachments: [] })}
+          >
+            Hint
+          </Button>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onReply({ text: JUST_TELL_ME, attachments: [] })}>
+            Just tell me
+          </Button>
+        </div>
+      ) : null}
       <Composer
         placeholder="Ask a follow-up…"
         disabledReason={unavailable}

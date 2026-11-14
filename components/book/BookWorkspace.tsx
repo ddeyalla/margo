@@ -457,7 +457,7 @@ export function BookWorkspace({
         readSelection={readSelection}
         disabledReason={unavailable}
         onAction={(action, selection) => startThread(action, selection, null)}
-        onAsk={(question, selection) => startThread("ask", selection, question)}
+        onAsk={(text, selection, kind) => startThread(kind, selection, text)}
         onHighlight={highlight}
         onNote={writeNote}
         onCard={makeCards}

@@ -2,7 +2,7 @@
 
 Read your own EPUB and PDF books with an AI tutor beside you.
 
-Select a passage and ask the tutor to explain it, go deeper, or answer a question. Highlight what matters. Write notes in markdown. Turn a passage into cards and review them when they're due. Everything you save is also copied to a markdown file, so your notes show up in Obsidian.
+Select a passage and ask the tutor to explain it, go deeper, help you work it out, check your explanation, or answer a question. Highlight what matters. Write notes in markdown. Turn a passage into cards and review them when they're due. Everything you save is also copied to a markdown file, so your notes show up in Obsidian.
 
 The app runs on your own computer. Your books stay there.
 
@@ -91,6 +91,8 @@ Stop the app with `Ctrl+C` in the terminal.
 ## Read
 
 - **Ask the tutor.** Select text. A small toolbar appears. Choose Explain, Go deeper or Ask. Go deeper asks you one question first, so you can try before it explains. Say "just tell me" to skip it.
+- **Work it out.** Select text and choose Work it out. The tutor says what you are working out, then asks one question and waits. It tells you if your answer is right, partly right or wrong, and points at your first mistake without fixing it. Stuck? **Hint** gives one step at a time: where to re-read, what kind of idea it is, the idea itself, then the worked step. **Just tell me** gets the full explanation. The tutor also explains after your sixth reply. After that it answers like normal.
+- **Explain it back.** Select text and choose Explain it back. Write a line or two in your own words. The tutor checks it against the passage. If it holds, it says so. If not, it quotes your first mistake and points you back to the part of the passage that shows it. There is no grade. Try again, or ask a follow-up.
 - **Show the tutor an image.** Paste one with `⌘V`, drop it on the chat, or choose the image button in the message box. A message can carry up to 4 PNG, JPEG, WebP or GIF images. Ask about them, or send them alone and the tutor explains them. Images work in a follow-up on a passage, and in the box under the list of threads, where you can also ask about the book without selecting anything. Click an image in the chat to see it larger.
 - **Highlight.** Select text and choose the highlighter, or press `⌘⇧H`. Click a highlight to remove it or open its note.
 - **Write a note.** Select text and choose the notebook button. Notes are markdown. `⌘↩` saves.

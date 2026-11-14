@@ -1,5 +1,6 @@
 import { placeLabel } from "@/lib/shared/place";
-import type { Thread, TutorAction } from "@/lib/shared/types";
+import { isSixthReply } from "@/lib/shared/work";
+import type { Thread, TutorAction, TypedAction } from "@/lib/shared/types";
 import type { TutorImage, TutorMessage, TutorTurn } from "./types";
 
 export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who is reading a book. They select a passage, or share an image such as a figure, a screenshot or a photo of their working, and ask you about it. Some questions come with no passage at all.
@@ -15,9 +16,10 @@ export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who 
 - Write in Markdown. Use a list or a small table only when it makes the answer clearer.`;
 
 /** What the reader's message says in the chat for each toolbar action. */
-export const ACTION_MESSAGES: Record<Exclude<TutorAction, "ask">, string> = {
+export const ACTION_MESSAGES: Record<Exclude<TutorAction, TypedAction>, string> = {
   explain: "Explain this passage.",
   deeper: "Go deeper on this passage.",
+  work: "Help me work this out.",
 };
 
 /** What the reader's message says when they send images with no words. */
@@ -27,7 +29,25 @@ const ACTION_REQUESTS: Record<Exclude<TutorAction, "ask">, string> = {
   explain: "Explain this passage.",
   deeper:
     "Go deeper on this passage, but let me try first. Don't explain yet. Ask me one short question about the idea underneath it, one I can attempt from the passage, and stop. When I answer, tell me what I got right and what I missed, then go deeper: the ideas underneath it, how it connects to the wider subject, and what an expert would add. If I say I don't know or ask you to just tell me, explain it straight away.",
+  work: [
+    "Help me work this passage out. Lead me to the answer; don't give it. These rules hold for the whole thread.",
+    "First decide the right answer privately, and never state it. Open with one line naming what we're working out, such as \"We're working out why X holds.\" Then ask me one question I can attempt from the passage, and stop.",
+    "Every reply ends with exactly one question: one sentence with one question mark, asking for one thing. A question joined with \"and\" or \"or\" counts as two, and so does a second question anywhere in the reply. Put any context before it as statements. When I reply, judge it in a few words as right, partly right or wrong. If it's partly right or wrong, nudge me at my first mistake: quote the words of mine that go wrong and say what to look at again. Never say what the passage says instead, never write the corrected version, and never say \"it doesn't say X, it says Y\". Never reveal the answer early.",
+    "When I send \"Hint 1\" to \"Hint 4\", give exactly that step and no more. Hint 1: name only where to look again, the sentence or paragraph, by its first few words. Don't quote the part that holds the answer, don't explain it and don't add a clue; the question that follows must not name or hint at the idea. Hint 2: say what kind of idea it is, such as a cause, a definition or a trade-off. Hint 3: name the idea. Hint 4: show the worked step. Then ask one question.",
+    "When I say \"Just tell me\", or when my message says it's my sixth reply, explain it fully and plainly, then stop leading. After that, act as a normal tutor for the rest of the thread.",
+  ].join("\n\n"),
+  explainBack: [
+    "Check my explanation against the passage.",
+    "If it holds, say so in one line, then add at most one thing worth noticing that I left out.",
+    "If it doesn't, point to my first mistake only. Quote my words, say what's off, and point me back to the part of the passage that shows it. Don't rewrite my whole explanation and don't list every issue.",
+    "Give no grade or score, and no praise padding.",
+    "If there was a mistake, end by inviting me to try again, in one short line.",
+    "After that, answer my follow-ups as a normal tutor.",
+  ].join("\n\n"),
 };
+
+/** Added to the reader's sixth reply in a Work it out thread, in the provider's copy only. */
+const SIXTH_REPLY_NOTE = "(This is my sixth reply. Explain it fully now.)";
 
 export interface BookLabel {
   title: string;
@@ -48,7 +68,12 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
       .filter((line) => line !== null)
       .join("\n");
   }
-  const request = thread.action === "ask" ? `My question: ${first}` : ACTION_REQUESTS[thread.action];
+  const request =
+    thread.action === "ask"
+      ? `My question: ${first}`
+      : thread.action === "explainBack"
+        ? `My explanation, in my own words: ${first}\n\n${ACTION_REQUESTS.explainBack}`
+        : ACTION_REQUESTS[thread.action];
   return [
     heading,
     where ? `Where: ${where}` : null,
@@ -77,7 +102,8 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
 export const buildTurn = (book: BookLabel, thread: Thread, model: string | null, images: ReadonlyMap<string, Buffer>): TutorTurn => ({
   system: TUTOR_SYSTEM,
   messages: thread.messages.reduce<TutorMessage[]>((merged, message, index) => {
-    const content = index === 0 ? contextMessage(book, thread) : message.content;
+    const base = index === 0 ? contextMessage(book, thread) : message.content;
+    const content = index === thread.messages.length - 1 && isSixthReply(thread) ? `${base}\n\n${SIXTH_REPLY_NOTE}` : base;
     const attached = (message.attachments ?? []).flatMap((attachment): TutorImage[] => {
       const bytes = images.get(attachment.id);
       return bytes ? [{ mediaType: attachment.mediaType, data: bytes.toString("base64") }] : [];

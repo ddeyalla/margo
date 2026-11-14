@@ -14,6 +14,8 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 export const placeFloating = (box: HTMLElement, rect: SelectionRect, area: DOMRect) => {
   const outside =
     rect.top + rect.height < area.top || rect.top > area.bottom || rect.left + rect.width < area.left || rect.left > area.right;
+  /* Never wider than the reader; a bar that doesn't fit wraps onto a second row. */
+  box.style.maxWidth = `${Math.max(0, area.width - 2 * EDGE)}px`;
   const { offsetWidth: width, offsetHeight: height } = box;
   let top = rect.top - height - GAP;
   if (top < area.top + EDGE) top = rect.top + rect.height + GAP;

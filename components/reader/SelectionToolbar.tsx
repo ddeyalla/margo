@@ -1,7 +1,7 @@
 "use client";
 
 import { useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
-import { ArrowUp, BookOpenText, Highlighter, Layers, MessageCircleQuestion, NotebookPen, Sparkles } from "lucide-react";
+import { ArrowUp, BookOpenText, Highlighter, Layers, Lightbulb, MessageCircleQuestion, NotebookPen, PenLine, Sparkles } from "lucide-react";
 import { Toolbar, ToolbarButton, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
 import type { SelectionContext } from "@/lib/shared/types";
 import { placeFloating } from "./floating";
@@ -19,14 +19,22 @@ interface SelectionToolbarProps {
   readSelection(): SelectionContext | null;
   /** Why the tutor can't answer right now; the actions are disabled and say this. */
   disabledReason: string | null;
-  onAction(action: "explain" | "deeper", selection: SelectionContext): void;
-  onAsk(question: string, selection: SelectionContext): void;
+  onAction(action: "explain" | "deeper" | "work", selection: SelectionContext): void;
+  /** The reader's own words: a question, or an explanation to check. */
+  onAsk(text: string, selection: SelectionContext, kind: InputKind): void;
   onHighlight(selection: SelectionContext): void;
   onNote(selection: SelectionContext): void;
   /** Asks the tutor for flashcards on the passage. */
   onCard(selection: SelectionContext): void;
   onDismiss(): void;
 }
+
+type InputKind = "ask" | "explainBack";
+
+const INPUTS = {
+  ask: { icon: MessageCircleQuestion, label: "Your question about this passage", placeholder: "Ask about this passage…", button: "Ask" },
+  explainBack: { icon: PenLine, label: "Your explanation of this passage", placeholder: "Explain it in a line or two…", button: "Check" },
+} satisfies Record<InputKind, { icon: typeof PenLine; label: string; placeholder: string; button: string }>;
 
 const itemClass =
   "press inline-flex h-7 shrink-0 select-none items-center gap-1.5 rounded-sm px-2 text-label text-fog outline-none transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out hover:bg-white/[0.06] hover:text-paper focus-visible:bg-white/[0.06] focus-visible:text-paper data-[disabled]:opacity-40 data-[disabled]:hover:bg-transparent data-[disabled]:hover:text-fog [&>svg]:size-3.5 [&>svg]:shrink-0";
@@ -42,8 +50,8 @@ function Action({ icon, label, title, disabled, onPress }: { icon: ReactNode; la
 
 /**
  * Floats above the selected passage (below it when there's no room) and offers
- * the tutor's actions, Highlight and Note. Ask… swaps the buttons for an
- * inline question field.
+ * the tutor's actions, Highlight and Note. Ask… and Explain it back swap the
+ * buttons for an inline text field.
  */
 export function SelectionToolbar({
   ref,
@@ -58,7 +66,7 @@ export function SelectionToolbar({
   onDismiss,
 }: SelectionToolbarProps) {
   const [rect, setRect] = useState<SelectionRect | null>(null);
-  const [asking, setAsking] = useState(false);
+  const [asking, setAsking] = useState<InputKind | null>(null);
   const [question, setQuestion] = useState("");
   const boxRef = useRef<HTMLDivElement>(null);
   /* Read once the reader reaches for the toolbar, before focus can move and clear a PDF selection. */
@@ -68,7 +76,7 @@ export function SelectionToolbar({
   const reset = () => {
     askingRef.current = false;
     snapshot.current = null;
-    setAsking(false);
+    setAsking(null);
     setQuestion("");
     setRect(null);
   };
@@ -92,7 +100,7 @@ export function SelectionToolbar({
 
   const take = () => (snapshot.current ??= readSelection());
 
-  const act = (action: "explain" | "deeper") => {
+  const act = (action: "explain" | "deeper" | "work") => {
     const selection = take();
     if (!selection) return;
     reset();
@@ -110,9 +118,10 @@ export function SelectionToolbar({
   const submit = () => {
     const selection = snapshot.current;
     const text = question.trim();
-    if (!selection || !text) return;
+    if (!selection || !text || !asking) return;
+    const kind = asking;
     reset();
-    onAsk(text, selection);
+    onAsk(text, selection, kind);
   };
 
   const dismiss = () => {
@@ -121,6 +130,12 @@ export function SelectionToolbar({
   };
 
   const disabled = disabledReason !== null;
+  const input = INPUTS[asking ?? "ask"];
+  const open = (kind: InputKind) => {
+    if (!take()) return;
+    askingRef.current = true;
+    setAsking(kind);
+  };
 
   return (
     <div
@@ -136,15 +151,15 @@ export function SelectionToolbar({
     >
       <Toolbar
         aria-label="Selected passage"
-        className="flex items-center gap-0.5 rounded-lg bg-panel-raised p-1 shadow-float ring-1 ring-white/[0.06]"
+        className="flex flex-wrap items-center gap-0.5 rounded-lg bg-panel-raised p-1 shadow-float ring-1 ring-white/[0.06]"
       >
         {asking ? (
           <>
-            <MessageCircleQuestion aria-hidden className="ml-1.5 size-3.5 shrink-0 text-dim" />
+            <input.icon aria-hidden className="ml-1.5 size-3.5 shrink-0 text-dim" />
             <ToolbarInput
               autoFocus
-              aria-label="Your question about this passage"
-              placeholder="Ask about this passage…"
+              aria-label={input.label}
+              placeholder={input.placeholder}
               value={question}
               maxLength={8000}
               onChange={(event) => setQuestion(event.currentTarget.value)}
@@ -167,8 +182,8 @@ export function SelectionToolbar({
               className="h-7 w-[min(320px,60vw)] bg-transparent px-1.5 text-[13px] text-paper outline-none placeholder:text-dim"
             />
             <ToolbarButton
-              aria-label="Ask"
-              title="Ask (Enter)"
+              aria-label={input.button}
+              title={`${input.button} (Enter)`}
               disabled={!question.trim() || disabled}
               onClick={submit}
               className={`${itemClass} w-7 justify-center px-0`}
@@ -180,16 +195,20 @@ export function SelectionToolbar({
           <>
             <Action icon={<Sparkles />} label="Explain" title={disabledReason ?? undefined} disabled={disabled} onPress={() => act("explain")} />
             <Action icon={<Layers />} label="Go deeper" title={disabledReason ?? undefined} disabled={disabled} onPress={() => act("deeper")} />
+            <Action icon={<Lightbulb />} label="Work it out" title={disabledReason ?? undefined} disabled={disabled} onPress={() => act("work")} />
             <Action
               icon={<MessageCircleQuestion />}
               label="Ask…"
               title={disabledReason ?? undefined}
               disabled={disabled}
-              onPress={() => {
-                if (!take()) return;
-                askingRef.current = true;
-                setAsking(true);
-              }}
+              onPress={() => open("ask")}
+            />
+            <Action
+              icon={<PenLine />}
+              label="Explain it back"
+              title={disabledReason ?? undefined}
+              disabled={disabled}
+              onPress={() => open("explainBack")}
             />
             <ToolbarSeparator className="mx-1 h-4 w-px shrink-0 bg-line-strong" />
             <ToolbarButton

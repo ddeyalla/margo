@@ -84,20 +84,21 @@ Done when those cases have tests.
 
 A fourth toolbar action. The tutor leads the reader to the answer instead of giving it.
 Check it on 20 passages first: one question per turn, no early answer, nudges use the
-reader's own words.
+reader's own words. Passed on round 2: 16 · 17 · 19 of 20, and 17 of 20 for Hint 1.
+Questions joined by "and" still slip through; see `scripts/work-eval/README.md`.
 
-- [ ] New `TutorAction` `"work"`, labelled "Work it out", kept for the thread's life.
-- [ ] Prompt: decide the right answer first, name the target in one line ("why X holds"),
+- [x] New `TutorAction` `"work"`, labelled "Work it out", kept for the thread's life.
+- [x] Prompt: decide the right answer first, name the target in one line ("why X holds"),
       then ask. Judge each reply right / partly / wrong, and nudge at the first mistake
       without giving the correction.
-- [ ] **Hint** button, one step per click: re-read this part → what kind of idea it is →
+- [x] **Hint** button, one step per click: re-read this part → what kind of idea it is →
       name it → the worked step.
-- [ ] **Just tell me** button: the tutor explains it fully. Also happens on its own after
+- [x] **Just tell me** button: the tutor explains it fully. Also happens on its own after
       six turns.
 
 ## Phase 7 — Explain it back · S
 
-- [ ] Toolbar action: the reader writes two lines on the passage; the tutor points to the
+- [x] Toolbar action: the reader writes two lines on the passage; the tutor points to the
       first mistake, or says it holds. No grade.
 
 ## Phase 8 — Mac app · L
