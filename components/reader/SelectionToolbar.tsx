@@ -116,7 +116,13 @@ export function SelectionToolbar({
   useLayoutEffect(() => {
     const box = boxRef.current;
     const area = bounds();
-    if (box && rect && area) placeFloating(box, rect, area);
+    if (!box || !rect || !area) return;
+    /* Placed again whenever the bar changes size, such as a line under the question appearing, so it never covers the passage. */
+    const place = () => placeFloating(box, rect, area);
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(box);
+    return () => observer.disconnect();
   }, [rect, asking, bounds]);
 
   if (!rect) return null;
@@ -205,7 +211,7 @@ export function SelectionToolbar({
               }}
               className="h-7 w-[min(320px,60vw)] bg-transparent px-1.5 text-[13px] text-paper outline-none placeholder:text-dim"
             />
-            <MicButton dictation={dictation} disabled={disabled} className="size-6" />
+            <MicButton dictation={dictation} disabled={disabled} className="h-6 min-w-6" />
             <ToolbarButton
               aria-label={input.button}
               title={`${input.button} (Enter)`}

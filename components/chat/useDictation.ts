@@ -51,7 +51,14 @@ export function useDictation(onText: (words: string) => void) {
   const alive = useRef(true);
   /* Bumped by every start and cancel; work that finds it changed has been cancelled. */
   const run = useRef(0);
-  const capture = useRef<{ stream: MediaStream; context: AudioContext; node: AudioWorkletNode; chunks: Float32Array[]; length: number } | null>(null);
+  const capture = useRef<{
+    stream: MediaStream;
+    context: AudioContext;
+    node: AudioWorkletNode;
+    analyser: AnalyserNode;
+    chunks: Float32Array[];
+    length: number;
+  } | null>(null);
   const request = useRef<AbortController | null>(null);
   const latest = useRef(onText);
   useEffect(() => {
@@ -161,7 +168,9 @@ export function useDictation(onText: (words: string) => void) {
       await context.resume();
       if (run.current !== mine) throw new DOMException("cancelled", "AbortError");
       const node = new AudioWorkletNode(context, "dictation-capture", { numberOfOutputs: 1, outputChannelCount: [1] });
-      const open = { stream, context, node, chunks: [] as Float32Array[], length: 0 };
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 512;
+      const open = { stream, context, node, analyser, chunks: [] as Float32Array[], length: 0 };
       node.port.onmessage = (event: MessageEvent<Float32Array>) => {
         open.chunks.push(event.data);
         open.length += event.data.length;
@@ -170,7 +179,9 @@ export function useDictation(onText: (words: string) => void) {
       /* The worklet only runs while it feeds the output, so it goes there silently. */
       const silent = context.createGain();
       silent.gain.value = 0;
-      context.createMediaStreamSource(stream).connect(node);
+      const source = context.createMediaStreamSource(stream);
+      source.connect(node);
+      source.connect(analyser);
       node.connect(silent).connect(context.destination);
       capture.current = open;
       setPhase("recording");
@@ -256,7 +267,18 @@ export function useDictation(onText: (words: string) => void) {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [phase, cancel]);
 
-  return { phase, progress, note, toggle, cancel, confirmDownload };
+  /** How loud the mic is right now, 0 to 1, for the bars on the button. Read every frame, so it never re-renders. */
+  const level = useCallback(() => {
+    const analyser = capture.current?.analyser;
+    if (!analyser) return 0;
+    const samples = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(samples);
+    let sum = 0;
+    for (const sample of samples) sum += sample * sample;
+    return Math.min(1, Math.sqrt(sum / samples.length) * 6);
+  }, []);
+
+  return { phase, progress, note, level, toggle, cancel, confirmDownload };
 }
 
 export type Dictation = ReturnType<typeof useDictation>;

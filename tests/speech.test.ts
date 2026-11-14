@@ -134,3 +134,12 @@ describe("resample", () => {
     expect(resample(new Float32Array(480), 48000, 16000)).toHaveLength(160);
   });
 });
+
+describe("dropFillers", () => {
+  it("takes out thinking sounds and keeps the words", async () => {
+    const { dropFillers } = await import("@/lib/server/speech");
+    expect(dropFillers("Tell me how these uh uh the text is turned into tokens?")).toBe("Tell me how these the text is turned into tokens?");
+    expect(dropFillers("Um, why does it, uhm, work?")).toBe("why does it, work?");
+    expect(dropFillers("The umbrella and the hummingbird")).toBe("The umbrella and the hummingbird");
+  });
+});

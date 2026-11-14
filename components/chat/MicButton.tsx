@@ -1,8 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import clsx from "clsx";
-import { LoaderCircle, Mic, Square } from "lucide-react";
+import { LoaderCircle, Mic } from "lucide-react";
 import type { Dictation } from "./useDictation";
 
 const MB = 1_000_000;
@@ -16,6 +16,34 @@ const LABELS = {
   downloading: "Cancel voice setup",
 } as const;
 
+/* Each bar's share of the level, so they move like a voice rather than in step. */
+const BARS = [0.55, 1, 0.75, 0.4];
+
+/** Bars that follow how loud the mic is, drawn every frame without re-rendering. */
+function LevelBars({ level }: { level(): number }) {
+  const bars = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    let frame = 0;
+    let smooth = 0;
+    const draw = () => {
+      smooth += (level() - smooth) * 0.35;
+      bars.current?.childNodes.forEach((bar, i) => {
+        (bar as HTMLElement).style.transform = `scaleY(${Math.max(0.18, Math.min(1, smooth * BARS[i] * 1.6))})`;
+      });
+      frame = requestAnimationFrame(draw);
+    };
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, [level]);
+  return (
+    <span ref={bars} aria-hidden className="flex h-3.5 items-center gap-[2px]">
+      {BARS.map((_, i) => (
+        <span key={i} className="block h-full w-[2.5px] origin-center scale-y-[0.18] rounded-full bg-current" />
+      ))}
+    </span>
+  );
+}
+
 /** The mic. Click to start, click again to stop. Pressing it never takes focus from the field or clears a text selection. */
 export function MicButton({ dictation, disabled = false, className }: { dictation: Dictation; disabled?: boolean; className?: string }) {
   const { phase } = dictation;
@@ -26,12 +54,12 @@ export function MicButton({ dictation, disabled = false, className }: { dictatio
       aria-label={LABELS[phase]}
       aria-pressed={recording}
       aria-busy={phase === "transcribing"}
-      title={recording ? "Stop (Esc cancels)" : phase === "idle" ? "Speak instead of typing" : LABELS[phase]}
+      title={phase === "idle" ? LABELS.idle : undefined}
       disabled={disabled || phase === "transcribing"}
       onMouseDown={(event) => event.preventDefault()}
       onClick={() => void dictation.toggle()}
       className={clsx(
-        "press grid size-7 shrink-0 place-items-center rounded-full transition-colors duration-[var(--duration-fast)] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40",
+        "press grid h-7 min-w-7 shrink-0 place-items-center rounded-full px-1 transition-colors duration-[var(--duration-fast)] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40",
         recording ? "bg-danger/20 text-danger" : "text-dim hover:bg-white/[0.06] hover:text-paper",
         className,
       )}
@@ -39,7 +67,7 @@ export function MicButton({ dictation, disabled = false, className }: { dictatio
       {phase === "transcribing" ? (
         <LoaderCircle className="size-4 animate-spin" aria-hidden />
       ) : recording ? (
-        <Square size={10} fill="currentColor" className="animate-pulse" aria-hidden />
+        <LevelBars level={dictation.level} />
       ) : (
         <Mic className="size-4" aria-hidden />
       )}
@@ -53,10 +81,8 @@ export function DictationNote({ dictation, className }: { dictation: Dictation; 
   const button =
     "press rounded-sm px-1.5 py-0.5 text-[11px] text-paper outline-none hover:bg-white/[0.08] focus-visible:outline-2 focus-visible:outline-accent";
   let body: ReactNode = null;
-  if (phase === "starting") body = "Allow the microphone if asked…";
-  else if (phase === "recording") body = "Listening. Click the mic to finish, Esc to cancel.";
-  else if (phase === "transcribing") body = "Transcribing…";
-  else if (phase === "consent") {
+  /* Recording and transcribing show on the button itself, so the field keeps its size. */
+  if (phase === "consent") {
     body = (
       <>
         {note?.error ? `${note.text} ` : null}

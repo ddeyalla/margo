@@ -126,6 +126,14 @@ export const parsePcm = (body: ArrayBuffer): { ok: true; samples: Float32Array }
   return { ok: true, samples };
 };
 
+/** Takes out the "uh"s and "um"s people say while thinking, with a comma that only followed them. */
+export const dropFillers = (text: string) =>
+  text
+    .replace(/(^|[\s,.?!])(?:uh+|um+|uhm+|erm+|hmm+)(?=$|[\s,.?!])[,.]?/gi, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.?!])/g, "$1")
+    .trim();
+
 export interface Recognizer {
   transcribe(samples: Float32Array): string;
 }
@@ -150,7 +158,7 @@ const loadRecognizer = async (): Promise<Recognizer> => {
       const stream = recognizer.createStream();
       stream.acceptWaveform({ samples, sampleRate: SAMPLE_RATE });
       recognizer.decode(stream);
-      return recognizer.getResult(stream).text.trim();
+      return dropFillers(recognizer.getResult(stream).text);
     },
   };
 };

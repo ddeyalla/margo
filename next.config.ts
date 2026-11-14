@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
     ],
   },
   /* Covers are drawn on the server with pdf.js and a native canvas, and voice input decodes with a native addon: all loaded by Node rather than bundled. */
+  /* No Next badge in the corner while running `npm run dev`; error overlays still show. */
+  devIndicators: false,
   serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas", "sherpa-onnx-node"],
   turbopack: {
     rules: {
