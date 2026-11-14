@@ -19,7 +19,7 @@ export function DraftImages({ images, onRemove }: { images: DraftImage[]; onRemo
           <li
             key={image.key}
             title={state.status === "failed" ? state.error : undefined}
-            className="relative size-14 shrink-0 overflow-hidden rounded-md bg-panel-hover ring-1 ring-inset ring-white/[0.06]"
+            className="relative size-14 shrink-0 overflow-hidden rounded-md bg-panel-hover ring-1 ring-inset ring-line"
           >
             <Image src={image.preview} alt={`Image ${index + 1}`} fill unoptimized className="object-cover" />
             {state.status === "uploading" ? (
@@ -65,7 +65,7 @@ export function MessageImages({
           type="button"
           onClick={() => onOpen(image)}
           title="View larger"
-          className="press overflow-hidden rounded-[10px] bg-panel-hover ring-1 ring-inset ring-white/[0.06] focus-visible:outline-2 focus-visible:outline-accent"
+          className="press overflow-hidden rounded-[10px] bg-panel-hover ring-1 ring-inset ring-line focus-visible:outline-2 focus-visible:outline-accent"
         >
           <Image
             src={attachmentUrl(bookId, image.id)}
@@ -140,7 +140,7 @@ export function DropArea({
     <div {...handlers} className={clsx("relative", className)}>
       {children}
       {over ? (
-        <div className="pointer-events-none absolute inset-2 z-10 grid place-items-center rounded-xl bg-panel/85 text-label text-paper ring-1 ring-inset ring-white/[0.18]">
+        <div className="pointer-events-none absolute inset-2 z-10 grid place-items-center rounded-xl bg-panel/85 text-label text-paper ring-1 ring-inset ring-line-strong">
           Drop images to attach
         </div>
       ) : null}

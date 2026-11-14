@@ -47,7 +47,7 @@ export function OpeningNotice({
       type="button"
       onClick={onReview}
       title="Start reviewing"
-      className="press inline-flex h-7 items-center gap-1.5 rounded-sm px-2 text-label text-fog transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.06] hover:text-paper"
+      className="press inline-flex h-7 items-center gap-1.5 rounded-sm px-2 text-label text-fog transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper"
     >
       <RotateCcw className="size-3.5" aria-hidden />
       {cardsDue(due)}
@@ -56,7 +56,7 @@ export function OpeningNotice({
 
   if (!resume) {
     return (
-      <div className="animate-rise absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 items-center rounded-full bg-panel-raised py-0.5 pl-1.5 pr-0.5 shadow-float ring-1 ring-white/[0.06]">
+      <div className="animate-rise absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 items-center rounded-full bg-panel-raised py-0.5 pl-1.5 pr-0.5 shadow-float">
         {duePill}
         <IconButton label="Dismiss" size="sm" onClick={onClose}>
           <X />
@@ -68,7 +68,7 @@ export function OpeningNotice({
   return (
     <section
       aria-label="Where you left off"
-      className="animate-rise absolute bottom-12 left-1/2 z-30 w-[min(520px,calc(100%-24px))] -translate-x-1/2 rounded-lg bg-panel-raised p-3 shadow-float ring-1 ring-white/[0.06]"
+      className="animate-rise absolute bottom-12 left-1/2 z-30 w-[min(520px,calc(100%-24px))] -translate-x-1/2 rounded-lg bg-panel-raised p-3 shadow-float"
     >
       <div className="flex items-center gap-2">
         <h2 className="text-label font-medium text-paper">Where you left off</h2>

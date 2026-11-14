@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, Focus, FileWarning, Moon, PanelRight, Sun, TableOfContents, X } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight, CircleAlert, Focus, FileWarning, Moon, PanelRight, Sun, SunMoon, TableOfContents, X } from "lucide-react";
 import { createResizableController, Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
@@ -20,6 +20,7 @@ import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/read
 import type { OpenFailure } from "@/components/reader/errors";
 import type { ReaderHandle, ReaderMeta, ReaderPlace, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton, Segmented } from "@/components/ui";
+import { useResolvedTheme } from "@/components/ui/theme";
 import { patchBookState, patchSettings } from "@/lib/client/api";
 import { isTextEntry } from "@/lib/client/keys";
 import { consumeRefreshMark } from "@/lib/client/open";
@@ -62,6 +63,7 @@ const MODES: { value: ReadingMode; label: string }[] = [
 
 /* A PDF keeps its own page colours; "dark" here is the switch that darkens white pages. */
 const PDF_THEMES: { value: ReadingTheme; label: string; icon: ReactNode }[] = [
+  { value: "auto", label: "Show white pages dark when the app is dark", icon: <SunMoon /> },
   { value: "dark", label: "Show white pages dark", icon: <Moon /> },
   { value: "light", label: "Show pages in their own colours", icon: <Sun /> },
 ];
@@ -77,7 +79,7 @@ export function BookWorkspace({
   book,
   initialState,
   savedProvider,
-  savedDarkPages,
+  savedPdfTheme,
   savedReadingMode,
   savedEpubTheme,
   savedBoldStarts,
@@ -88,7 +90,7 @@ export function BookWorkspace({
   book: WorkspaceBook;
   initialState: BookState;
   savedProvider: ProviderId | null;
-  savedDarkPages: boolean;
+  savedPdfTheme: ReadingTheme;
   savedReadingMode: ReadingMode;
   savedEpubTheme: ReadingTheme;
   savedBoldStarts: boolean;
@@ -124,8 +126,10 @@ export function BookWorkspace({
   const chapter = place?.chapter ?? null;
   const [mode, setMode] = useState(savedReadingMode);
   const [error, setError] = useState<OpenFailure | null>(null);
-  const [darkPages, setDarkPages] = useState(savedDarkPages);
+  const [pdfTheme, setPdfTheme] = useState(savedPdfTheme);
   const [epubTheme, setEpubTheme] = useState(savedEpubTheme);
+  const appTheme = useResolvedTheme();
+  const pageTheme = (theme: ReadingTheme) => (theme === "auto" ? appTheme : theme);
   const [boldStarts, setBoldStarts] = useState(savedBoldStarts);
   const [readingFont, setReadingFont] = useState(savedReadingFont);
   /* A font shown on the page while the reader looks through the list, before choosing one. */
@@ -236,14 +240,14 @@ export function BookWorkspace({
 
   const togglePanel = () => (layout.isCollapsed(PANEL_ID) ? layout.expand(PANEL_ID) : layout.collapse(PANEL_ID));
 
-  const chooseDarkPages = (dark: boolean) => {
-    setDarkPages(dark);
-    void patchSettings({ pdfDarkPages: dark });
+  const choosePdfTheme = (theme: ReadingTheme) => {
+    setPdfTheme(theme);
+    void patchSettings({ pdfPage: theme });
   };
 
   const chooseEpubTheme = (theme: ReadingTheme) => {
     setEpubTheme(theme);
-    void patchSettings({ epubTheme: theme });
+    void patchSettings({ epubPage: theme });
   };
 
   const chooseBoldStarts = (on: boolean) => {
@@ -460,12 +464,12 @@ export function BookWorkspace({
   return (
     <div className="flex h-dvh flex-col bg-ink">
       <title>{`${title} · rigg learn`}</title>
-      <header className={clsx("h-11 shrink-0 items-center gap-1.5 bg-shell px-2", spotlight ? "hidden" : "flex")}>
+      <header className={clsx("h-12 shrink-0 items-center gap-1.5 px-2.5", spotlight ? "hidden" : "flex")}>
         <Link
           href="/"
           aria-label="Back to library"
           title="Back to library"
-          className="press flex size-7 shrink-0 items-center justify-center rounded-sm text-dim transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.06] hover:text-paper"
+          className="press flex size-7 shrink-0 items-center justify-center rounded-sm text-dim transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper"
         >
           <ArrowLeft className="size-4" />
         </Link>
@@ -478,8 +482,11 @@ export function BookWorkspace({
         >
           <TableOfContents />
         </IconButton>
-        <div className="ml-1 flex min-w-0 flex-1 items-baseline gap-2">
-          <h1 className="truncate text-[13px] font-medium text-paper">{title}</h1>
+        <div className="ml-1 flex min-w-0 flex-1 items-center gap-2.5">
+          <h1 className="flex h-7 min-w-0 max-w-[min(360px,50%)] shrink-0 items-center gap-2 rounded-full bg-panel-raised px-3 text-[13px] font-semibold text-paper shadow-chip">
+            <BookOpen aria-hidden className="size-3.5 shrink-0 text-dim" />
+            <span className="truncate">{title}</span>
+          </h1>
           {chapter ? <span className="truncate text-label text-dim">{chapter.label}</span> : null}
         </div>
         <div className="shrink-0">
@@ -497,7 +504,7 @@ export function BookWorkspace({
             onFont={chooseFont}
           />
         ) : (
-          <Segmented label="Page colours" options={PDF_THEMES} value={darkPages ? "dark" : "light"} onChange={(theme) => chooseDarkPages(theme === "dark")} />
+          <Segmented label="Page colours" options={PDF_THEMES} value={pdfTheme} onChange={choosePdfTheme} />
         )}
         {/* A disabled button takes no pointer, so the reason it is off sits on this wrapper. */}
         <span title={book.format === "epub" ? undefined : "Spotlight works in EPUB books for now"} className="inline-flex">
@@ -527,7 +534,7 @@ export function BookWorkspace({
         controller={layout}
         autoSaveId="rigg-learn.book-layout"
         onLayoutChange={() => setPanelOpen(!layout.isCollapsed(PANEL_ID))}
-        className="min-h-0 flex-1"
+        className={clsx("min-h-0 flex-1", !spotlight && "px-2 pb-2")}
       >
         <ResizablePanel id="reader-panel" minSize="360px" className="min-w-0">
           <div ref={readerPaneRef} style={{ "--toc-width": `${TOC_WIDTH}px` } as CSSProperties} className="flex h-full min-w-0">
@@ -542,14 +549,14 @@ export function BookWorkspace({
             ) : null}
             <main
               ref={readerAreaRef}
-              data-dark-pages={(book.format === "pdf" && darkPages) || undefined}
-              data-reading-theme={book.format === "epub" ? epubTheme : undefined}
-              className="relative flex h-full min-w-0 flex-1 flex-col"
+              data-dark-pages={(book.format === "pdf" && pageTheme(pdfTheme) === "dark") || undefined}
+              data-reading-theme={book.format === "epub" && epubTheme !== "auto" ? epubTheme : undefined}
+              className={clsx("relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-page", !spotlight && "rounded-xl shadow-canvas")}
             >
               {annotations.error ? (
                 <div
                   role="alert"
-                  className="animate-rise absolute left-1/2 top-3 z-20 flex w-max max-w-[min(520px,calc(100%-24px))] -translate-x-1/2 items-start gap-2 rounded-lg bg-panel-raised py-2 pl-3 pr-1.5 text-label text-fog shadow-float ring-1 ring-white/[0.06]"
+                  className="animate-rise absolute left-1/2 top-3 z-20 flex w-max max-w-[min(520px,calc(100%-24px))] -translate-x-1/2 items-start gap-2 rounded-lg bg-panel-raised py-2 pl-3 pr-1.5 text-label text-fog shadow-float"
                 >
                   <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-warn" />
                   <p className="min-w-0 py-px leading-relaxed [overflow-wrap:anywhere]">{annotations.error}</p>
@@ -561,14 +568,14 @@ export function BookWorkspace({
               {error ? (
                 <EmptyState icon={<FileWarning />} title="This book could not be opened" body={error.message}>
                   {error.detail ? <p className="mt-2 max-w-[48ch] font-mono text-[11px] leading-relaxed text-dim/80 [overflow-wrap:anywhere]">{error.detail}</p> : null}
-                  <Link href="/" className="press mt-3 rounded-sm bg-panel-raised px-2.5 py-1.5 text-label font-medium text-fog transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover hover:text-paper">
+                  <Link href="/" className="press mt-3 rounded-full bg-accent px-3.5 py-1.5 text-label font-semibold text-on-accent transition-colors duration-[var(--duration-fast)] hover:bg-accent/90">
                     Back to library
                   </Link>
                 </EmptyState>
               ) : (
                 <>
                   <div className="relative min-h-0 flex-1">
-                    {book.format === "epub" ? <EpubReader {...readerProps} theme={epubTheme} boldStarts={boldStarts} font={previewFont === undefined ? readingFont : previewFont} spotlight={spotlight} /> : <PdfReader {...readerProps} />}
+                    {book.format === "epub" ? <EpubReader {...readerProps} theme={pageTheme(epubTheme)} boldStarts={boldStarts} font={previewFont === undefined ? readingFont : previewFont} spotlight={spotlight} /> : <PdfReader {...readerProps} />}
                     {mode === "pages" ? (
                       <>
                         <PageTurn direction={-1} onTurn={turn} />
@@ -606,7 +613,7 @@ export function BookWorkspace({
               {toast ? (
                 <div
                   role="status"
-                  className="animate-rise absolute bottom-12 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full bg-panel-raised py-0.5 pl-3.5 pr-1 text-label text-fog shadow-float ring-1 ring-white/[0.06]"
+                  className="animate-rise absolute bottom-14 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full bg-panel-raised py-0.5 pl-3.5 pr-1 text-label text-fog shadow-float"
                 >
                   <span className="py-1">{toast.text}</span>
                   {toast.action ? (
@@ -616,7 +623,7 @@ export function BookWorkspace({
                         showTab("chat");
                         setToast(null);
                       }}
-                      className="press h-6 rounded-full px-2 text-label text-paper transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.08]"
+                      className="press h-6 rounded-full px-2 text-label font-medium text-paper transition-colors duration-[var(--duration-fast)] hover:bg-tint-strong"
                     >
                       Show
                     </button>
@@ -632,7 +639,7 @@ export function BookWorkspace({
         </ResizablePanel>
         <ResizableHandle
           aria-label="Resize the tutor panel"
-          className="relative z-10 w-px shrink-0 bg-line outline-none transition-colors duration-[var(--duration-fast)] before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-[''] focus-visible:bg-fog data-[dragging]:bg-line-strong data-[hovering]:bg-line-strong"
+          className="group relative z-10 w-2 shrink-0 outline-none before:absolute before:inset-y-3 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors before:duration-[var(--duration-fast)] before:content-[''] focus-visible:before:bg-fog data-[dragging]:before:bg-line-strong data-[hovering]:before:bg-line-strong"
         />
         <ResizablePanel
           id={PANEL_ID}

@@ -140,7 +140,7 @@ function ParkedList({
         {parked.map((thread) => {
           const place = placeLabel(thread.chapterTitle, thread.anchor);
           return (
-            <li key={thread.id} className="flex flex-col gap-1.5 rounded-lg px-2.5 py-2 hover:bg-panel-raised/60">
+            <li key={thread.id} className="flex flex-col gap-1.5 rounded-lg px-2.5 py-2 hover:bg-tint">
               <button
                 type="button"
                 onClick={() => onJump(thread.anchor)}
@@ -206,7 +206,7 @@ function ThreadList({
                 type="button"
                 onClick={() => onOpen(thread)}
                 title={place ?? undefined}
-                className="press flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-panel-raised focus-visible:bg-panel-raised"
+                className="press flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-tint focus-visible:bg-tint"
               >
                 {thread.kind === "passage" ? (
                   <span className="line-clamp-2 font-reading text-[13px] leading-snug text-prose">{thread.quote}</span>
@@ -281,7 +281,7 @@ function ThreadView({
         <button
           type="button"
           onClick={onBack}
-          className="press inline-flex h-7 items-center gap-1 rounded-sm pl-1 pr-2 text-label text-dim transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.06] hover:text-paper"
+          className="press inline-flex h-7 items-center gap-1 rounded-sm pl-1 pr-2 text-label text-dim transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper"
         >
           <ChevronLeft className="size-3.5" aria-hidden />
           Threads
@@ -300,7 +300,7 @@ function ThreadView({
             type="button"
             onClick={onJump}
             title="Go to this passage"
-            className="group block w-full rounded-lg bg-panel-raised p-3 text-left transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover"
+            className="group block w-full rounded-lg bg-panel-raised p-3 text-left shadow-chip transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover"
           >
             <span className="line-clamp-6 whitespace-pre-line font-reading text-[14px] leading-relaxed text-prose">{thread.quote}</span>
             <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-dim group-hover:text-fog">
@@ -317,7 +317,7 @@ function ThreadView({
             message.role === "user" ? (
               <div key={index} className="flex flex-col items-end gap-1.5 pl-8">
                 {message.attachments?.length ? <MessageImages bookId={bookId} images={message.attachments} onOpen={setViewing} /> : null}
-                <p className="min-w-0 whitespace-pre-wrap break-words rounded-[14px] rounded-br-[5px] bg-panel-hover px-3.5 py-2.5 text-body text-paper">
+                <p className="min-w-0 whitespace-pre-wrap break-words rounded-[14px] rounded-br-[5px] bg-panel-raised px-3.5 shadow-chip py-2.5 text-body text-paper">
                   {message.content}
                 </p>
               </div>
@@ -400,7 +400,7 @@ function AskedAt({ thread, onJump }: { thread: GeneralThread; onJump(): void }) 
 
 function FailureNote({ failure, onRetry, className }: { failure: FailedTurn; onRetry: (() => void) | null; className?: string }) {
   return (
-    <div role="alert" className={`flex items-start gap-2.5 rounded-lg bg-panel-raised px-3 py-2.5 ${className ?? ""}`}>
+    <div role="alert" className={`flex items-start gap-2.5 rounded-lg bg-panel-raised px-3 py-2.5 shadow-chip ${className ?? ""}`}>
       <CircleAlert className="mt-px size-3.5 shrink-0 text-danger" aria-hidden />
       <div className="min-w-0 flex-1">
         <p className="text-label font-medium text-paper">The tutor couldn’t answer</p>

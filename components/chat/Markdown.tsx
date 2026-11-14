@@ -30,7 +30,7 @@ const components: Components = {
   blockquote: styled("blockquote", "my-2 border-l-2 border-line-strong pl-3 text-fog"),
   hr: styled("hr", "my-4 border-line"),
   pre: styled("pre", "my-2 overflow-x-auto rounded-md bg-ink/70 px-3 py-2.5 font-mono text-code text-fog [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-fog"),
-  code: styled("code", "rounded-xs bg-white/[0.06] px-1 py-px font-mono text-code text-paper"),
+  code: styled("code", "rounded-xs bg-tint px-1 py-px font-mono text-code text-paper"),
   table: styled("table", "my-2 block w-full overflow-x-auto border-collapse text-label"),
   th: styled("th", "border-b border-line-strong px-2 py-1.5 text-left font-medium text-fog"),
   td: styled("td", "border-b border-line px-2 py-1.5 align-top"),

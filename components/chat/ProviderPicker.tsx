@@ -41,7 +41,7 @@ export function ProviderPicker({
     <Menu>
       <MenuTrigger
         aria-label={`Tutor: ${label}`}
-        className="press flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 text-[12px] text-fog outline-none transition-colors duration-[var(--duration-base)] hover:bg-white/[0.09] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[open]:bg-white/[0.09] data-[open]:text-paper"
+        className="press flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-full bg-tint px-2.5 text-[12px] text-fog outline-none transition-colors duration-[var(--duration-base)] hover:bg-tint-strong hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[open]:bg-tint-strong data-[open]:text-paper"
       >
         <Sparkles size={12} aria-hidden className="shrink-0 text-dim" />
         <span className="truncate">{label}</span>
@@ -52,7 +52,7 @@ export function ProviderPicker({
         align="end"
         sideOffset={6}
         collisionPadding={12}
-        className="z-[60] w-[280px] max-w-[calc(100vw-24px)] rounded-lg bg-panel-raised p-1 shadow-float outline-none ring-1 ring-line-strong"
+        className="z-[60] w-[280px] max-w-[calc(100vw-24px)] rounded-lg bg-panel-raised p-1 shadow-float outline-none"
       >
         <MenuRadioGroup value={current} onValueChange={(value) => value && onSelect(value as ProviderId)}>
           <MenuGroupLabel className="px-2 pb-1 pt-1.5 text-[11px] text-dim">Tutor</MenuGroupLabel>
@@ -63,7 +63,7 @@ export function ProviderPicker({
               value={provider.id}
               disabled={provider.status !== "ready"}
               closeOnSelect
-              className="flex min-h-8 cursor-default select-none items-start gap-2 rounded-sm px-2 py-1.5 text-[12px] text-fog outline-none data-[highlighted]:bg-white/[0.06] data-[highlighted]:text-paper data-[checked]:text-paper"
+              className="flex min-h-8 cursor-default select-none items-start gap-2 rounded-sm px-2 py-1.5 text-[12px] text-fog outline-none data-[highlighted]:bg-tint data-[highlighted]:text-paper data-[checked]:text-paper"
             >
               <span
                 aria-hidden

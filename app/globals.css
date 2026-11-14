@@ -1,31 +1,37 @@
 @import "tailwindcss";
 
-/* rigg-learn design tokens, adapted from rigg-video's DESIGN.md.
-   One dark palette. Depth comes from tonal layering; hairlines only between
-   regions. The chrome recedes so the book is the loudest thing. */
+/* rigg-learn design tokens. Two themes share one set of names: the window is a
+   soft grey, the book sits on a raised canvas, and panels float as rounded cards.
+   Dark is the default; [data-theme="light"] on <html> swaps every value. The
+   script in app/layout.tsx sets that attribute before the first paint. */
 @theme {
-  --color-ink: #09090a;
-  --color-shell: #111113;
-  --color-panel: #141416;
-  --color-panel-raised: #1c1c1f;
-  --color-panel-hover: #242428;
-  --color-line: #222226;
-  --color-line-strong: #303036;
-  --color-paper: #ededf0;
-  --color-fog: #a1a1aa;
-  --color-dim: #74747d;
-  --color-accent: #f5f5f5;
+  --color-ink: #19191b;
+  --color-shell: #19191b;
+  --color-panel: #222225;
+  --color-panel-raised: #29292c;
+  --color-panel-hover: #323236;
+  --color-line: #2a2a2e;
+  --color-line-strong: #3a3a3f;
+  --color-paper: #ececef;
+  --color-fog: #a3a3ab;
+  --color-dim: #76767f;
+  --color-accent: #f4f4f5;
+  --color-on-accent: #141416;
+  /* A wash for hover and pressed states that works on any surface. */
+  --color-tint: rgba(255, 255, 255, 0.06);
+  --color-tint-strong: rgba(255, 255, 255, 0.1);
+  /* Frosted controls that float over the book. */
+  --color-glass: rgba(44, 44, 48, 0.72);
   --color-select: #3b82f6;
   --color-select-soft: rgba(59, 130, 246, 0.28);
   --color-live: #4ade80;
   --color-warn: #f0b429;
   --color-danger: #f87171;
 
-  /* Reading surface. Softer than paper so long sessions don't glare. The
-     light reading theme below redefines these for the book's surface only. */
-  --color-page: #0c0c0d;
+  /* Reading surface. The page themes below redefine these for the book alone. */
+  --color-page: #1f1f22;
   --color-prose: #d6d6da;
-  --color-page-dim: #74747d;
+  --color-page-dim: #7a7a83;
   --color-highlight: rgba(240, 180, 41, 0.26);
   --color-highlight-strong: #f0b429;
 
@@ -33,17 +39,17 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-reading: var(--font-literata), "Iowan Old Style", Georgia, serif;
 
-  --text-display: 22px;
+  --text-display: 24px;
   --text-display--line-height: 1.2;
-  --text-display--letter-spacing: -0.01em;
-  --text-display--font-weight: 600;
+  --text-display--letter-spacing: -0.02em;
+  --text-display--font-weight: 700;
   --text-title: 15px;
   --text-title--line-height: 1.2;
   --text-title--letter-spacing: -0.01em;
   --text-title--font-weight: 600;
   --text-section: 13px;
   --text-section--line-height: 1.3;
-  --text-section--font-weight: 500;
+  --text-section--font-weight: 600;
   --text-body: 13px;
   --text-body--line-height: 1.55;
   --text-control: 12px;
@@ -61,15 +67,17 @@
   --spacing-loose: 16px;
   --spacing-wide: 24px;
 
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-xs: 5px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --radius-full: 999px;
 
-  --shadow-float: 0 12px 32px -12px rgba(0, 0, 0, 0.8);
-  --shadow-dialog: 0 32px 96px -24px rgba(0, 0, 0, 0.85);
+  --shadow-float: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+  --shadow-dialog: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 32px 96px -24px rgba(0, 0, 0, 0.8);
+  --shadow-canvas: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-chip: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.25);
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -81,8 +89,38 @@
   --duration-base: 160ms;
 }
 
-/* Book text colours only the EPUB's frame reads, so no utility needs them. */
-:root {
+[data-theme="light"] {
+  color-scheme: light;
+  --color-ink: #ebebed;
+  --color-shell: #ebebed;
+  --color-panel: #ffffff;
+  --color-panel-raised: #ffffff;
+  --color-panel-hover: #f1f1f3;
+  --color-line: #dedee2;
+  --color-line-strong: #cbcbd1;
+  --color-paper: #1c1c1f;
+  --color-fog: #55555d;
+  --color-dim: #8a8a93;
+  --color-accent: #1c1c1f;
+  --color-on-accent: #ffffff;
+  --color-tint: rgba(0, 0, 0, 0.05);
+  --color-tint-strong: rgba(0, 0, 0, 0.08);
+  --color-glass: rgba(255, 255, 255, 0.72);
+  --color-select-soft: rgba(59, 130, 246, 0.2);
+  --color-live: #16a34a;
+  --color-warn: #c2860a;
+  --color-danger: #dc2626;
+  --shadow-float: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 12px 32px -12px rgba(0, 0, 0, 0.22);
+  --shadow-dialog: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 32px 96px -24px rgba(0, 0, 0, 0.3);
+  --shadow-canvas: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-chip: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Book text colours only the EPUB's frame reads, so no utility needs them.
+   An EPUB's page keeps the colours chosen under "Aa", whatever the app's theme;
+   PDFs and everything else follow the app. */
+:root,
+[data-reading-theme="dark"] {
   --prose-heading: #ededf0;
   --prose-rule: rgba(255, 255, 255, 0.1);
   --prose-wash: rgba(255, 255, 255, 0.04);
@@ -90,11 +128,19 @@
   --prose-fixation-weight: 600;
 }
 
-/* The light reading theme: dark ink on a warm page, tuned for long reading.
-   It applies to the book's surface alone; the app around it stays dark. */
+[data-reading-theme="dark"] {
+  color-scheme: dark;
+  --color-page: #1f1f22;
+  --color-prose: #d6d6da;
+  --color-page-dim: #7a7a83;
+  --color-highlight: rgba(240, 180, 41, 0.26);
+  --overlayer-highlight-blend-mode: normal;
+}
+
+/* The light page: dark ink on warm paper, tuned for long reading. */
+[data-theme="light"],
 [data-reading-theme="light"] {
-  color-scheme: light;
-  --color-page: #f7f5f0;
+  --color-page: #fbfaf7;
   --color-prose: #1f1f1f;
   --color-page-dim: #8c877d;
   --color-highlight: rgba(236, 168, 22, 0.34);
@@ -104,6 +150,10 @@
   --prose-rule: rgba(31, 31, 31, 0.14);
   --prose-wash: rgba(31, 31, 31, 0.05);
   --prose-fixation-weight: 700;
+}
+
+[data-reading-theme="light"] {
+  color-scheme: light;
 }
 
 @font-face {
@@ -231,7 +281,8 @@
   position: relative;
   flex: none;
   background: #f4f4f5;
-  border-radius: 3px;
+  border-radius: 4px;
+  box-shadow: var(--shadow-chip);
   overflow: hidden;
 
   > canvas {

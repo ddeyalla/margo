@@ -34,6 +34,23 @@ describe("settings", () => {
     await writeFile(path.join(dir, "data", "settings.json"), JSON.stringify({ chaptersOpen: "yes", panelTab: "quiz" }));
     expect(await readSettings()).toMatchObject({ chaptersOpen: false, panelTab: "chat" });
   });
+
+  it("starts both page colours on auto, following the app's theme", async () => {
+    expect(await readSettings()).toMatchObject({ epubPage: "auto", pdfPage: "auto" });
+  });
+
+  it("turns the old dark pages into auto and keeps a light page the reader picked", async () => {
+    const old = (value: object) => writeFile(path.join(dir, "data", "settings.json"), JSON.stringify(value));
+    await old({ epubTheme: "dark", pdfDarkPages: true });
+    expect(await readSettings()).toMatchObject({ epubPage: "auto", pdfPage: "auto" });
+    await old({ epubTheme: "light", pdfDarkPages: false });
+    expect(await readSettings()).toMatchObject({ epubPage: "light", pdfPage: "light" });
+  });
+
+  it("keeps a page colour chosen after the move to auto", async () => {
+    await saveSettings({ epubPage: "dark", pdfPage: "dark" });
+    expect(await readSettings()).toMatchObject({ epubPage: "dark", pdfPage: "dark" });
+  });
 });
 
 describe("folder settings", () => {

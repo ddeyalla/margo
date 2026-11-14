@@ -6,7 +6,8 @@ import { Segmented } from "@/components/ui";
 import type { ReadingFont, ReadingTheme } from "@/lib/shared/types";
 import { FontPicker } from "./FontPicker";
 
-const THEMES: { value: ReadingTheme; label: string }[] = [
+const THEMES: { value: ReadingTheme; label: string; title?: string }[] = [
+  { value: "auto", label: "Auto", title: "Match the app's light or dark theme" },
   { value: "dark", label: "Dark" },
   { value: "light", label: "Light" },
 ];
@@ -43,7 +44,7 @@ export function ReadingSettings({
       <PopoverTrigger
         aria-label="Reading settings"
         title="Reading settings"
-        className="press flex h-7 shrink-0 items-center justify-center rounded-sm px-2 font-reading text-[14px] leading-none text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.06] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[open]:bg-panel-hover data-[open]:text-paper"
+        className="press flex h-7 shrink-0 items-center justify-center rounded-sm px-2 font-reading text-[14px] leading-none text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[open]:bg-panel-raised data-[open]:text-paper data-[open]:shadow-chip"
       >
         Aa
       </PopoverTrigger>
@@ -54,7 +55,7 @@ export function ReadingSettings({
         collisionPadding={12}
         initialFocus="[data-font-search]"
         aria-label="Reading settings"
-        className="z-[60] flex w-[300px] max-w-[calc(100vw-24px)] flex-col gap-3 rounded-lg bg-panel-raised p-3 shadow-float outline-none ring-1 ring-line-strong"
+        className="z-[60] flex w-[300px] max-w-[calc(100vw-24px)] flex-col gap-3 rounded-lg bg-panel-raised p-3 shadow-float outline-none"
       >
         <Setting label="Page">
           <Segmented label="Page colours" options={THEMES} value={theme} onChange={onTheme} />

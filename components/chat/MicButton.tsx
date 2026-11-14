@@ -60,7 +60,7 @@ export function MicButton({ dictation, disabled = false, className }: { dictatio
       onClick={() => void dictation.toggle()}
       className={clsx(
         "press grid h-7 min-w-7 shrink-0 place-items-center rounded-full px-1 transition-colors duration-[var(--duration-fast)] focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40",
-        recording ? "bg-danger/20 text-danger" : "text-dim hover:bg-white/[0.06] hover:text-paper",
+        recording ? "bg-danger/20 text-danger" : "text-dim hover:bg-tint hover:text-paper",
         className,
       )}
     >
@@ -79,7 +79,7 @@ export function MicButton({ dictation, disabled = false, className }: { dictatio
 export function DictationNote({ dictation, className }: { dictation: Dictation; className?: string }) {
   const { phase, note, progress } = dictation;
   const button =
-    "press rounded-sm px-1.5 py-0.5 text-[11px] text-paper outline-none hover:bg-white/[0.08] focus-visible:outline-2 focus-visible:outline-accent";
+    "press rounded-sm px-1.5 py-0.5 text-[11px] text-paper outline-none hover:bg-tint-strong focus-visible:outline-2 focus-visible:outline-accent";
   let body: ReactNode = null;
   /* Recording and transcribing show on the button itself, so the field keeps its size. */
   if (phase === "consent") {
@@ -100,7 +100,7 @@ export function DictationNote({ dictation, className }: { dictation: Dictation; 
     body = (
       <>
         Downloading the speech model, {Math.round(progress.done / MB)} of {progress.total ? Math.round(progress.total / MB) : 487} MB
-        <span aria-hidden className="mt-1 block h-1 overflow-hidden rounded-full bg-white/[0.08]">
+        <span aria-hidden className="mt-1 block h-1 overflow-hidden rounded-full bg-tint-strong">
           <span className="block h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
         </span>
       </>

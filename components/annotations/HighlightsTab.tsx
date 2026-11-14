@@ -49,7 +49,7 @@ export function HighlightsTab({
         </p>
         {groups.map((group, index) => (
           <section key={`${index}-${group.title}`} aria-label={group.title ?? UNTITLED_SECTION} className="pt-2">
-            <h3 className="sticky top-0 z-10 truncate bg-panel px-2 py-1.5 text-label font-medium text-fog">
+            <h3 className="sticky top-0 z-10 truncate bg-ink px-2 py-1.5 text-label font-medium text-fog">
               {group.title ?? UNTITLED_SECTION}
             </h3>
             <ul className="flex flex-col gap-0.5">

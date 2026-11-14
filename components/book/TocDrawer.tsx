@@ -72,13 +72,13 @@ export function TocDrawer({
         }
       }}
       className={clsx(
-        "flex flex-col bg-panel outline-none",
+        "flex flex-col outline-none",
         docked
-          ? "h-full w-[var(--toc-width)] shadow-[inset_-1px_0_var(--color-line)]"
-          : "animate-drawer absolute inset-y-0 left-0 z-30 w-[min(var(--toc-width),calc(100%-48px))] shadow-dialog ring-1 ring-white/[0.06]",
+          ? "h-full w-[var(--toc-width)] pr-2"
+          : "animate-drawer absolute inset-y-0 left-0 z-30 w-[min(var(--toc-width),calc(100%-48px))] rounded-r-xl bg-panel shadow-dialog",
       )}
     >
-      <div className="flex h-11 shrink-0 items-center gap-2 pl-4 pr-2">
+      <div className="flex h-11 shrink-0 items-center gap-2 pl-3 pr-1">
         <h2 className="text-section text-paper">Chapters</h2>
         {toc?.length ? <span className="text-label text-dim tabular-nums">{toc.length}</span> : null}
         <span className="flex-1" />
@@ -98,7 +98,7 @@ export function TocDrawer({
           body={format === "pdf" ? "This PDF has no outline." : "This book has no table of contents."}
         />
       ) : (
-        <ol ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+        <ol ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-4 pl-1">
           {toc.map((entry, index) => {
             const isCurrent = entry === current;
             return (
@@ -116,8 +116,8 @@ export function TocDrawer({
                     "press flex w-full items-baseline gap-3 rounded-sm py-1.5 pr-2 text-left leading-snug outline-none transition-colors duration-[var(--duration-fast)] focus-visible:outline-2 focus-visible:outline-accent",
                     entry.depth === 0 ? "text-[13px]" : "text-label",
                     isCurrent
-                      ? "bg-panel-hover text-paper"
-                      : clsx("hover:bg-white/[0.04] hover:text-paper", entry.depth === 0 ? "text-fog" : "text-dim"),
+                      ? "bg-panel-raised font-medium text-paper shadow-chip"
+                      : clsx("hover:bg-tint hover:text-paper", entry.depth === 0 ? "text-fog" : "text-dim"),
                   )}
                 >
                   <span className="min-w-0 flex-1">{entry.label}</span>
@@ -137,7 +137,7 @@ export function TocDrawer({
   if (!open) return null;
   return (
     <>
-      <div aria-hidden className="animate-fade absolute inset-0 z-30 bg-black/40" />
+      <div aria-hidden className="animate-fade absolute inset-0 z-30 bg-black/30" />
       {nav}
     </>
   );

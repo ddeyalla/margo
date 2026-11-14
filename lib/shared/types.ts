@@ -213,10 +213,10 @@ export type ReadingMode = "scroll" | "pages";
 
 export const isReadingMode = (value: unknown): value is ReadingMode => value === "scroll" || value === "pages";
 
-/** The colours of an EPUB's page: light text on dark, or dark ink on a warm light page. */
-export type ReadingTheme = "dark" | "light";
+/** The colours of a book's page: the app's light or dark theme, or always one of them. */
+export type ReadingTheme = "auto" | "dark" | "light";
 
-export const isReadingTheme = (value: unknown): value is ReadingTheme => value === "dark" || value === "light";
+export const isReadingTheme = (value: unknown): value is ReadingTheme => value === "auto" || value === "dark" || value === "light";
 
 /** A font family installed on this computer, chosen for EPUB text. null is the bundled Literata. */
 export type ReadingFont = string | null;
@@ -233,10 +233,10 @@ export const isPanelTab = (value: unknown): value is PanelTab => value === "chat
 export interface AppSettings {
   provider: ProviderId | null;
   models: Partial<Record<ProviderId, string>>;
-  /** Show white PDF pages as dark pages. On unless turned off. */
-  pdfDarkPages: boolean;
+  /** Dark shows white PDF pages dark; light shows pages in their own colours. Auto follows the app's theme. */
+  pdfPage: ReadingTheme;
   readingMode: ReadingMode;
-  epubTheme: ReadingTheme;
+  epubPage: ReadingTheme;
   /** Set the start of each word in EPUB text in bold. Off unless turned on. */
   boldStarts: boolean;
   readingFont: ReadingFont;
@@ -249,7 +249,7 @@ export interface AppSettings {
 }
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode" | "epubTheme" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "booksDir" | "notesDir">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "booksDir" | "notesDir">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 

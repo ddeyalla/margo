@@ -19,9 +19,9 @@ export function Spinner({ className }: { className?: string }) {
 type ButtonVariant = "primary" | "ghost" | "outline";
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: "bg-accent font-semibold text-ink hover:bg-white active:bg-accent/90",
-  ghost: "text-fog hover:bg-white/[0.06] hover:text-paper active:bg-panel-hover",
-  outline: "bg-panel-raised text-fog hover:bg-panel-hover hover:text-paper",
+  primary: "rounded-full bg-accent font-semibold text-on-accent hover:bg-accent/90",
+  ghost: "rounded-sm text-fog hover:bg-tint hover:text-paper active:bg-tint-strong",
+  outline: "rounded-sm bg-panel-raised text-paper shadow-chip hover:bg-panel-hover",
 };
 
 export const Button = forwardRef<
@@ -36,7 +36,7 @@ export const Button = forwardRef<
         "press inline-flex select-none items-center justify-center font-medium transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out disabled:pointer-events-none disabled:opacity-40 [&>svg]:shrink-0",
         focusRing,
         buttonVariants[variant],
-        size === "sm" ? "h-7 gap-1.5 rounded-sm px-2.5 text-label [&>svg]:size-3.5" : "h-8 gap-2 rounded-md px-3 text-[13px] [&>svg]:size-4",
+        size === "sm" ? "h-7 gap-1.5 px-2.5 text-label [&>svg]:size-3.5" : "h-8 gap-2 px-3.5 text-[13px] [&>svg]:size-4",
         className,
       )}
       {...props}
@@ -59,7 +59,7 @@ export const IconButton = forwardRef<
         "press inline-flex shrink-0 items-center justify-center rounded-sm transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out disabled:pointer-events-none disabled:opacity-40 [&>svg]:shrink-0",
         size === "sm" ? "size-6 [&>svg]:size-3.5" : "size-7 [&>svg]:size-4",
         focusRing,
-        active ? "bg-panel-hover text-paper" : "text-dim hover:bg-white/[0.06] hover:text-paper",
+        active ? "bg-panel-raised text-paper shadow-chip" : "text-dim hover:bg-tint hover:text-paper",
         className,
       )}
       {...props}
@@ -80,7 +80,7 @@ export function Segmented<T extends string>({
   onChange(value: T): void;
 }) {
   return (
-    <div role="group" aria-label={label} className="flex h-7 shrink-0 items-center gap-0.5 rounded-sm bg-panel-raised p-0.5">
+    <div role="group" aria-label={label} className="flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-tint p-0.5">
       {options.map((option) => (
         <button
           key={option.value}
@@ -90,7 +90,7 @@ export function Segmented<T extends string>({
           title={option.title ?? (option.icon ? option.label : undefined)}
           onClick={() => option.value !== value && onChange(option.value)}
           className={clsx(
-            "press flex h-6 items-center justify-center rounded-xs text-label text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-panel-hover aria-pressed:text-paper [&>svg]:size-3.5",
+            "press flex h-6 items-center justify-center rounded-sm text-label font-medium text-dim outline-none transition-[color,background-color,box-shadow] duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-panel-raised aria-pressed:text-paper aria-pressed:shadow-chip [&>svg]:size-3.5",
             option.icon ? "w-7" : "px-2.5",
           )}
         >
@@ -104,8 +104,8 @@ export function Segmented<T extends string>({
 export function EmptyState({ icon, title, body, children }: { icon?: ReactNode; title: string; body?: string; children?: ReactNode }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-      {icon ? <div className="mb-1 text-dim/70 [&>svg]:size-5">{icon}</div> : null}
-      <p className="text-[13px] font-medium text-fog">{title}</p>
+      {icon ? <div className="mb-2 flex size-11 items-center justify-center rounded-lg bg-panel text-dim shadow-chip [&>svg]:size-5">{icon}</div> : null}
+      <p className="text-[13px] font-semibold text-paper">{title}</p>
       {body ? <p className="max-w-[30ch] text-label leading-relaxed text-dim">{body}</p> : null}
       {children}
     </div>
@@ -114,7 +114,7 @@ export function EmptyState({ icon, title, body, children }: { icon?: ReactNode; 
 
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 items-center rounded-xs bg-white/[0.06] px-1.5 font-sans text-label leading-none text-fog">
+    <kbd className="inline-flex h-5 items-center rounded-xs bg-tint px-1.5 font-sans text-label leading-none text-fog">
       {children}
     </kbd>
   );

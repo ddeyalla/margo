@@ -47,7 +47,7 @@ export function NoteEditor({
   };
 
   return (
-    <div className="animate-rise rounded-lg bg-panel-raised p-3 ring-1 ring-white/[0.06]">
+    <div className="animate-rise rounded-lg bg-panel-raised p-3 shadow-chip">
       <figure className="flex gap-2.5">
         <span aria-hidden className="w-[3px] shrink-0 rounded-full bg-highlight-strong/80" />
         <div className="min-w-0">

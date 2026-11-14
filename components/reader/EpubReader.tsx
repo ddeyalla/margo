@@ -222,7 +222,7 @@ export function EpubReader({
   onHighlightClick,
 }: ReaderProps & {
   /** Restyles the book in place, so switching keeps the passage in view. The colours come from the surrounding reading theme. */
-  theme: ReadingTheme;
+  theme: Exclude<ReadingTheme, "auto">;
   /** Sets the start of each word in bold. Switching keeps the passage in view. */
   boldStarts: boolean;
   /** The family the book is set in, or null for Literata. Restyles in place, like the theme. */

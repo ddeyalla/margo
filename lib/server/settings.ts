@@ -19,9 +19,11 @@ const normalize = (raw: unknown): AppSettings => {
   return {
     provider: isProviderId(value.provider) ? value.provider : null,
     models,
-    pdfDarkPages: value.pdfDarkPages !== false,
+    /* pdfDarkPages and epubTheme are the older settings, saved when the app was always dark: their
+       dark pages matched the app, so they become auto, and a light page the reader picked stays light. */
+    pdfPage: isReadingTheme(value.pdfPage) ? value.pdfPage : value.pdfDarkPages === false ? "light" : "auto",
     readingMode: isReadingMode(value.readingMode) ? value.readingMode : "scroll",
-    epubTheme: isReadingTheme(value.epubTheme) ? value.epubTheme : "dark",
+    epubPage: isReadingTheme(value.epubPage) ? value.epubPage : value.epubTheme === "light" ? "light" : "auto",
     boldStarts: value.boldStarts === true,
     readingFont: isReadingFont(value.readingFont) ? value.readingFont : null,
     chaptersOpen: value.chaptersOpen === true,

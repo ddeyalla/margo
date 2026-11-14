@@ -38,9 +38,9 @@ async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
       book={{ id: book.id, format: book.format, relPath: book.relPath, fileTitle: book.fileTitle }}
       initialState={state}
       savedProvider={settings.provider}
-      savedDarkPages={settings.pdfDarkPages}
+      savedPdfTheme={settings.pdfPage}
       savedReadingMode={settings.readingMode}
-      savedEpubTheme={settings.epubTheme}
+      savedEpubTheme={settings.epubPage}
       savedBoldStarts={settings.boldStarts}
       savedReadingFont={settings.readingFont}
       savedChaptersOpen={settings.chaptersOpen}

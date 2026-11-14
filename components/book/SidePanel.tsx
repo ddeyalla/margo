@@ -54,14 +54,14 @@ export function SidePanel({
   onReview(): void;
 }) {
   return (
-    <Tabs value={tab} onValueChange={(value) => value && onTabChange(value as PanelTab)} className="flex h-full min-w-0 flex-col bg-panel">
-      <div className="flex h-11 shrink-0 items-center gap-2 px-3">
-        <TabsList aria-label="Panel" className="flex h-7 items-center gap-0.5 rounded-sm bg-panel-raised p-0.5">
+    <Tabs value={tab} onValueChange={(value) => value && onTabChange(value as PanelTab)} className="flex h-full min-w-0 flex-col">
+      <div className="flex h-11 shrink-0 items-center gap-2 px-1.5">
+        <TabsList aria-label="Panel" className="flex h-8 flex-1 items-center gap-0.5 rounded-md bg-tint p-0.5">
           {TABS.map(({ value, label }) => (
             <TabsTab
               key={value}
               value={value}
-              className="press h-6 rounded-xs px-2.5 text-label text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[selected]:bg-panel-hover data-[selected]:text-paper"
+              className="press h-7 flex-1 rounded-sm px-2.5 text-label font-medium text-dim outline-none transition-[color,background-color,box-shadow] duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[selected]:bg-panel-raised data-[selected]:text-paper data-[selected]:shadow-chip"
             >
               {label}
             </TabsTab>

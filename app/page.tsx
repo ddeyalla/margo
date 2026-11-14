@@ -1,11 +1,12 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { BookOpen, FolderX } from "lucide-react";
+import { BookOpen, FolderX, Library as LibraryIcon } from "lucide-react";
 import { BookList, GRID, type Shelf, type ShelfBook } from "@/components/library/BookList";
 import { FolderForm } from "@/components/library/FolderForm";
 import { FoldersControl } from "@/components/library/FoldersControl";
 import { RefreshOnReturn } from "@/components/library/RefreshOnReturn";
 import { EmptyState } from "@/components/ui";
+import { ThemeControl } from "@/components/ui/theme";
 import { BooksFolderMissing, getFolders } from "@/lib/server/config";
 import { libraryProblem, scanLibrary } from "@/lib/server/library";
 import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
@@ -99,9 +100,12 @@ function FolderSetup() {
 
 function Heading({ children, folders }: { children?: React.ReactNode; folders?: React.ReactNode }) {
   return (
-    <div className="mb-8 flex flex-wrap items-baseline gap-x-3">
+    <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-display text-paper">Library</h1>
-      {children ? <span className="text-label text-dim tabular-nums">{children}</span> : null}
+      {children ? <span className="mt-1.5 text-label text-dim tabular-nums">{children}</span> : null}
+      <div className="ml-auto flex items-center gap-2">
+        <ThemeControl />
+      </div>
       {folders}
     </div>
   );
@@ -113,10 +117,10 @@ function LibrarySkeleton() {
       <Heading />
       <div aria-hidden className={GRID}>
         {Array.from({ length: 14 }, (_, index) => (
-          <div key={index} className="flex flex-col gap-2.5">
-            <div className="aspect-[2/3] animate-pulse rounded-[5px] bg-panel" />
-            <div className="h-3 w-4/5 animate-pulse rounded-xs bg-panel" />
-            <div className="h-2.5 w-1/2 animate-pulse rounded-xs bg-panel" />
+          <div key={index} className="flex flex-col gap-3 rounded-xl bg-panel p-2.5 pb-3 shadow-canvas">
+            <div className="aspect-[2/3] animate-pulse rounded-md bg-tint" />
+            <div className="mx-1 h-3 w-4/5 animate-pulse rounded-xs bg-tint" />
+            <div className="mx-1 h-2.5 w-1/2 animate-pulse rounded-xs bg-tint" />
           </div>
         ))}
       </div>
@@ -127,10 +131,13 @@ function LibrarySkeleton() {
 export default function Home() {
   return (
     <div className="min-h-full bg-ink">
-      <header className="sticky top-0 z-10 flex h-11 items-center gap-2 bg-shell px-4">
-        <span className="text-[13px] font-semibold text-paper">rigg learn</span>
+      <header className="sticky top-0 z-10 flex h-12 items-center gap-2 bg-ink/80 px-3 backdrop-blur-md">
+        <span className="flex h-7 items-center gap-2 rounded-full bg-panel-raised px-3 text-[13px] font-semibold text-paper shadow-chip">
+          <LibraryIcon aria-hidden className="size-3.5 text-dim" />
+          rigg learn
+        </span>
       </header>
-      <main className="mx-auto w-full max-w-[1100px] px-6 pb-24 pt-10">
+      <main className="mx-auto w-full max-w-[1180px] px-6 pb-24 pt-8">
         <RefreshOnReturn />
         <Suspense fallback={<LibrarySkeleton />}>
           <Library />

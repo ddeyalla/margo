@@ -82,7 +82,7 @@ export function Composer({
 
   return (
     <div className="shrink-0 px-3 pb-3 pt-1">
-      <div className="rounded-xl bg-panel-raised shadow-float ring-1 ring-inset ring-white/[0.05] transition-shadow duration-[var(--duration-base)] focus-within:ring-white/[0.14]">
+      <div className="rounded-xl bg-panel-raised shadow-float ring-1 ring-inset ring-line transition-shadow duration-[var(--duration-base)] focus-within:ring-line-strong">
         {images.images.length ? <DraftImages images={images.images} onRemove={images.remove} /> : null}
         {problem ? (
           <p role="alert" className="px-3.5 pt-2 text-[11px] leading-relaxed text-danger">
@@ -132,7 +132,7 @@ export function Composer({
             title="Attach images. You can also paste or drop them."
             disabled={disabledReason !== null}
             onClick={() => fileRef.current?.click()}
-            className="press grid size-7 shrink-0 place-items-center rounded-full text-dim transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.06] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40"
+            className="press grid size-7 shrink-0 place-items-center rounded-full text-dim transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40"
           >
             <ImagePlus className="size-4" aria-hidden />
           </button>
@@ -148,7 +148,7 @@ export function Composer({
             onClick={sending ? onStop : send}
             className={clsx(
               "press grid size-7 shrink-0 place-items-center rounded-full transition-colors duration-[var(--duration-fast)]",
-              sending || canSend ? "bg-accent text-ink hover:bg-white" : "bg-white/[0.06] text-dim",
+              sending || canSend ? "bg-accent text-on-accent hover:bg-accent/90" : "bg-tint text-dim",
             )}
           >
             {sending ? <Square size={10} fill="currentColor" aria-hidden /> : <ArrowUp size={15} strokeWidth={2.25} aria-hidden />}

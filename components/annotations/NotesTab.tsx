@@ -71,7 +71,7 @@ export function NotesTab({
             </p>
             {byChapter(notes).map((group, index) => (
               <section key={`${index}-${group.title}`} aria-label={group.title ?? UNTITLED_SECTION} className="pt-2">
-                <h3 className="sticky top-0 z-10 truncate bg-panel px-2 py-1.5 text-label font-medium text-fog">
+                <h3 className="sticky top-0 z-10 truncate bg-ink px-2 py-1.5 text-label font-medium text-fog">
                   {group.title ?? UNTITLED_SECTION}
                 </h3>
                 <ul className="flex flex-col gap-1">
@@ -130,7 +130,7 @@ function NoteCard({
   return (
     <li
       data-note={note.id}
-      className="group/note relative rounded-lg px-2 py-2 transition-colors duration-[var(--duration-fast)] hover:bg-panel-raised/60"
+      className="group/note relative rounded-lg px-2 py-2 transition-colors duration-[var(--duration-fast)] hover:bg-tint"
     >
       {flash !== null ? (
         <span key={flash} aria-hidden className="animate-glow pointer-events-none absolute inset-0 rounded-lg bg-highlight/40 ring-1 ring-highlight-strong/50" />
@@ -146,7 +146,7 @@ function NoteCard({
       </div>
       <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 pl-[13px] text-[11px] text-dim">
         {note.tags.map((tag) => (
-          <span key={tag} className="rounded-xs bg-white/[0.05] px-1.5 py-px text-fog">
+          <span key={tag} className="rounded-xs bg-tint px-1.5 py-px text-fog">
             #{tag}
           </span>
         ))}

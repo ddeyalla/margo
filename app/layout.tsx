@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Literata } from "next/font/google";
+import { themeScript } from "@/components/ui/theme";
 import "./globals.css";
 
 const literata = Literata({
@@ -16,7 +17,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={literata.variable}>
+    /* The theme script sets data-theme before React loads, so the server's markup never has it. */
+    <html lang="en" className={literata.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

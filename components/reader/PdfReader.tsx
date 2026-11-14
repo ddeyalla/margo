@@ -567,7 +567,7 @@ export function PdfReader({
       {scanned ? (
         <div
           role="status"
-          className="animate-rise absolute bottom-5 left-1/2 flex w-max max-w-[min(460px,calc(100%-24px))] -translate-x-1/2 items-start gap-2.5 rounded-lg bg-panel-raised py-2.5 pl-3 pr-1.5 shadow-float ring-1 ring-white/[0.06]"
+          className="animate-rise absolute bottom-5 left-1/2 flex w-max max-w-[min(460px,calc(100%-24px))] -translate-x-1/2 items-start gap-2.5 rounded-lg bg-panel-raised py-2.5 pl-3 pr-1.5 shadow-float"
         >
           <ScanText aria-hidden className="mt-0.5 size-4 shrink-0 text-fog" />
           <div className="min-w-0 py-px">

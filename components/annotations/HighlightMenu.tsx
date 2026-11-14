@@ -7,7 +7,7 @@ import { placeFloating } from "@/components/reader/floating";
 import type { SelectionRect } from "@/components/reader/types";
 
 const itemClass =
-  "press inline-flex h-7 shrink-0 select-none items-center gap-1.5 rounded-sm px-2 text-label text-fog outline-none transition-[color,background-color,scale] duration-[var(--duration-fast)] ease-out hover:bg-white/[0.06] hover:text-paper focus-visible:bg-white/[0.06] focus-visible:text-paper [&>svg]:size-3.5 [&>svg]:shrink-0";
+  "press inline-flex h-7 shrink-0 select-none items-center gap-1.5 rounded-sm px-2 text-label text-fog outline-none transition-[color,background-color,scale] duration-[var(--duration-fast)] ease-out hover:bg-tint hover:text-paper focus-visible:bg-tint focus-visible:text-paper [&>svg]:size-3.5 [&>svg]:shrink-0";
 
 /** Floats over a highlight the reader clicked: open its note, or remove the highlight. */
 export function HighlightMenu({
@@ -50,7 +50,7 @@ export function HighlightMenu({
 
   return (
     <div ref={boxRef} className="fixed left-0 top-0 z-50 animate-rise" style={{ visibility: "hidden" }}>
-      <Toolbar aria-label="Highlight" className="flex items-center gap-0.5 rounded-lg bg-panel-raised p-1 shadow-float ring-1 ring-white/[0.06]">
+      <Toolbar aria-label="Highlight" className="flex items-center gap-0.5 rounded-lg bg-panel-raised p-1 shadow-float">
         {hasNote ? (
           <ToolbarButton className={itemClass} onClick={onNote}>
             <NotebookPen />

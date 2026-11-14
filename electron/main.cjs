@@ -4,7 +4,7 @@
 //   - rigg learn answers: attach to it (for example `npm run dev`) and never start another.
 //   - nothing is listening: start the packaged server with Electron's own Node, and stop it on quit.
 //   - something else answers: say so and quit.
-const { app, BrowserWindow, Menu, dialog, ipcMain, screen, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, screen, session, shell } = require("electron");
 const { spawn, execFile } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -260,7 +260,8 @@ const createWindow = () => {
     ...readWindowState(),
     minWidth: 700,
     minHeight: 480,
-    backgroundColor: "#111113", // no white flash before the page paints
+    // The window colour in the theme macOS is using, so nothing flashes before the page paints.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#19191b" : "#ebebed",
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
