@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   /* Read by path at run time, so tracing cannot see them. */
   outputFileTracingIncludes: {
     "/api/books/\\[bookId\\]/cards": ["./lib/server/cards/prompt.md"],
+    "/api/speech/transcribe": ["./node_modules/sherpa-onnx-node/**", "./node_modules/sherpa-onnx-darwin-arm64/**"],
     "/api/books/\\[bookId\\]/cover": [
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
       "./node_modules/pdfjs-dist/standard_fonts/**",
@@ -18,8 +19,8 @@ const nextConfig: NextConfig = {
       "./node_modules/pdfjs-dist/wasm/**",
     ],
   },
-  /* Covers are drawn on the server with pdf.js and a native canvas, loaded by Node rather than bundled. */
-  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas"],
+  /* Covers are drawn on the server with pdf.js and a native canvas, and voice input decodes with a native addon: all loaded by Node rather than bundled. */
+  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas", "sherpa-onnx-node"],
   turbopack: {
     rules: {
       "*.css": {

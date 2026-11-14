@@ -32,6 +32,7 @@
     "react-dom": "19.3.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "sherpa-onnx-node": "2.0.1",
     "ts-fsrs": "5.2.3"
   },
   "devDependencies": {
@@ -80,7 +81,10 @@
       ],
       "icon": "electron/icon.icns",
       "identity": null,
-      "category": "public.app-category.education"
+      "category": "public.app-category.education",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "rigg learn uses the microphone so you can speak to the tutor. Your voice is turned into text on this Mac and is never sent anywhere."
+      }
     },
     "dmg": {
       "title": "rigg learn"

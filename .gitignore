@@ -42,6 +42,7 @@ next-env.d.ts
 
 # app state
 /data/
+/models/
 !.env.example
 /notes/
 

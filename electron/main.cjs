@@ -4,7 +4,7 @@
 //   - rigg learn answers: attach to it (for example `npm run dev`) and never start another.
 //   - nothing is listening: start the packaged server with Electron's own Node, and stop it on quit.
 //   - something else answers: say so and quit.
-const { app, BrowserWindow, Menu, dialog, ipcMain, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, screen, session, shell } = require("electron");
 const { spawn, execFile } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -206,6 +206,17 @@ const isOurs = (url) => {
   }
 };
 
+/** The microphone, for voice input, and only for this app's own pages. Everything else stays denied. */
+const allowMicrophoneForOurPages = () => {
+  const allowed = (permission, origin) => permission === "media" && isOurs(origin);
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) =>
+    callback(allowed(permission, details.requestingUrl || webContents.getURL())),
+  );
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) =>
+    allowed(permission, requestingOrigin || webContents?.getURL() || ""),
+  );
+};
+
 const createWindow = () => {
   const win = new BrowserWindow({
     ...readWindowState(),
@@ -292,6 +303,7 @@ const fail = (title, detail) => {
 
 const launch = async () => {
   buildMenu();
+  allowMicrophoneForOurPages();
   ipcMain.handle("rigg:pick-folder", async (event) => {
     // Only the app's own pages may open the picker.
     if (!isOurs(event.senderFrame?.url ?? "")) return null;

@@ -4,7 +4,10 @@ import { useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { ArrowUp, ImagePlus, Square } from "lucide-react";
 import { IMAGE_TYPES } from "@/lib/shared/attachments";
+import { insertAtCaret } from "@/lib/shared/dictation";
 import { DraftImages } from "./Images";
+import { DictationNote, MicButton } from "./MicButton";
+import { useDictation } from "./useDictation";
 import type { ImageDraft } from "./useImageDraft";
 import type { MessageDraft } from "./useTutor";
 
@@ -37,6 +40,15 @@ export function Composer({
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  /* Where the caret goes once dictated words are in the box. */
+  const caret = useRef<number | null>(null);
+  const dictation = useDictation((words) => {
+    const input = inputRef.current;
+    if (!input) return;
+    const next = insertAtCaret(input.value, input.selectionStart, input.selectionEnd, words, MAX_TEXT);
+    caret.current = next.caret;
+    setText(next.value);
+  });
   const hasContent = text.trim().length > 0 || images.ready.length > 0;
   const canSend = !disabledReason && !sending && !images.uploading && !images.failed && hasContent;
   const problem = images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;
@@ -49,6 +61,14 @@ export function Composer({
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
     input.style.height = "0px";
     input.style.height = `${Math.max(line + padding, Math.min(input.scrollHeight, line * MAX_LINES + padding))}px`;
+  }, [text]);
+
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input || caret.current === null) return;
+    input.focus();
+    input.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
   }, [text]);
 
   const send = () => {
@@ -91,6 +111,7 @@ export function Composer({
           }}
           className="block w-full resize-none overflow-y-auto bg-transparent px-3.5 pb-1 pt-3 text-body text-paper outline-none placeholder:text-dim disabled:cursor-not-allowed"
         />
+        <DictationNote dictation={dictation} className="px-3.5 pb-1.5" />
         <div className="flex items-center gap-1.5 px-2 pb-2">
           <input
             ref={fileRef}
@@ -116,6 +137,7 @@ export function Composer({
           <span aria-hidden className="min-w-0 flex-1 truncate text-[11px] text-dim">
             {sending ? "Answering…" : images.uploading ? "Attaching…" : "⏎ send · ⇧⏎ new line"}
           </span>
+          <MicButton dictation={dictation} disabled={disabledReason !== null} />
           <button
             type="button"
             aria-label={sending ? "Stop the answer" : "Send"}

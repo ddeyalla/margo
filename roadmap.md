@@ -109,6 +109,39 @@ Questions joined by "and" still slip through; see `scripts/work-eval/README.md`.
 - [ ] Signed DMG. Unsigned for now: the first open needs right-click, Open.
 - [x] No auto-update, no Windows or Linux builds.
 
+## Phase 9 — Voice input · M
+
+Speak instead of typing, anywhere you'd type to the tutor. Runs on this machine; no audio
+leaves it. Reference: [Handy](https://github.com/cjpais/Handy) (MIT), which uses the same
+model.
+
+- [x] Parakeet TDT 0.6B v3 (int8) through `sherpa-onnx-node` on the server, so the
+      browser and the app share one model. Checked: a 7 s question in 0.25 s, loads in
+      1.3 s, also under the app's Electron Node.
+- [x] Download on first use (about 490 MB), with progress, into a `models` folder beside the data folder.
+- [x] Mic button in the Ask and Explain it back inputs and the chat box. The words land in
+      the field for you to fix before sending.
+- [ ] Mac app asks for the microphone.
+
+## Phase 10 — Staying with the book · M
+
+For getting started again, tangents and drifting off. Nothing here calls the tutor unless
+you ask.
+
+- [ ] **Park it:** save a question on a passage without asking it. Parked questions wait
+      in a list until you send them.
+- [ ] **Where you left off:** on opening a book, the last paragraph you read and your
+      latest highlights and notes in that chapter. A Recap button asks the tutor only if
+      pressed.
+- [ ] **Spotlight:** dim all but the current paragraph and hide the top bar. EPUB first.
+- [ ] "3 cards due" when a book opens, one click to start.
+- [ ] Minutes left in the chapter, for EPUB.
+
+## Phase 11 — Read-along · M
+
+- [ ] The browser's speech voices read the book aloud, highlighting each word, with a
+      speed control. EPUB first.
+
 ## Not building
 
 - Decks: the book is the deck.

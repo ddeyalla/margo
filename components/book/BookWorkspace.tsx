@@ -11,6 +11,7 @@ import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { ReviewSheet } from "@/components/cards/ReviewSheet";
 import { useCards } from "@/components/cards/useCards";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
+import { dictationBusy } from "@/components/chat/useDictation";
 import { useProviders } from "@/components/chat/useProviders";
 import { useTutor, type MessageDraft } from "@/components/chat/useTutor";
 import { EpubReader } from "@/components/reader/EpubReader";
@@ -134,8 +135,8 @@ export function BookWorkspace({
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
-  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer or mid-note. */
-  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null);
+  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note or mid-dictation. */
+  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy());
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
 
   /* A layout restored from an earlier visit may start with the panel collapsed; read it once the group has attached. */

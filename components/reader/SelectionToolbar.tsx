@@ -3,6 +3,9 @@
 import { useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { ArrowUp, BookOpenText, Highlighter, Layers, Lightbulb, MessageCircleQuestion, NotebookPen, PenLine, Sparkles } from "lucide-react";
 import { Toolbar, ToolbarButton, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
+import { DictationNote, MicButton } from "@/components/chat/MicButton";
+import { useDictation } from "@/components/chat/useDictation";
+import { insertAtCaret } from "@/lib/shared/dictation";
 import type { SelectionContext } from "@/lib/shared/types";
 import { placeFloating } from "./floating";
 import type { SelectionRect } from "./types";
@@ -30,6 +33,8 @@ interface SelectionToolbarProps {
 }
 
 type InputKind = "ask" | "explainBack";
+
+const MAX_QUESTION = 8000;
 
 const INPUTS = {
   ask: { icon: MessageCircleQuestion, label: "Your question about this passage", placeholder: "Ask about this passage…", button: "Ask" },
@@ -72,8 +77,26 @@ export function SelectionToolbar({
   /* Read once the reader reaches for the toolbar, before focus can move and clear a PDF selection. */
   const snapshot = useRef<SelectionContext | null>(null);
   const askingRef = useRef(false);
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
+  const dictation = useDictation((words) => {
+    const field = fieldRef.current;
+    if (!field) return;
+    const next = insertAtCaret(field.value, field.selectionStart ?? field.value.length, field.selectionEnd ?? field.value.length, words, MAX_QUESTION);
+    caret.current = next.caret;
+    setQuestion(next.value);
+  });
+
+  useLayoutEffect(() => {
+    const field = fieldRef.current;
+    if (!field || caret.current === null) return;
+    field.focus();
+    field.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  }, [question]);
 
   const reset = () => {
+    dictation.cancel();
     askingRef.current = false;
     snapshot.current = null;
     setAsking(null);
@@ -157,11 +180,12 @@ export function SelectionToolbar({
           <>
             <input.icon aria-hidden className="ml-1.5 size-3.5 shrink-0 text-dim" />
             <ToolbarInput
+              ref={fieldRef}
               autoFocus
               aria-label={input.label}
               placeholder={input.placeholder}
               value={question}
-              maxLength={8000}
+              maxLength={MAX_QUESTION}
               onChange={(event) => setQuestion(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.nativeEvent.isComposing) {
@@ -181,6 +205,7 @@ export function SelectionToolbar({
               }}
               className="h-7 w-[min(320px,60vw)] bg-transparent px-1.5 text-[13px] text-paper outline-none placeholder:text-dim"
             />
+            <MicButton dictation={dictation} disabled={disabled} className="size-6" />
             <ToolbarButton
               aria-label={input.button}
               title={`${input.button} (Enter)`}
@@ -190,6 +215,7 @@ export function SelectionToolbar({
             >
               <ArrowUp strokeWidth={2.25} />
             </ToolbarButton>
+            <DictationNote dictation={dictation} className="basis-full max-w-[min(420px,80vw)] px-1.5 pb-1" />
           </>
         ) : (
           <>
