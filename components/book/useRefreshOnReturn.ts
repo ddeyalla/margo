@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef } from "react";
+import { markRefresh } from "@/lib/client/open";
 
 /**
  * Shows what another window changed. When this window loses focus or hides it takes a snapshot of
@@ -46,9 +47,15 @@ export function useRefreshOnReturn(
       if (!before) return;
       const then = await before;
       if (busyAtLeave.current || busy()) return;
-      if (!readRevision) return router.refresh();
+      if (!readRevision) {
+        markRefresh();
+        return router.refresh();
+      }
       const now = await readRevision().catch(() => null);
-      if (then && now && then !== now) router.refresh();
+      if (then && now && then !== now) {
+        markRefresh();
+        router.refresh();
+      }
     };
     window.addEventListener("blur", onBlur);
     window.addEventListener("focus", back);

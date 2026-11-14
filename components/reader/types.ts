@@ -37,6 +37,16 @@ export interface ReaderPlace {
   page: PageNumber | null;
   /** Page turns left before the chapter ends, when the reader can count them exactly; null otherwise. */
   pagesLeftInChapter: number | null;
+  /** About how many minutes of reading the chapter has left, when the reader can tell; null otherwise. */
+  minutesLeftInChapter: number | null;
+}
+
+/** The text just before the reader's place, for "where you left off" and a recap. */
+export interface Glimpse {
+  /** The last sentence or two, cut on a whole word. */
+  text: string;
+  /** The text before it, for the tutor. */
+  before: string;
 }
 
 /** The one interface both readers expose, so the toolbar and panel never check the format. */
@@ -54,6 +64,8 @@ export interface ReaderHandle {
   /** Draws a highlight now if its passage is on screen, and again whenever its page or section renders. */
   showHighlight(highlight: Highlight): void;
   removeHighlight(id: string): void;
+  /** The text just before `position`, or null while the page is not ready or has no text there. */
+  peek(position: Position): Glimpse | null;
 }
 
 export interface ReaderProps {
@@ -71,4 +83,6 @@ export interface ReaderProps {
   onError(failure: OpenFailure): void;
   /** The reader clicked a drawn highlight (with no text selected); `rect` is its box in the viewport. */
   onHighlightClick(id: string, rect: SelectionRect): void;
+  /** The reader scrolled, turned the page or pressed a page key, as opposed to the book settling in place. */
+  onInteract?(): void;
 }

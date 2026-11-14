@@ -42,7 +42,7 @@ export interface BookMeta {
 
 export type ProviderId = "claude" | "codex" | "api";
 
-export type TutorAction = "explain" | "deeper" | "work" | "ask" | "explainBack";
+export type TutorAction = "explain" | "deeper" | "work" | "ask" | "explainBack" | "recap";
 
 /** Actions whose first message is what the reader typed, not a fixed line. */
 export type TypedAction = "ask" | "explainBack";
@@ -82,6 +82,11 @@ export interface PassageThread extends ThreadBase {
   after: string;
   chapterTitle: string | null;
   action: TutorAction;
+  /**
+   * Set while the question waits unsent: the reader parked it to ask later. The thread holds the question as its one
+   * message and no answer. Sending it clears this. Absent on threads saved before parking existed.
+   */
+  parkedAt?: string | null;
 }
 
 /** A question asked with no passage selected, such as one about an image. */
@@ -188,6 +193,8 @@ export interface BookState {
   highlights: Highlight[];
   notes: Note[];
   cardSets: CardSet[];
+  /** When the reader last moved through the book, an ISO time, or null if never or saved before this was kept. */
+  lastReadAt: string | null;
 }
 
 export const emptyBookState = (): BookState => ({
@@ -198,6 +205,7 @@ export const emptyBookState = (): BookState => ({
   highlights: [],
   notes: [],
   cardSets: [],
+  lastReadAt: null,
 });
 
 /** How the reader lays out a book: one continuous column, or a page at a time. */

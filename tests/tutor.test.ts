@@ -302,3 +302,29 @@ describe("child environment", () => {
     expect(env).not.toHaveProperty("OPENAI_ORG");
   });
 });
+
+describe("recap", () => {
+  const recap: Thread = {
+    kind: "passage",
+    id: "r1",
+    anchor: { kind: "epub", cfi: "epubcfi(/6/4!/4/2/1:0)" },
+    quote: "The last invented sentence.",
+    before: "Invented text from earlier in the chapter.",
+    after: "Text that must never reach the tutor.",
+    chapterTitle: "Chapter Two",
+    action: "recap",
+    provider: "claude",
+    sessionId: null,
+    createdAt: "2026-11-13T00:00:00.000Z",
+    messages: [{ role: "user", content: "Recap what came before this point.", createdAt: "2026-11-13T00:00:00.000Z" }],
+  };
+
+  it("asks for what came before the reader's place, without spoilers, and sends no text after it", () => {
+    const first = buildTurn({ title: "A Book", author: null }, recap, null, new Map()).messages[0].content;
+    expect(first).toContain("Invented text from earlier in the chapter.");
+    expect(first).toContain("The last invented sentence.");
+    expect(first).toContain("say nothing about what happens after it");
+    expect(first).not.toContain("<after>");
+    expect(first).not.toContain("must never reach");
+  });
+});

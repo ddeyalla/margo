@@ -49,6 +49,8 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/books/[boo
   await updateBookState(book.id, (state) => ({
     ...state,
     position: position ?? state.position,
+    /* Moving through the book is what "last read" means; a title or open-thread write is not. */
+    lastReadAt: position ? new Date().toISOString() : state.lastReadAt,
     meta: meta ?? state.meta,
     /* Only a thread the book has; anything else falls back to the list. */
     activeThreadId:

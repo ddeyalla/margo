@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from
 import { ScanText, X } from "lucide-react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
+import { tailExcerpt } from "@/lib/shared/resume";
 import { IconButton } from "@/components/ui";
 import type { Highlight, Position, SelectionContext } from "@/lib/shared/types";
 import { blockText, selectedRange, viewportRect } from "./dom";
@@ -144,6 +145,7 @@ export function PdfReader({
   onPositionChange,
   onError,
   onHighlightClick,
+  onInteract,
 }: ReaderProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const columnRef = useRef<HTMLDivElement>(null);
@@ -227,6 +229,16 @@ export function PdfReader({
       highlightsRef.current.set(highlight.id, highlight);
       if (highlight.anchor.kind === "pdf") paintPage(engineRef.current.slots[highlight.anchor.page - 1], highlightsRef.current);
     },
+    peek(position) {
+      if (position.kind !== "pdf") return null;
+      const { texts } = engineRef.current;
+      const text = texts.get(position.page);
+      if (!text) return null;
+      const upTo = flowText(text.slice(0, Math.round(position.offset * text.length)));
+      const before = flowText((texts.get(position.page - 1) ?? "") + "\n" + text.slice(0, Math.round(position.offset * text.length)));
+      const excerpt = tailExcerpt(normalizeText(upTo));
+      return excerpt ? { text: excerpt, before: trimBefore(before, 6000) } : null;
+    },
     removeHighlight(id) {
       const highlight = highlightsRef.current.get(id);
       highlightsRef.current.delete(id);
@@ -248,6 +260,19 @@ export function PdfReader({
   useEffect(() => {
     engineRef.current.setPaged(mode === "pages");
   }, [mode]);
+
+  const emitInteract = useEffectEvent(() => onInteract?.());
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const interact = () => emitInteract();
+    scroller.addEventListener("wheel", interact, { passive: true });
+    scroller.addEventListener("touchmove", interact, { passive: true });
+    return () => {
+      scroller.removeEventListener("wheel", interact);
+      scroller.removeEventListener("touchmove", interact);
+    };
+  }, []);
 
   useEffect(() => {
     const scroller = scrollRef.current;
@@ -403,6 +428,7 @@ export function PdfReader({
           chapter: chapterAt(engine.outline, position.page, paged ? 0.5 : position.offset),
           page: { kind: "pdf", page: position.page, total: slots.length },
           pagesLeftInChapter: null,
+          minutesLeftInChapter: null,
         });
       });
     };

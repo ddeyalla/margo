@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, FileWarning, Moon, PanelRight, Sun, TableOfContents, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, Focus, FileWarning, Moon, PanelRight, Sun, TableOfContents, X } from "lucide-react";
 import { createResizableController, Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
@@ -22,8 +22,12 @@ import type { ReaderHandle, ReaderMeta, ReaderPlace, ReaderProps, SelectionRect,
 import { EmptyState, IconButton, Segmented } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
 import { isTextEntry } from "@/lib/client/keys";
+import { consumeRefreshMark } from "@/lib/client/open";
 import { anchorAt } from "@/lib/shared/place";
+import { recentMarks, shouldShowResume } from "@/lib/shared/resume";
+import { reviewQueue } from "@/lib/shared/schedule";
 import type { Anchor, BookFormat, BookId, BookState, PanelTab, Position, ProviderId, ReadingFont, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
+import { OpeningNotice, type OpeningNotice as OpeningNoticeData } from "./OpeningNotice";
 import { ReadingFooter } from "./ReadingFooter";
 import { ReadingSettings } from "./ReadingSettings";
 import { SidePanel } from "./SidePanel";
@@ -40,6 +44,11 @@ export interface WorkspaceBook {
 
 const PANEL_ID = "tutor-panel";
 const TOC_SHORTCUT = "⌘⇧L";
+const SPOTLIGHT_SHORTCUT = "⌘⇧F";
+/** How long the place must hold still before the greeting says where the reader left off. */
+const SETTLE_MS = 700;
+/** How long the small confirmation after parking a question stays. */
+const TOAST_MS = 4000;
 /** The chapters column's width. */
 const TOC_WIDTH = 280;
 /** The narrowest the book may get beside the chapters column; below this the chapters slide over the book instead. */
@@ -139,6 +148,56 @@ export function BookWorkspace({
   useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy());
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
 
+  /* What greets the reader on a fresh open: where they left off, and the cards that are due. */
+  const [notice, setNotice] = useState<OpeningNoticeData | null>(null);
+  /* Decided once, on the first page of this open; null means there is nothing to show. */
+  const greeting = useRef<{ resume: boolean; due: number } | null>(null);
+  const dismissNotice = useCallback(() => {
+    greeting.current = null;
+    setNotice(null);
+  }, []);
+  /* The book reports a place or two while it settles; the greeting waits for the place to hold still. */
+  const settleTimer = useRef(0);
+  const [settled, setSettled] = useState(false);
+  const greeted = useRef(false);
+  useEffect(() => {
+    if (greeted.current) return;
+    greeted.current = true;
+    /* A page rebuilt after another window changed the book is not an open. */
+    if (consumeRefreshMark()) return;
+    const resume = shouldShowResume(initialState.position !== null, initialState.lastReadAt, new Date());
+    const due = reviewQueue(initialState.cardSets, new Date()).length;
+    if (resume || due > 0) greeting.current = { resume, due };
+  }, [initialState]);
+
+  /* Once the place has held still, the greeting is made from it: where the reader left off is where the book now is. */
+  useEffect(() => {
+    const hello = greeting.current;
+    if (!settled || !hello || !position) return;
+    greeting.current = null;
+    const glimpse = hello.resume ? readerRef.current?.peek(position) ?? null : null;
+    const label = chapter?.label ?? null;
+    setNotice({
+      resume: hello.resume
+        ? { glimpse: glimpse?.text ?? null, before: glimpse?.before ?? null, chapter: label, fraction: position.fraction, marks: recentMarks(annotations.highlights, annotations.notes, label) }
+        : null,
+      due: hello.due,
+    });
+  }, [settled, position, chapter, annotations.highlights, annotations.notes]);
+  useEffect(() => () => clearTimeout(settleTimer.current), []);
+
+  /* The spotlight dims all but one paragraph and clears the chrome away. */
+  const [spotlight, setSpotlight] = useState(false);
+  const panelWasOpen = useRef(false);
+
+  /* A small confirmation, such as after parking a question. */
+  const [toast, setToast] = useState<{ text: string; action: boolean } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   /* A layout restored from an earlier visit may start with the panel collapsed; read it once the group has attached. */
   useEffect(() => {
     const frame = requestAnimationFrame(() => setPanelOpen(!layout.isCollapsed(PANEL_ID)));
@@ -227,6 +286,54 @@ export function BookWorkspace({
     tutor.ask(draft, position && { anchor: anchorAt(position), chapterTitle: chapter?.label ?? null }, provider);
   };
 
+  const toggleSpotlight = () => {
+    if (book.format !== "epub" || error) return;
+    if (spotlight) {
+      setSpotlight(false);
+      if (panelWasOpen.current && layout.isCollapsed(PANEL_ID)) layout.expand(PANEL_ID);
+      return;
+    }
+    panelWasOpen.current = !layout.isCollapsed(PANEL_ID);
+    if (panelWasOpen.current) layout.collapse(PANEL_ID);
+    dismissNotice();
+    setSpotlight(true);
+  };
+
+  /* Saves the question on the passage and says so. The panel stays as it is and the tutor is not called. */
+  const park = async (selection: SelectionContext, question: string) => {
+    readerRef.current?.clearSelection();
+    const saved = await tutor.park(selection, question, provider);
+    setToast({ text: saved ? "Parked. It waits in the Chat tab." : "Couldn't park that question. Try again.", action: saved });
+  };
+
+  const sendParked = (id: string) => {
+    if (!provider) return;
+    showTab("chat");
+    tutor.unpark(id, provider);
+  };
+
+  /* Asks for a recap of what came before the reader's place. Given the text just before it, or, with none, only the place. */
+  const recap = () => {
+    const resume = notice?.resume;
+    if (!provider || !resume) return;
+    dismissNotice();
+    showTab("chat");
+    if (position && resume.glimpse && resume.before !== null) {
+      readerRef.current?.clearSelection();
+      const selection: SelectionContext = {
+        text: resume.glimpse,
+        before: resume.before,
+        after: "",
+        anchor: anchorAt(position),
+        chapterTitle: chapter?.label ?? null,
+        rect: { top: 0, left: 0, width: 0, height: 0 },
+      };
+      tutor.start("recap", selection, null, provider);
+    } else {
+      askAnywhere({ text: "Give me a short recap of what came before my place in this chapter. Say nothing about what comes after it.", attachments: [] });
+    }
+  };
+
   const highlight = (selection: SelectionContext) => {
     readerRef.current?.clearSelection();
     annotations.highlight(selection);
@@ -252,6 +359,7 @@ export function BookWorkspace({
 
   /* The docked column stays open; the sliding one gets out of the way. */
   const openEntry = (entry: TocEntry) => {
+    dismissNotice();
     if (!tocDocked) setTocOpen(false);
     void readerRef.current?.goToEntry(entry);
   };
@@ -271,8 +379,17 @@ export function BookWorkspace({
       event.preventDefault();
       const selection = readerRef.current?.getSelection();
       if (selection) highlight(selection);
+    } else if (mod && event.shiftKey && !event.altKey && event.code === "KeyF" && !isTextEntry(event.target)) {
+      event.preventDefault();
+      toggleSpotlight();
     } else if (event.key === "Escape" && !isTextEntry(event.target)) {
+      /* Esc takes one thing away at a time: the selection, then the greeting, then the spotlight. */
+      const selected = !!readerRef.current?.getSelection();
       readerRef.current?.clearSelection();
+      if (!selected) {
+        if (notice) dismissNotice();
+        else if (spotlight) toggleSpotlight();
+      }
     } else if (
       mode === "pages" &&
       event.key in PAGE_KEYS &&
@@ -283,6 +400,7 @@ export function BookWorkspace({
       !usesArrows(event.target)
     ) {
       event.preventDefault();
+      dismissNotice();
       readerRef.current?.turnPage(PAGE_KEYS[event.key]);
     }
   });
@@ -295,7 +413,15 @@ export function BookWorkspace({
 
   const menuNote = menu ? annotations.notes.find((note) => note.highlightId === menu.id) : undefined;
 
-  const jumpTo = (anchor: Anchor) => void readerRef.current?.goTo(anchor);
+  const turn = (direction: 1 | -1) => {
+    dismissNotice();
+    readerRef.current?.turnPage(direction);
+  };
+
+  const jumpTo = (anchor: Anchor) => {
+    dismissNotice();
+    void readerRef.current?.goTo(anchor);
+  };
 
   const readerProps: ReaderProps = {
     ref: readerRef,
@@ -309,7 +435,12 @@ export function BookWorkspace({
       setPosition(next);
       savePosition(next);
       setMenu(null);
+      if (greeting.current) {
+        clearTimeout(settleTimer.current);
+        settleTimer.current = window.setTimeout(() => setSettled(true), SETTLE_MS);
+      }
     },
+    onInteract: dismissNotice,
     onError: setError,
     onHighlightClick: (id, rect) => setMenu({ id, rect }),
   };
@@ -317,7 +448,7 @@ export function BookWorkspace({
   return (
     <div className="flex h-dvh flex-col bg-ink">
       <title>{`${title} · rigg learn`}</title>
-      <header className="flex h-11 shrink-0 items-center gap-1.5 bg-shell px-2">
+      <header className={clsx("h-11 shrink-0 items-center gap-1.5 bg-shell px-2", spotlight ? "hidden" : "flex")}>
         <Link
           href="/"
           aria-label="Back to library"
@@ -356,6 +487,16 @@ export function BookWorkspace({
         ) : (
           <Segmented label="Page colours" options={PDF_THEMES} value={darkPages ? "dark" : "light"} onChange={(theme) => chooseDarkPages(theme === "dark")} />
         )}
+        <span title={book.format === "epub" ? undefined : "EPUB only for now"} className="inline-flex">
+          <IconButton
+            label={`Spotlight: dim all but the paragraph you're reading (${SPOTLIGHT_SHORTCUT})`}
+            active={spotlight}
+            disabled={book.format !== "epub" || !!error}
+            onClick={toggleSpotlight}
+          >
+            <Focus />
+          </IconButton>
+        </span>
         <IconButton
           label={panelOpen ? "Hide the tutor panel (⌘\\)" : "Show the tutor panel (⌘\\)"}
           active={panelOpen}
@@ -375,9 +516,9 @@ export function BookWorkspace({
           <div ref={readerPaneRef} style={{ "--toc-width": `${TOC_WIDTH}px` } as CSSProperties} className="flex h-full min-w-0">
             {tocDocked && !error ? (
               <div
-                inert={!tocOpen}
+                inert={!tocOpen || spotlight}
                 className="h-full shrink-0 overflow-hidden transition-[width] duration-[var(--duration-base)] ease-out"
-                style={{ width: tocOpen ? TOC_WIDTH : 0 }}
+                style={{ width: tocOpen && !spotlight ? TOC_WIDTH : 0 }}
               >
                 <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked onSelect={openEntry} onClose={closeToc} />
               </div>
@@ -410,20 +551,67 @@ export function BookWorkspace({
               ) : (
                 <>
                   <div className="relative min-h-0 flex-1">
-                    {book.format === "epub" ? <EpubReader {...readerProps} theme={epubTheme} boldStarts={boldStarts} font={previewFont === undefined ? readingFont : previewFont} /> : <PdfReader {...readerProps} />}
+                    {book.format === "epub" ? <EpubReader {...readerProps} theme={epubTheme} boldStarts={boldStarts} font={previewFont === undefined ? readingFont : previewFont} spotlight={spotlight} /> : <PdfReader {...readerProps} />}
                     {mode === "pages" ? (
                       <>
-                        <PageTurn direction={-1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
-                        <PageTurn direction={1} onTurn={(direction) => readerRef.current?.turnPage(direction)} />
+                        <PageTurn direction={-1} onTurn={turn} />
+                        <PageTurn direction={1} onTurn={turn} />
                       </>
                     ) : null}
                   </div>
-                  <ReadingFooter fraction={position?.fraction ?? 0} place={place} onSeek={(fraction) => readerRef.current?.seek(fraction)} />
+                  <ReadingFooter fraction={position?.fraction ?? 0} place={place} onSeek={(fraction) => {
+                      dismissNotice();
+                      readerRef.current?.seek(fraction);
+                    }}
+                  />
                 </>
               )}
+              {spotlight ? (
+                <button
+                  type="button"
+                  onClick={toggleSpotlight}
+                  title={`Leave the spotlight (Esc or ${SPOTLIGHT_SHORTCUT})`}
+                  className="press animate-rise absolute right-3 top-3 z-30 inline-flex h-7 items-center gap-1.5 rounded-sm px-2 text-label text-page-dim/70 transition-colors duration-[var(--duration-fast)] hover:bg-prose/[0.06] hover:text-prose focus-visible:text-prose"
+                >
+                  <X className="size-3.5" aria-hidden />
+                  Esc
+                </button>
+              ) : null}
+              {notice && !spotlight && !reviewing ? (
+                <OpeningNotice
+                  notice={notice}
+                  tutorReady={!!provider && !unavailable}
+                  onRecap={recap}
+                  onReview={() => {
+                    dismissNotice();
+                    setReviewing(true);
+                  }}
+                  onClose={dismissNotice}
+                />
+              ) : null}
+              {toast ? (
+                <div
+                  role="status"
+                  className="animate-rise absolute bottom-12 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full bg-panel-raised py-0.5 pl-3.5 pr-1 text-label text-fog shadow-float ring-1 ring-white/[0.06]"
+                >
+                  <span className="py-1">{toast.text}</span>
+                  {toast.action ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        showTab("chat");
+                        setToast(null);
+                      }}
+                      className="press h-6 rounded-full px-2 text-label text-paper transition-colors duration-[var(--duration-fast)] hover:bg-white/[0.08]"
+                    >
+                      Show
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
               {reviewing ? <ReviewSheet cards={cards} onClose={() => setReviewing(false)} onJump={jumpTo} /> : null}
               {!tocDocked && !error ? (
-                <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked={false} onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !spotlight} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
             </main>
           </div>
@@ -447,6 +635,7 @@ export function BookWorkspace({
             unavailable={unavailable}
             onJump={jumpTo}
             onAsk={askAnywhere}
+            onSendParked={sendParked}
             onReply={(draft) => provider && tutor.reply(draft, provider)}
             onRetry={() => provider && tutor.retry(provider)}
             annotations={annotations}
@@ -466,6 +655,7 @@ export function BookWorkspace({
         disabledReason={unavailable}
         onAction={(action, selection) => startThread(action, selection, null)}
         onAsk={(text, selection, kind) => startThread(kind, selection, text)}
+        onPark={(text, selection) => void park(selection, text)}
         onHighlight={highlight}
         onNote={writeNote}
         onCard={makeCards}

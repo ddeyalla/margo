@@ -25,6 +25,7 @@ export function SidePanel({
   unavailable,
   onJump,
   onAsk,
+  onSendParked,
   onReply,
   onRetry,
   annotations,
@@ -41,6 +42,7 @@ export function SidePanel({
   unavailable: string | null;
   onJump(anchor: Anchor): void;
   onAsk(draft: MessageDraft): void;
+  onSendParked(id: string): void;
   onReply(draft: MessageDraft): void;
   onRetry(): void;
   annotations: AnnotationsApi;
@@ -67,7 +69,7 @@ export function SidePanel({
         </TabsList>
       </div>
       <TabsPanel value="chat" className="flex min-h-0 flex-1 flex-col outline-none data-[selected]:flex [&:not([data-selected])]:hidden">
-        <ChatTab tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onReply={onReply} onRetry={onRetry} />
+        <ChatTab tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} />
       </TabsPanel>
       <TabsPanel value="notes" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
         <NotesTab

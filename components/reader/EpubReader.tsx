@@ -3,12 +3,15 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
+import { countWords, minutesLeft } from "@/lib/shared/reading-time";
+import { tailExcerpt } from "@/lib/shared/resume";
 import type { Highlight, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
 import { openFailure } from "./errors";
 import { addFixations, removeFixations, skipFixations } from "./fixations";
 import { cssFamily } from "./fonts";
 import { mergeLineBoxes, type Box } from "./rects";
+import { blockAt, blockOf, installSpotlight, markBlock, READING_LINE, removeSpotlight } from "./spotlight";
 import { epubToc, wholeChapterSections, type FoliateTocItem } from "./toc";
 import type { PageNumber, ReaderProps, TocEntry } from "./types";
 
@@ -16,6 +19,8 @@ import type { PageNumber, ReaderProps, TocEntry } from "./types";
 interface FoliateRenderer extends HTMLElement {
   start: number;
   end: number;
+  /** The visible length along the scrolling axis. */
+  size: number;
   viewSize: number;
   /** In Pages mode, the screen of the section in view, and the section's screen count. */
   page: number;
@@ -32,6 +37,8 @@ interface FoliateRenderer extends HTMLElement {
 interface FoliateView extends HTMLElement {
   book: { metadata?: { title?: unknown; author?: unknown }; sections: { linear?: string }[]; toc?: FoliateTocItem[] };
   renderer: FoliateRenderer;
+  /** Where the reader is, as of the last relocate: the visible range among other things. */
+  lastLocation: { range?: Range } | null;
   /** Applied to every CFI foliate makes or resolves. A vendored patch adds it. */
   cfiFilter: ((node: Node) => number) | null;
   open(src: string): Promise<void>;
@@ -83,6 +90,28 @@ const pagesLeftInSection = (renderer: FoliateRenderer): number | null => {
   return Math.max(0, screens - renderer.page) * (renderer.heads?.length || 1);
 };
 
+/** Words in each loaded section, counted once. */
+const wordCounts = new WeakMap<Document, number>();
+const wordsIn = (doc: Document): number => {
+  let words = wordCounts.get(doc);
+  if (words === undefined) {
+    words = countWords(doc.body?.textContent ?? "");
+    wordCounts.set(doc, words);
+  }
+  return words;
+};
+
+/**
+ * Minutes left in a section that is one whole chapter. The screen or the stretch on view counts as still to
+ * read, so the last screen says one minute rather than none.
+ */
+const sectionMinutesLeft = (renderer: FoliateRenderer, doc: Document, paged: boolean): number | null => {
+  if (!renderer.viewSize) return null;
+  const screens = renderer.pages - 2;
+  const fractionLeft = paged ? (screens > 0 ? (screens - renderer.page + 1) / screens : NaN) : 1 - renderer.start / renderer.viewSize;
+  return minutesLeft(wordsIn(doc), fractionLeft);
+};
+
 /** Served from public/ and imported at runtime, never bundled. */
 const FOLIATE_VIEW = "/vendor/foliate-js/view.js";
 const FOLIATE_OVERLAYER = "/vendor/foliate-js/overlayer.js";
@@ -92,6 +121,8 @@ const OVERSCROLL_TO_TURN = 260;
 const GESTURE_GAP_MS = 400;
 /** Book text column width: about 66 characters of Literata at 18px. */
 const COLUMN_WIDTH = "570px";
+/** Keys that move through the book. */
+const NAV_KEYS = new Set(["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 /** Panes at least this wide show two columns side by side in Pages mode. */
 const TWO_COLUMNS_FROM = 1040;
 
@@ -182,6 +213,8 @@ export function EpubReader({
   theme,
   boldStarts,
   font,
+  spotlight,
+  onInteract,
   onReady,
   onSelectionChange,
   onPositionChange,
@@ -194,6 +227,8 @@ export function EpubReader({
   boldStarts: boolean;
   /** The family the book is set in, or null for Literata. Restyles in place, like the theme. */
   font: ReadingFont;
+  /** Dims all but the paragraph at the reading line. Colours only, so the place holds. */
+  spotlight: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
@@ -262,6 +297,19 @@ export function EpubReader({
         viewRef.current?.addAnnotation({ value: highlight.anchor.cfi }).catch(() => undefined);
       }
     },
+    peek() {
+      const view = viewRef.current;
+      const section = sectionRef.current;
+      const range = openRef.current ? view?.lastLocation?.range : null;
+      if (!section || !range || range.startContainer.ownerDocument !== section.doc) return null;
+      try {
+        const { before } = textAround(range, section.doc.body);
+        const text = tailExcerpt(normalizeText(before));
+        return text ? { text, before: trimBefore(before, 6000) } : null;
+      } catch {
+        return null;
+      }
+    },
     removeHighlight(id) {
       const removed = highlightsRef.current.get(id)?.anchor;
       highlightsRef.current.delete(id);
@@ -283,6 +331,42 @@ export function EpubReader({
   const initialCfi = useEffectEvent(() => (initialPosition?.kind === "epub" ? initialPosition.cfi : null));
   const modeNow = useEffectEvent(() => mode);
   const boldStartsNow = useEffectEvent(() => boldStarts);
+  const spotlightNow = useEffectEvent(() => spotlight);
+  const emitInteract = useEffectEvent(() => onInteract?.());
+  /* A paragraph the reader clicked or selected stays bright until the page moves. */
+  const pinnedRef = useRef(false);
+
+  const spotColors = () => {
+    const style = getComputedStyle(hostRef.current ?? document.body);
+    return { prose: style.getPropertyValue("--color-prose").trim(), heading: style.getPropertyValue("--prose-heading").trim() };
+  };
+
+  /* The bright paragraph is the one at the reading line, in each section on screen. */
+  const refreshSpot = useEffectEvent(() => {
+    const renderer = openRef.current ? viewRef.current?.renderer : null;
+    const host = hostRef.current;
+    if (!renderer || !host || !spotlightNow() || pinnedRef.current) return;
+    /* The reading line, in the page's coordinates, then in each section's own frame. */
+    const area = host.getBoundingClientRect();
+    const px = area.left + area.width * (pagedRef.current ? 0.3 : 0.5);
+    const py = area.top + area.height * READING_LINE;
+    for (const { doc } of renderer.getContents()) {
+      const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+      if (frame) markBlock(doc, blockAt(doc, px - frame.left, py - frame.top));
+    }
+  });
+
+  /* Turning it on or off, or new colours, restyles every section on screen. */
+  useEffect(() => {
+    const renderer = openRef.current ? viewRef.current?.renderer : null;
+    if (!renderer) return;
+    pinnedRef.current = false;
+    for (const { doc } of renderer.getContents()) {
+      if (spotlight) installSpotlight(doc, spotColors());
+      else removeSpotlight(doc);
+    }
+    refreshSpot();
+  }, [spotlight, theme]);
 
   const applyStyles = useEffectEvent(() => {
     const renderer = viewRef.current?.renderer;
@@ -335,9 +419,13 @@ export function EpubReader({
     let lastWheel = 0;
     let turning = false;
     let frame = 0;
+    let settle = 0;
     const columns = new ResizeObserver(() => {
       const renderer = openRef.current ? view?.renderer : null;
       if (renderer && fitColumns(renderer, host.clientWidth) && pagedRef.current) renderer.render();
+      /* The sections lay out again after a resize, which moves the text under the reading line. */
+      clearTimeout(settle);
+      settle = window.setTimeout(refreshSpot, 300);
     });
 
     const isLastSection = () => {
@@ -362,6 +450,8 @@ export function EpubReader({
 
     /* Scroll mode shows one section at a time; keep scrolling past an edge to turn. */
     const onWheel = (event: WheelEvent) => {
+      pinnedRef.current = false;
+      emitInteract();
       const renderer = view?.renderer;
       if (!renderer || turning || pagedRef.current) return;
       const now = performance.now();
@@ -379,9 +469,11 @@ export function EpubReader({
 
     const onScroll = () => {
       cancelAnimationFrame(frame);
+      pinnedRef.current = false;
       frame = requestAnimationFrame(() => {
         emitSelectionRect();
         updateEdge();
+        refreshSpot();
       });
     };
 
@@ -389,6 +481,7 @@ export function EpubReader({
       const { doc, index } = (event as CustomEvent<{ doc: Document; index: number }>).detail;
       /* Before foliate lays the section out or resolves any CFI in it. */
       if (boldStartsNow()) addFixations(doc);
+      if (spotlightNow()) installSpotlight(doc, spotColors());
       sectionRef.current = { doc, index };
       emitSelectionRect();
       doc.addEventListener("pointerdown", () => {
@@ -396,9 +489,18 @@ export function EpubReader({
         /* A press in the book's frame counts as a press on the page, so open menus close. */
         host.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       });
-      doc.addEventListener("pointerup", () => {
+      doc.addEventListener("pointerup", (e) => {
         pointerDown = false;
         setTimeout(emitSelectionRect, 0);
+        /* In the spotlight, a click or a selection puts the light on that paragraph. */
+        if (spotlightNow()) {
+          const range = selectedRange(doc);
+          const block = range ? blockOf(range.startContainer) : blockOf(e.target as Node | null);
+          if (block) {
+            pinnedRef.current = true;
+            markBlock(doc, block);
+          }
+        }
       });
       doc.addEventListener("keyup", (e) => {
         if (e.shiftKey || e.key === "Shift") emitSelectionRect();
@@ -407,6 +509,10 @@ export function EpubReader({
         if (!pointerDown && !selectedRange(doc)) emitSelectionRect();
       });
       doc.addEventListener("keydown", (e) => {
+        if (NAV_KEYS.has(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+          pinnedRef.current = false;
+          emitInteract();
+        }
         if (e.key === "Escape") {
           doc.getSelection()?.removeAllRanges();
           emitSelectionRect();
@@ -417,6 +523,8 @@ export function EpubReader({
         if (!host.dispatchEvent(forwarded)) e.preventDefault();
       });
       doc.addEventListener("wheel", onWheel, { passive: true });
+      doc.addEventListener("touchmove", () => emitInteract(), { passive: true });
+      refreshSpot();
     };
 
     const onRelocate = (event: Event) => {
@@ -424,15 +532,19 @@ export function EpubReader({
       const { cfi, fraction, tocItem, section } = detail;
       const renderer = view?.renderer;
       const counted = pagedRef.current && renderer && section && wholeChaptersRef.current.has(section.current);
+      const current = sectionRef.current;
+      const wholeDoc = renderer && section && wholeChaptersRef.current.has(section.current) && current?.index === section.current ? current.doc : null;
       emitPosition(
         { kind: "epub", cfi, fraction: fraction ?? 0 },
         {
           chapter: (tocItem && tocRef.current.get(tocItem)) ?? null,
           page: pageNumber(detail),
           pagesLeftInChapter: counted ? pagesLeftInSection(renderer) : null,
+          minutesLeftInChapter: renderer && wholeDoc ? sectionMinutesLeft(renderer, wholeDoc, pagedRef.current) : null,
         },
       );
       updateEdge();
+      refreshSpot();
     };
 
     (async () => {
@@ -493,6 +605,7 @@ export function EpubReader({
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
+      clearTimeout(settle);
       columns.disconnect();
       view?.close();
       view?.remove();

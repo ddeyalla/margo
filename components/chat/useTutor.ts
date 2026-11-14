@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { patchBookState } from "@/lib/client/api";
 import { streamChat } from "@/lib/client/chat";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
+import { isParked, parkedFirst } from "@/lib/shared/parked";
 import type { BookId, ImageAttachment, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
 
 /** What the reader wrote in the composer: words, images, or both. */
@@ -125,6 +126,42 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
 
   const stop = () => abortRef.current?.abort();
 
+  /** Saves a question on a passage without asking it. Resolves to whether it was saved; the tutor is not called. */
+  const park = async (selection: SelectionContext, question: string, provider: ProviderId | null): Promise<boolean> => {
+    const { text, before, after, anchor, chapterTitle } = selection;
+    try {
+      const response = await fetch(`/api/books/${bookId}/parked`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, question, selection: { text, before, after, anchor, chapterTitle } }),
+      });
+      const body = (await response.json().catch(() => null)) as { thread?: Thread } | null;
+      if (!response.ok || !body?.thread) return false;
+      upsert(body.thread);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** Sends a parked question to the tutor, as an Ask would. It becomes an ordinary thread. */
+  const unpark = (id: string, provider: ProviderId) => {
+    const thread = threads.find((t) => t.id === id);
+    if (thread && isParked(thread)) void run({ kind: "retry", bookId, provider, threadId: id });
+  };
+
+  /** Deletes a parked question. */
+  const discard = (id: string) => {
+    const thread = threads.find((t) => t.id === id);
+    if (!thread || !isParked(thread)) return;
+    setThreads((current) => current.filter((t) => t.id !== id));
+    void fetch(`/api/books/${bookId}/parked`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }).catch(() => undefined);
+  };
+
   const open = (id: string | null) => {
     setFailure((current) => (current && current.threadId === id ? current : null));
     setActiveId(id);
@@ -132,13 +169,18 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
 
   return {
     bookId,
-    threads: [...threads].sort(newestFirst),
+    threads: threads.filter((t) => !isParked(t)).sort(newestFirst),
+    /** Questions saved on a passage and not yet sent, newest first. */
+    parked: parkedFirst(threads),
     active,
     /** The answer streaming into the active thread, or null when it isn't the one answering. */
     streaming: live && live.threadId === activeId ? live.text : null,
     sending,
     failure: shownFailure,
     start,
+    park,
+    unpark,
+    discard,
     ask,
     reply,
     retry,

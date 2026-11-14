@@ -128,14 +128,14 @@ model.
 For getting started again, tangents and drifting off. Nothing here calls the tutor unless
 you ask.
 
-- [ ] **Park it:** save a question on a passage without asking it. Parked questions wait
+- [x] **Park it:** save a question on a passage without asking it. Parked questions wait
       in a list until you send them.
-- [ ] **Where you left off:** on opening a book, the last paragraph you read and your
+- [x] **Where you left off:** on opening a book, the last paragraph you read and your
       latest highlights and notes in that chapter. A Recap button asks the tutor only if
       pressed.
-- [ ] **Spotlight:** dim all but the current paragraph and hide the top bar. EPUB first.
-- [ ] "3 cards due" when a book opens, one click to start.
-- [ ] Minutes left in the chapter, for EPUB.
+- [x] **Spotlight:** dim all but the current paragraph and hide the top bar. EPUB first.
+- [x] "3 cards due" when a book opens, one click to start.
+- [x] Minutes left in the chapter, for EPUB.
 
 ## Phase 11 — Read-along · M
 

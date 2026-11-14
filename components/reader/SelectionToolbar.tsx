@@ -1,7 +1,7 @@
 "use client";
 
 import { useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
-import { ArrowUp, BookOpenText, Highlighter, Layers, Lightbulb, MessageCircleQuestion, NotebookPen, PenLine, Sparkles } from "lucide-react";
+import { ArrowUp, BookOpenText, CircleParking, Highlighter, Layers, Lightbulb, MessageCircleQuestion, NotebookPen, PenLine, Sparkles } from "lucide-react";
 import { Toolbar, ToolbarButton, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
 import { DictationNote, MicButton } from "@/components/chat/MicButton";
 import { useDictation } from "@/components/chat/useDictation";
@@ -24,7 +24,9 @@ interface SelectionToolbarProps {
   disabledReason: string | null;
   onAction(action: "explain" | "deeper" | "work", selection: SelectionContext): void;
   /** The reader's own words: a question, or an explanation to check. */
-  onAsk(text: string, selection: SelectionContext, kind: InputKind): void;
+  onAsk(text: string, selection: SelectionContext, kind: Exclude<InputKind, "park">): void;
+  /** Saves the reader's question on the passage without asking the tutor. */
+  onPark(text: string, selection: SelectionContext): void;
   onHighlight(selection: SelectionContext): void;
   onNote(selection: SelectionContext): void;
   /** Asks the tutor for flashcards on the passage. */
@@ -32,12 +34,13 @@ interface SelectionToolbarProps {
   onDismiss(): void;
 }
 
-type InputKind = "ask" | "explainBack";
+type InputKind = "ask" | "explainBack" | "park";
 
 const MAX_QUESTION = 8000;
 
 const INPUTS = {
   ask: { icon: MessageCircleQuestion, label: "Your question about this passage", placeholder: "Ask about this passage…", button: "Ask" },
+  park: { icon: CircleParking, label: "A question to park on this passage", placeholder: "Park a question for later…", button: "Park" },
   explainBack: { icon: PenLine, label: "Your explanation of this passage", placeholder: "Explain it in a line or two…", button: "Check" },
 } satisfies Record<InputKind, { icon: typeof PenLine; label: string; placeholder: string; button: string }>;
 
@@ -65,6 +68,7 @@ export function SelectionToolbar({
   disabledReason,
   onAction,
   onAsk,
+  onPark,
   onHighlight,
   onNote,
   onCard,
@@ -150,7 +154,8 @@ export function SelectionToolbar({
     if (!selection || !text || !asking) return;
     const kind = asking;
     reset();
-    onAsk(text, selection, kind);
+    if (kind === "park") onPark(text, selection);
+    else onAsk(text, selection, kind);
   };
 
   const dismiss = () => {
@@ -159,6 +164,8 @@ export function SelectionToolbar({
   };
 
   const disabled = disabledReason !== null;
+  /* Parking never calls the tutor, so it works when the tutor is unavailable. */
+  const inputDisabled = disabled && asking !== "park";
   const input = INPUTS[asking ?? "ask"];
   const open = (kind: InputKind) => {
     if (!take()) return;
@@ -211,11 +218,11 @@ export function SelectionToolbar({
               }}
               className="h-7 w-[min(320px,60vw)] bg-transparent px-1.5 text-[13px] text-paper outline-none placeholder:text-dim"
             />
-            <MicButton dictation={dictation} disabled={disabled} className="h-6 min-w-6" />
+            <MicButton dictation={dictation} disabled={inputDisabled} className="h-6 min-w-6" />
             <ToolbarButton
               aria-label={input.button}
               title={`${input.button} (Enter)`}
-              disabled={!question.trim() || disabled}
+              disabled={!question.trim() || inputDisabled}
               onClick={submit}
               className={`${itemClass} w-7 justify-center px-0`}
             >
@@ -253,6 +260,14 @@ export function SelectionToolbar({
             </ToolbarButton>
             <ToolbarButton aria-label="Note" title="Write a note on this passage" onClick={() => keep(onNote)} className={`${itemClass} w-7 justify-center px-0`}>
               <NotebookPen />
+            </ToolbarButton>
+            <ToolbarButton
+              aria-label="Park a question"
+              title="Park a question for later. It isn't sent to the tutor."
+              onClick={() => open("park")}
+              className={`${itemClass} w-7 justify-center px-0`}
+            >
+              <CircleParking />
             </ToolbarButton>
             <ToolbarButton
               aria-label="Make cards"

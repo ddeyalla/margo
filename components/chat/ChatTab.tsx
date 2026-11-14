@@ -1,11 +1,12 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { ChevronLeft, CircleAlert, CornerDownRight, ImageIcon, MessageSquareText } from "lucide-react";
-import { Button, EmptyState, Spinner } from "@/components/ui";
+import { ChevronLeft, CircleAlert, CornerDownRight, ImageIcon, MessageSquareText, Send, Trash2 } from "lucide-react";
+import { Button, EmptyState, IconButton, Spinner } from "@/components/ui";
 import { JUST_TELL_ME, MAX_HINTS, workState } from "@/lib/shared/work";
 import { placeLabel } from "@/lib/shared/place";
 import { threadLabel } from "@/lib/shared/threads";
+import type { ParkedThread } from "@/lib/shared/parked";
 import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread } from "@/lib/shared/types";
 import { Composer } from "./Composer";
 import { DropArea, Lightbox, MessageImages } from "./Images";
@@ -24,6 +25,7 @@ export function ChatTab({
   unavailable,
   onJump,
   onAsk,
+  onSendParked,
   onReply,
   onRetry,
 }: {
@@ -33,6 +35,8 @@ export function ChatTab({
   onJump(anchor: Anchor): void;
   /** Starts a thread with no passage. */
   onAsk(draft: MessageDraft): void;
+  /** Sends a parked question to the tutor. */
+  onSendParked(id: string): void;
   onReply(draft: MessageDraft): void;
   onRetry(): void;
 }) {
@@ -54,7 +58,7 @@ export function ChatTab({
       />
     );
   }
-  return <Threads tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onRetry={onRetry} />;
+  return <Threads tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onRetry={onRetry} />;
 }
 
 /** The book's threads, and a composer for a question with no passage. */
@@ -63,12 +67,14 @@ function Threads({
   unavailable,
   onJump,
   onAsk,
+  onSendParked,
   onRetry,
 }: {
   tutor: Tutor;
   unavailable: string | null;
   onJump(anchor: Anchor): void;
   onAsk(draft: MessageDraft): void;
+  onSendParked(id: string): void;
   onRetry(): void;
 }) {
   const { failure } = tutor;
@@ -76,9 +82,14 @@ function Threads({
   return (
     <DropArea onFiles={images.add} enabled={!unavailable} className="flex min-h-0 flex-1 flex-col">
       {failure ? <FailureNote failure={failure} onRetry={failure.request ? onRetry : null} className="mx-3 mt-1" /> : null}
-      {tutor.threads.length ? (
+      {tutor.threads.length || tutor.parked.length ? (
         <ThreadList
           threads={tutor.threads}
+          parked={tutor.parked}
+          unavailable={unavailable}
+          onJump={onJump}
+          onSend={onSendParked}
+          onDiscard={tutor.discard}
           onOpen={(thread) => {
             tutor.open(thread.id);
             /* A question with no passage keeps the reader where they are; its header leads back to where it was asked. */
@@ -104,12 +115,80 @@ function Threads({
   );
 }
 
-function ThreadList({ threads, onOpen }: { threads: Thread[]; onOpen(thread: Thread): void }) {
+/** Questions saved on a passage, waiting to be sent. Nothing here has been asked. */
+function ParkedList({
+  parked,
+  unavailable,
+  onJump,
+  onSend,
+  onDiscard,
+}: {
+  parked: ParkedThread[];
+  unavailable: string | null;
+  onJump(anchor: Anchor): void;
+  onSend(id: string): void;
+  onDiscard(id: string): void;
+}) {
+  return (
+    <section aria-label="Parked questions" className="mb-2">
+      <p className="px-2 pb-1.5 pt-1 text-[11px] text-dim">Parked · {parked.length}</p>
+      <ul className="flex flex-col gap-0.5">
+        {parked.map((thread) => {
+          const place = placeLabel(thread.chapterTitle, thread.anchor);
+          return (
+            <li key={thread.id} className="flex flex-col gap-1.5 rounded-lg px-2.5 py-2 hover:bg-panel-raised/60">
+              <button
+                type="button"
+                onClick={() => onJump(thread.anchor)}
+                title={place ? `Go to this passage · ${place}` : "Go to this passage"}
+                className="press line-clamp-2 rounded-xs text-left font-reading text-[13px] leading-snug text-dim transition-colors duration-[var(--duration-fast)] hover:text-fog"
+              >
+                {thread.quote}
+              </button>
+              <p className="whitespace-pre-wrap break-words text-body leading-snug text-paper">{thread.messages[0]?.content}</p>
+              <div className="flex items-center gap-1">
+                <Button size="sm" disabled={!!unavailable} title={unavailable ?? "Send this question to the tutor"} onClick={() => onSend(thread.id)}>
+                  <Send />
+                  Ask now
+                </Button>
+                <span className="min-w-0 flex-1 truncate px-1 text-[11px] text-dim">{place}</span>
+                <IconButton label="Delete this parked question" size="sm" onClick={() => onDiscard(thread.id)}>
+                  <Trash2 />
+                </IconButton>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+function ThreadList({
+  threads,
+  parked,
+  unavailable,
+  onJump,
+  onSend,
+  onDiscard,
+  onOpen,
+}: {
+  threads: Thread[];
+  parked: ParkedThread[];
+  unavailable: string | null;
+  onJump(anchor: Anchor): void;
+  onSend(id: string): void;
+  onDiscard(id: string): void;
+  onOpen(thread: Thread): void;
+}) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      <p className="px-2 pb-1.5 pt-1 text-[11px] text-dim">
-        {threads.length} {threads.length === 1 ? "thread" : "threads"} in this book
-      </p>
+      {parked.length ? <ParkedList parked={parked} unavailable={unavailable} onJump={onJump} onSend={onSend} onDiscard={onDiscard} /> : null}
+      {threads.length ? (
+        <p className="px-2 pb-1.5 pt-1 text-[11px] text-dim">
+          {threads.length} {threads.length === 1 ? "thread" : "threads"} in this book
+        </p>
+      ) : null}
       <ul className="flex flex-col gap-0.5">
         {threads.map((thread) => {
           const first = thread.messages[0]?.content ?? "";

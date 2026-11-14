@@ -20,12 +20,18 @@ export const ACTION_MESSAGES: Record<Exclude<TutorAction, TypedAction>, string> 
   explain: "Explain this passage.",
   deeper: "Go deeper on this passage.",
   work: "Help me work this out.",
+  recap: "Recap what came before this point.",
 };
 
 /** What the reader's message says when they send images with no words. */
 export const imageMessage = (count: number) => (count === 1 ? "Explain this image." : "Explain these images.");
 
+/** A recap names a place, not a passage to explain, so the tutor is given only the text before it. */
+export const recapRequest =
+  "I'm picking this chapter up again. Give me a short recap of what came before my place, in this chapter: the main points and how they connect, in a few sentences. My place is the end of the selected text. Use only what comes before it, and say nothing about what happens after it, even if you know the book. If the text before it is too thin to recap, say so in one line.";
+
 const ACTION_REQUESTS: Record<Exclude<TutorAction, "ask">, string> = {
+  recap: recapRequest,
   explain: "Explain this passage.",
   deeper:
     "Go deeper on this passage, but let me try first. Don't explain yet. Ask me one short question about the idea underneath it, one I can attempt from the passage, and stop. When I answer, tell me what I got right and what I missed, then go deeper: the ideas underneath it, how it connects to the wider subject, and what an expert would add. If I say I don't know or ask you to just tell me, explain it straight away.",
@@ -74,6 +80,7 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
       : thread.action === "explainBack"
         ? `My explanation, in my own words: ${first}\n\n${ACTION_REQUESTS.explainBack}`
         : ACTION_REQUESTS[thread.action];
+  const recap = thread.action === "recap";
   return [
     heading,
     where ? `Where: ${where}` : null,
@@ -81,11 +88,9 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
     "Text just before the selection:",
     `<before>\n${thread.before || "(start of the section)"}\n</before>`,
     "",
-    "The selected passage:",
+    recap ? "The text at my place:" : "The selected passage:",
     `<selection>\n${thread.quote}\n</selection>`,
-    "",
-    "Text just after the selection:",
-    `<after>\n${thread.after || "(end of the section)"}\n</after>`,
+    ...(recap ? [] : ["", "Text just after the selection:", `<after>\n${thread.after || "(end of the section)"}\n</after>`]),
     "",
     request,
   ]

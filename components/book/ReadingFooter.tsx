@@ -2,6 +2,7 @@
 
 import { useState, type KeyboardEvent, type PointerEvent } from "react";
 import type { ReaderPlace } from "@/components/reader/types";
+import { minutesLeftLabel } from "@/lib/shared/reading-time";
 import { pageLabel, pagesLeftLabel, percentLabel } from "./progress";
 
 /** How far each key moves the progress bar. */
@@ -33,7 +34,11 @@ export function ReadingFooter({ fraction, place, onSeek }: { fraction: number; p
   const [dragAt, setDragAt] = useState<number | null>(null);
   const shown = dragAt ?? fraction;
   const page = place?.page ? pageLabel(place.page) : null;
-  const left = place?.pagesLeftInChapter != null ? pagesLeftLabel(place.pagesLeftInChapter) : null;
+  const pagesLeft = place?.pagesLeftInChapter != null ? pagesLeftLabel(place.pagesLeftInChapter) : null;
+  const minutes = place?.minutesLeftInChapter;
+  /* Beside a page count the minutes drop "in chapter", which the count already says. */
+  const timeLeft = minutes == null ? null : pagesLeft && minutes > 0 ? `about ${minutes} min` : minutesLeftLabel(minutes);
+  const left = [pagesLeft, timeLeft].filter(Boolean).join(" · ") || null;
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const step = SEEK_KEYS[event.key];

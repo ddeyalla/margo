@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { MAX_IMAGES_PER_MESSAGE } from "@/lib/shared/attachments";
-import { trimAfter, trimBefore } from "@/lib/shared/context";
-import type { BookId, BookState, ChatMessage, ImageAttachment, LibraryBook, ProviderId, Thread, TutorAction, TypedAction } from "@/lib/shared/types";
+import type { BookId, BookState, ChatMessage, ImageAttachment, LibraryBook, ProviderId, Thread } from "@/lib/shared/types";
 import { readAttachment } from "./attachments";
 import { getConfig } from "./config";
+import { passageThread } from "./passage";
 import { hold, readBookState, updateBookState } from "./store";
-import { ACTION_MESSAGES, imageMessage } from "./tutor/prompt";
+import { imageMessage } from "./tutor/prompt";
 import { isObject, parseAnchor, parseAttachmentIds, shortText } from "./validate";
 
 /** What a chat request asks for, already validated. A new thread arrives built, with the reader's first message. */
@@ -14,9 +14,7 @@ export type TurnRequest =
   | { kind: "reply"; threadId: string; message: ChatMessage }
   | { kind: "retry"; threadId: string };
 
-const MAX_QUOTE = 12_000;
 const MAX_MESSAGE = 8_000;
-const ACTIONS: TutorAction[] = ["explain", "deeper", "work", "ask", "explainBack"];
 
 /** The images a message names, each one stored for this book. */
 const readAttachments = async (value: unknown, bookId: BookId, dataDir: string): Promise<ImageAttachment[] | string> => {
@@ -37,32 +35,6 @@ const userMessage = async (body: Record<string, unknown>, bookId: BookId, dataDi
   const message: ChatMessage = { role: "user", content: text || imageMessage(attachments.length), createdAt: new Date().toISOString() };
   if (attachments.length) message.attachments = attachments;
   return message;
-};
-
-const passageThread = (body: Record<string, unknown>, book: LibraryBook, provider: ProviderId): Thread | string => {
-  const now = new Date().toISOString();
-  const action = ACTIONS.find((a) => a === body.action);
-  const selection = isObject(body.selection) ? body.selection : null;
-  const anchor = selection && parseAnchor(selection.anchor, book.format);
-  const quote = selection && shortText(selection.text, MAX_QUOTE);
-  if (!action || !selection || !anchor || !quote) return "Invalid selection.";
-  const typed = action === "ask" || action === "explainBack";
-  const question = typed ? shortText(body.question, MAX_MESSAGE) : null;
-  if (typed && !question) return action === "ask" ? "A question is required." : "An explanation is required.";
-  return {
-    kind: "passage",
-    id: randomUUID(),
-    anchor,
-    quote,
-    before: trimBefore(typeof selection.before === "string" ? selection.before : ""),
-    after: trimAfter(typeof selection.after === "string" ? selection.after : ""),
-    chapterTitle: shortText(selection.chapterTitle, 500),
-    action,
-    provider,
-    sessionId: null,
-    createdAt: now,
-    messages: [{ role: "user", content: question ?? ACTION_MESSAGES[action as Exclude<TutorAction, TypedAction>], createdAt: now }],
-  };
 };
 
 /** A question with no passage, placed where the reader was when they asked. */
@@ -134,6 +106,8 @@ const forProvider = (thread: Thread, provider: ProviderId): Thread => ({
   ...thread,
   provider,
   sessionId: thread.provider === provider ? thread.sessionId : null,
+  /* Sending a parked question is how it stops being parked. */
+  ...(thread.kind === "passage" && thread.parkedAt ? { parkedAt: null } : {}),
 });
 
 const threadForTurn = (state: BookState, request: TurnRequest, provider: ProviderId): Thread | string => {

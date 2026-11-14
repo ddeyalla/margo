@@ -5,6 +5,7 @@ export const ACTION_LABELS: Record<Exclude<TutorAction, "ask">, string> = {
   deeper: "Go deeper",
   work: "Work it out",
   explainBack: "Explain it back",
+  recap: "Recap",
 };
 
 /** How a thread is named in the list: an asked question is its own words; the others are their action. */
