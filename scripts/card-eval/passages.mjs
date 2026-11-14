@@ -1,5 +1,5 @@
 // Builds passages.json: every distinct passage the reader asked the tutor about (with
-// its saved context), plus one paragraph from each of several other books.
+// its saved context), plus one paragraph from each of ten other EPUBs, chosen from BOOKS_DIR by a hash of their path.
 // Usage: node scripts/card-eval/passages.mjs "$PWD" <out>/passages.json "$BOOKS_DIR"
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -65,23 +65,20 @@ const epubText = (file) => {
   });
 };
 
-const books = [
-  ["Startups/The Mom Test", "The Mom Test"],
-  ["Startups/Zero to One", "Zero to One"],
-  ["UI and Product Design/Refactoring UI", "Refactoring UI"],
-  ["Philoshophy/Plato_ Republic", "Republic"],
-  ["Branding and Logo Design/How Brands Grow", "How Brands Grow"],
-  ["video making and editing/The Science of Storytelling", "The Science of Storytelling"],
-  ["Startups/Good StrategyBad Strategy", "Good Strategy Bad Strategy"],
-  ["Startups/The Personal MBA", "The Personal MBA"],
-  ["Copywriting/Breakthrough Advertising", "Breakthrough Advertising"],
-  ["Startups/The Win Without Pitching Manifesto", "The Win Without Pitching Manifesto"],
-];
 const booksDir = process.argv[4];
-for (const [prefix, title] of books) {
-  const dir = path.join(booksDir, path.dirname(prefix));
-  const file = fs.readdirSync(dir).find((n) => n.startsWith(path.basename(prefix)) && n.endsWith(".epub"));
-  const all = epubText(path.join(dir, file));
+const WANTED = 10;
+// No names are stored here: the EPUBs are ordered by a hash of their relative path, which is
+// deterministic but not alphabetical, and tried in that order until WANTED have a usable paragraph.
+const candidates = walk(booksDir)
+  .filter((f) => f.toLowerCase().endsWith(".epub"))
+  .map((f) => ({ file: f, key: createHash("sha1").update(path.relative(booksDir, f)).digest("hex") }))
+  .sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
+let picked = 0;
+for (const { file } of candidates) {
+  if (picked >= WANTED) break;
+  const title = path.basename(file).replace(/\s*(--|\().*$/, "").replace(/\.epub$/i, "");
+  let all;
+  try { all = epubText(file); } catch { console.error("skip", title, "unreadable"); continue; }
   const chapters = all.filter((c) => c.join(" ").length > 8000);
   if (!chapters.length) { console.error("skip", title, all.length, all.map((c) => c.length).slice(0, 10)); continue; }
   const chapter = chapters[Math.floor(chapters.length / 2)];
@@ -89,6 +86,7 @@ for (const [prefix, title] of books) {
   if (i < 0) { console.error("skip", title, "no paragraph"); continue; }
   const before = chapter.slice(0, i).join("\n\n").slice(-CONTEXT);
   const after = chapter.slice(i + 1).join("\n\n").slice(0, CONTEXT);
+  picked++;
   passages.push({ source: "book", book: title, chapter: null, before, quote: chapter[i], after });
 }
 

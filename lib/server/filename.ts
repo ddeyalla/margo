@@ -1,10 +1,10 @@
 /**
  * A readable title and author from a downloaded book's file name.
  *
- * Shadow-library names come in a few shapes:
- * - "Title (Author One, Author Two) (z-library.sk, 1lib.sk, z-lib.sk).epub"
- * - "Title_ Subtitle -- Author; Other -- 2025 -- Publisher -- isbn -- hash -- Anna's Archive.pdf"
- * - "Title - Author.epub", or "_OceanofPDF.com_Title_-_Author.epub" with "_" for every space
+ * Downloaded names come in a few shapes:
+ * - "Title (Author One, Author Two) (example.org, mirror.net).epub", with a trailing list of site domains
+ * - the dash-separated catalogue form: "Title -- Author -- year -- publisher -- isbn -- hash -- source.pdf"
+ * - "Title - Author.epub", or "_Site.com_Title_-_Author.epub" with "_" for every space and a leading site domain
  * They use "_" where the title had a colon, and the "--" form cuts long titles off mid-phrase.
  */
 export interface FileTitle {
@@ -12,8 +12,12 @@ export interface FileTitle {
   author: string | null;
 }
 
-const MIRROR_LIST = /\s*\((?:z-library|z-lib|1lib)[^)]*\)/gi;
-const WATERMARK = /^OceanofPDF\.com\s*/i;
+/** A host name such as "example.org" or "books.example.net". */
+const DOMAIN = String.raw`[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}`;
+/** A parenthesised list of one or more domains, "(example.org, mirror.net)", which sites append to a name. */
+const MIRROR_LIST = new RegExp(String.raw`\s*\(\s*${DOMAIN}(?:\s*,\s*${DOMAIN})*\s*\)`, "gi");
+/** A domain such as "Site.com" at the very start of an underscore-style name; "Node.js" and "Tool.ts" are title words. */
+const WATERMARK = new RegExp(String.raw`^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?!(?:js|ts)(?![a-z]))[a-z]{2,}(?![\p{L}\p{N}.-])\s*`, "iu");
 
 /** Lowercase words that mark a phrase as an edition or series tag rather than a person. */
 const TAG_WORDS = new Set([
@@ -26,7 +30,7 @@ const TAG_WORDS = new Set([
 /** Lowercase name particles, as in "Ludwig van Beethoven". */
 const PARTICLES = new Set(["van", "von", "de", "da", "del", "der", "di", "du", "la", "le", "bin", "al"]);
 
-/** "Raschka", "O'Neil", "Saint-Exupéry", "R.", "J". Not "MEAP" or "LLM": runs of capitals are acronyms. */
+/** "Okafor", "O'Brien", "Saint-Clair", "R.", "J". Not "MEAP" or "LLM": runs of capitals are acronyms. */
 const isNameWord = (word: string): boolean => {
   if (PARTICLES.has(word)) return true;
   if (TAG_WORDS.has(word.toLowerCase())) return false;
@@ -39,7 +43,7 @@ const isPersonName = (name: string): boolean => {
   return words.length >= 1 && words.length <= 4 && words.every(isNameWord) && !words.every((w) => PARTICLES.has(w));
 };
 
-/** "Rumelt, Richard" reads as "Richard Rumelt"; any other list is left as written. */
+/** "Lindqvist, Mara" reads as "Mara Lindqvist"; any other list is left as written. */
 const firstNameFirst = (names: string): string => {
   const pair = /^([\p{L}\p{M}'’.-]+),\s*([\p{L}\p{M}'’.-]+)$/u.exec(names);
   return pair ? `${pair[2]} ${pair[1]}` : names;
@@ -60,10 +64,10 @@ const trailingAuthors = (title: string): FileTitle | null => {
   return author ? { title: head, author } : null;
 };
 
-/** A name's spelling for spotting duplicates: "Eugene M. Schwartz" and "eugene m schwartz" match. */
+/** A name's spelling for spotting duplicates: "Ada K. Moreau" and "ada k moreau" match. */
 const nameKey = (name: string) => name.toLowerCase().replace(/[^\p{L}\s]/gu, "").replace(/\s+/g, " ").trim();
 
-/** The author part of an Anna's Archive name: "Michael E_ Gerber", "Plato; Joe Sachs" or "Engle, Greg;Fried, Jason". */
+/** The author part of a catalogue-form name: "Ada K_ Moreau", "Ada Moreau; Tom Reyes" or "Moreau, Ada;Reyes, Tom". */
 const archiveAuthors = (segment: string): string | null => {
   const names = new Map<string, string>();
   for (const item of segment.split(";")) {
@@ -75,7 +79,7 @@ const archiveAuthors = (segment: string): string | null => {
       .replace(/\s+/g, " ")
       .trim();
     const parts = cleaned.split(/\s*,\s*/);
-    /* "Eugene M. Schwartz, Eugene Schwartz" is a list of people; "Engle, Greg" is one person written last name first. */
+    /* "Ada K. Moreau, Ada Moreau" is a list of people; "Moreau, Ada" is one person written last name first. */
     const people = parts.length > 1 && parts.every((part) => part.includes(" ")) ? parts : [firstNameFirst(cleaned)];
     for (const person of people) if (person && !names.has(nameKey(person))) names.set(nameKey(person), person);
   }
@@ -89,7 +93,7 @@ const tidyTitle = (title: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** A title the "--" split cut off mid-phrase ("Principles, Patterns, and") loses the dangling joiner. */
+/** A title the "--" split cut off mid-phrase ("Methods, Models, and") loses the dangling joiner. */
 const dropDanglingJoiner = (title: string): string =>
   title.replace(/(?:[\s,;:&]+|\s(?:and|or|to|of|the|a|an|for|with|in|on))+$/i, "");
 
