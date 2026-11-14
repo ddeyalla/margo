@@ -46,7 +46,9 @@ The app runs on your own computer. Your books stay there.
    ANTHROPIC_API_KEY=
    ```
 
-The app only reads `BOOKS_DIR`. It never moves, renames or changes your books.
+You can also skip this step. With no `BOOKS_DIR`, the library page asks for your books folder, and for a notes folder if you want one. Choose them there, or change them later with **Folders** beside the Library heading. The app saves them in `data/settings.json`. A folder set in `.env.local` wins, and shows as read-only in the app with "Set in .env.local".
+
+The app only reads your books folder. It never moves, renames or changes your books.
 
 `.env.local` is private. Git ignores it, so your paths and key are never committed.
 
@@ -113,14 +115,20 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 
 | What | Where |
 | --- | --- |
-| Your books | `BOOKS_DIR`. Never changed. |
+| Your books | The books folder: `BOOKS_DIR`, or the one you chose in the app. Never changed. |
 | Reading place, chats and the one you had open, highlights, notes, and cards with when each is due | `data/<book id>.json`, one file per book |
-| Your tutor choice, scroll or pages, the page colours for EPUBs and PDFs, bold starts, the book font, whether the chapters column is open, and which side panel tab you were on | `data/settings.json` |
+| Your tutor choice, the books and notes folders you chose in the app, scroll or pages, the page colours for EPUBs and PDFs, bold starts, the book font, whether the chapters column is open, and which side panel tab you were on | `data/settings.json` |
 | Book covers, made from each book the first time it's shown | `data/covers/`. Safe to delete; they're made again. |
 | Images you show the tutor | `data/attachments/<book id>/`. Nothing deletes them yet, so images you removed before sending stay here too. |
-| The markdown copy of each book's highlights, notes and cards | `NOTES_DIR/<book title>.md` |
+| The markdown copy of each book's highlights, notes and cards | `<notes folder>/<book title>.md`. The notes folder is `NOTES_DIR`, or the one you chose in the app. |
 
 The `data/` folder is the real record. Git ignores it. Back it up if your notes matter to you.
+
+`data/` sits in the folder you run the app from. Set `DATA_DIR` to a full path to keep it somewhere else, for example in `.env.local` or when starting the built server. The app reads `data/settings.json` from there, so `DATA_DIR` can't be set in the app.
+
+## Two windows
+
+You can have the same book open in two windows, say a browser tab and the Mac app. When you switch back to one, it shows what the other changed: your place, highlights, notes, cards, chats and settings. Your own changes never reload your window. Your place is saved the moment you leave a window, so the other one starts from there.
 
 To use a different model, add it to `data/settings.json` under the tutor's name (`claude`, `codex` or `api`). For example, `"models": { "claude": "claude-opus-5-5" }`.
 
@@ -139,13 +147,15 @@ It's a [Next.js](https://nextjs.org) app. The browser shows the books and the pa
 
 | Part | Where | What it does |
 | --- | --- | --- |
-| Library | `app/page.tsx`, `lib/server/library.ts` | Scans `BOOKS_DIR`. Each book's id is a hash of its path, and files are only ever served by id. |
+| Library | `app/page.tsx`, `lib/server/library.ts` | Scans the books folder. Each book's id is a hash of its path, and files are only ever served by id. |
 | EPUB reader | `components/reader/EpubReader.tsx` | Renders with [foliate-js](https://github.com/johnfactotum/foliate-js), kept in `public/vendor/foliate-js`. |
 | Bold starts | `components/reader/fixations.ts` | Wraps the start of each word in an `rl-fx` element inside the book's page, splitting the text in place so your place doesn't move. foliate's CFI code in `public/vendor/foliate-js` is patched to skip those elements, so a highlight or reading place has the same address with bold starts on or off. |
 | Fonts | `app/api/fonts/route.ts`, `lib/server/fonts.ts` | Lists the font families installed on this Mac, read once from the system's font list. The book sets the chosen family by name; no font files are served. |
 | PDF reader | `components/reader/PdfReader.tsx` | Renders with [pdf.js](https://mozilla.github.io/pdf.js/), with its text layer so you can select. |
 | Tutor | `app/api/chat/route.ts`, `lib/server/tutor/` | One adapter per tutor (Claude Code, Codex, API). Answers stream back to the panel. |
 | Images | `lib/client/images.ts`, `lib/server/attachments.ts` | The browser shrinks each image to 1568 px on its longest side before upload. The server reads its type from its bytes, not its name, and keeps it under a random id. |
+| Folders | `lib/server/config.ts`, `components/library/FolderForm.tsx` | The environment first, then `data/settings.json`. The setup screen and the Folders button save to `PATCH /api/settings`, which accepts only a folder that exists. Inside the Mac app, `window.riggApp.pickFolder` opens a native picker. |
+| Two windows | `components/book/useRefreshOnReturn.ts`, `app/api/books/[bookId]/revision/route.ts` | A window notes the book's revision (the saved state's and the settings' modified times) when it loses focus, and asks again when it returns. If it changed, the page refreshes. `/api/health` tells the Mac app that a server is already running. |
 | Saving | `lib/server/store.ts` | Writes `data/<book id>.json` safely: to a temp file first, one write at a time per book. |
 | Obsidian copy | `lib/server/vault.ts` | Rewrites the book's markdown file after every highlight, note or card change. |
 | Cards | `app/api/books/[bookId]/cards/route.ts`, `lib/server/cards/` | Sends the passage to the chosen tutor with the card prompt in `lib/server/cards/prompt.md`, outside any chat, and checks the JSON it returns. A bad reply goes back once with what was wrong. |

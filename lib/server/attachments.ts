@@ -76,7 +76,7 @@ export const sniffImage = (bytes: Uint8Array): ImageInfo | null => {
 };
 
 const imageFile = (bookId: BookId, id: string, mediaType: ImageMediaType, dataDir: string) =>
-  path.join(dataDir, "attachments", bookId, `${id}.${IMAGE_EXTENSIONS[mediaType]}`);
+  path.join(/*turbopackIgnore: true*/ dataDir, "attachments", bookId, `${id}.${IMAGE_EXTENSIONS[mediaType]}`);
 
 /** Keeps an uploaded image under a new id, or says why it can't. */
 export const saveAttachment = async (

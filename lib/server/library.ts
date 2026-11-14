@@ -23,7 +23,7 @@ export const scanLibrary = async (root: string = getConfig().booksDir): Promise<
     await Promise.all(
       entries.map(async (entry) => {
         if (entry.name.startsWith(".")) return;
-        const absPath = path.join(dir, entry.name);
+        const absPath = path.join(/*turbopackIgnore: true*/ dir, entry.name);
         if (entry.isDirectory()) return walk(absPath);
         const format = FORMATS[path.extname(entry.name).toLowerCase()];
         if (!entry.isFile() || !format) return;
@@ -60,7 +60,7 @@ export const findBook = async (id: unknown, root: string = getConfig().booksDir)
   if (!isBookId(id)) return null;
   const book = (await scanLibrary(root)).find((candidate) => candidate.id === id);
   if (!book) return null;
-  const absPath = path.resolve(root, book.relPath);
+  const absPath = path.resolve(/*turbopackIgnore: true*/ root, book.relPath);
   if (!absPath.startsWith(path.resolve(root) + path.sep)) return null;
   return { book, absPath };
 };
@@ -70,6 +70,6 @@ export const libraryProblem = (error: unknown, root?: string): string => {
   if (error instanceof ConfigError) return error.message;
   const missing = error instanceof Error && "code" in error && error.code === "ENOENT";
   return missing
-    ? `The books folder ${root ?? getConfig().booksDir} does not exist. Check BOOKS_DIR in .env.local.`
-    : "The books folder could not be read. Check BOOKS_DIR in .env.local.";
+    ? `The books folder ${root ?? getConfig().booksDir} does not exist. Check the books folder under Folders, or BOOKS_DIR in .env.local.`
+    : "The books folder could not be read. Check the books folder under Folders, or BOOKS_DIR in .env.local.";
 };

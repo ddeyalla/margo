@@ -28,6 +28,7 @@ import { ReadingSettings } from "./ReadingSettings";
 import { SidePanel } from "./SidePanel";
 import { TocDrawer } from "./TocDrawer";
 import { usePositionSaver } from "./usePositionSaver";
+import { useRefreshOnReturn } from "./useRefreshOnReturn";
 
 export interface WorkspaceBook {
   id: BookId;
@@ -119,7 +120,11 @@ export function BookWorkspace({
   /* A font shown on the page while the reader looks through the list, before choosing one. */
   const [previewFont, setPreviewFont] = useState<ReadingFont | undefined>(undefined);
   const title = meta.title || book.fileTitle;
-  const savePosition = usePositionSaver(book.id);
+  const { save: savePosition, flush: flushPosition } = usePositionSaver(book.id);
+  const readRevision = useCallback(async () => {
+    const response = await fetch(`/api/books/${book.id}/revision`, { cache: "no-store" });
+    return response.ok ? ((await response.json()) as { revision: string }).revision : null;
+  }, [book.id]);
   const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId);
   const { providers, current: provider, choose: chooseProvider, unavailable } = useProviders(savedProvider);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
@@ -129,6 +134,8 @@ export function BookWorkspace({
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
+  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer or mid-note. */
+  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null);
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
 
   /* A layout restored from an earlier visit may start with the panel collapsed; read it once the group has attached. */

@@ -6,6 +6,7 @@ import { FolderX } from "lucide-react";
 import { BookWorkspace } from "@/components/book/BookWorkspace";
 import { EmptyState } from "@/components/ui";
 import { findBook, libraryProblem, type FoundBook } from "@/lib/server/library";
+import { bookRevision } from "@/lib/server/revision";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
 
@@ -28,9 +29,12 @@ async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
   }
   if (!found) notFound();
   const { book } = found;
+  /* Read before the state, so a write in between shows as a change instead of being missed. */
+  const revision = await bookRevision(book.id);
   const [state, settings] = await Promise.all([readBookState(book.id), readSettings()]);
   return (
     <BookWorkspace
+      key={revision}
       book={{ id: book.id, format: book.format, relPath: book.relPath, fileTitle: book.fileTitle }}
       initialState={state}
       savedProvider={settings.provider}

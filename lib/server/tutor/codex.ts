@@ -34,7 +34,8 @@ export const codexArgs = (turn: TutorTurn, cwd: string, images: string[] = []): 
 const writeImages = async (cwd: string, images: TutorImage[]): Promise<{ dir: string; files: string[] } | null> => {
   if (!images.length) return null;
   const dir = await mkdtemp(path.join(cwd, "images-"));
-  const files = images.map((image, index) => path.join(dir, `${index + 1}.${IMAGE_EXTENSIONS[image.mediaType]}`));
+  /* A temp folder made at run time; the ignore keeps Turbopack from tracing the whole project into the standalone build. */
+  const files = images.map((image, index) => path.join(/*turbopackIgnore: true*/ dir, `${index + 1}.${IMAGE_EXTENSIONS[image.mediaType]}`));
   await Promise.all(images.map((image, index) => writeFile(files[index], Buffer.from(image.data, "base64"))));
   return { dir, files };
 };

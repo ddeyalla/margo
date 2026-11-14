@@ -2,7 +2,11 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { BookOpen, FolderX } from "lucide-react";
 import { BookList, GRID, type Shelf, type ShelfBook } from "@/components/library/BookList";
+import { FolderForm } from "@/components/library/FolderForm";
+import { FoldersControl } from "@/components/library/FoldersControl";
+import { RefreshOnReturn } from "@/components/library/RefreshOnReturn";
 import { EmptyState } from "@/components/ui";
+import { BooksFolderMissing, getFolders } from "@/lib/server/config";
 import { libraryProblem, scanLibrary } from "@/lib/server/library";
 import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
 
@@ -14,9 +18,10 @@ async function Library() {
   try {
     books = await scanLibrary();
   } catch (error) {
+    if (error instanceof BooksFolderMissing) return <FolderSetup />;
     return (
       <>
-        <Heading />
+        <Heading folders={foldersControl()} />
         <EmptyState icon={<FolderX />} title="Your library is not set up yet" body={libraryProblem(error)} />
       </>
     );
@@ -24,7 +29,7 @@ async function Library() {
   if (!books.length) {
     return (
       <>
-        <Heading />
+        <Heading folders={foldersControl()} />
         <EmptyState
           icon={<BookOpen />}
           title="No books yet"
@@ -63,7 +68,7 @@ async function Library() {
 
   return (
     <>
-      <Heading>
+      <Heading folders={foldersControl()}>
         {books.length} books in {shelves.size} folders
       </Heading>
       <BookList shelves={sorted} recent={recent} />
@@ -71,11 +76,33 @@ async function Library() {
   );
 }
 
-function Heading({ children }: { children?: React.ReactNode }) {
+/** The folders already chosen, with a button to change them. */
+function foldersControl() {
+  const { books, notes } = getFolders();
+  return <FoldersControl books={books} notes={notes} />;
+}
+
+/** Shown until a books folder is set, in .env.local or in the app. */
+function FolderSetup() {
+  const { books, notes } = getFolders();
   return (
-    <div className="mb-8 flex items-baseline gap-3">
+    <>
+      <Heading />
+      <EmptyState icon={<FolderX />} title="Choose your books folder" body="Pick the folder that holds your EPUB and PDF books.">
+        <div className="mt-3 flex w-full justify-center">
+          <FolderForm books={books} notes={notes} />
+        </div>
+      </EmptyState>
+    </>
+  );
+}
+
+function Heading({ children, folders }: { children?: React.ReactNode; folders?: React.ReactNode }) {
+  return (
+    <div className="mb-8 flex flex-wrap items-baseline gap-x-3">
       <h1 className="text-display text-paper">Library</h1>
       {children ? <span className="text-label text-dim tabular-nums">{children}</span> : null}
+      {folders}
     </div>
   );
 }
@@ -104,6 +131,7 @@ export default function Home() {
         <span className="text-[13px] font-semibold text-paper">rigg learn</span>
       </header>
       <main className="mx-auto w-full max-w-[1100px] px-6 pb-24 pt-10">
+        <RefreshOnReturn />
         <Suspense fallback={<LibrarySkeleton />}>
           <Library />
         </Suspense>

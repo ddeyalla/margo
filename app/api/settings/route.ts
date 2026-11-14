@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { readSettings, saveSettings } from "@/lib/server/settings";
+import { checkFolder, readSettings, saveSettings } from "@/lib/server/settings";
 import { isProviderId } from "@/lib/server/tutor/providers";
 import { isObject } from "@/lib/server/validate";
 import { isPanelTab, isReadingFont, isReadingMode, isReadingTheme, type SettingsChange } from "@/lib/shared/types";
@@ -9,7 +9,7 @@ export async function GET() {
   return Response.json(await readSettings());
 }
 
-/** Saves the chosen tutor provider, the PDF dark pages switch, the reading mode, the EPUB page colours, bold starts, the reading font, whether the chapters column is open, the side panel tab, or any of them. */
+/** Saves the chosen tutor provider, the PDF dark pages switch, the reading mode, the EPUB page colours, bold starts, the reading font, whether the chapters column is open, the side panel tab, the books folder, the notes folder, or any of them. A folder must be an absolute path to a folder that exists; anything else is a 400. */
 export async function PATCH(request: Request) {
   const body: unknown = await request.json().catch(() => null);
   const change: SettingsChange = {};
@@ -21,11 +21,17 @@ export async function PATCH(request: Request) {
   if (isObject(body) && isReadingFont(body.readingFont)) change.readingFont = body.readingFont;
   if (isObject(body) && typeof body.chaptersOpen === "boolean") change.chaptersOpen = body.chaptersOpen;
   if (isObject(body) && isPanelTab(body.panelTab)) change.panelTab = body.panelTab;
+  for (const key of ["booksDir", "notesDir"] as const) {
+    if (!isObject(body) || !(key in body)) continue;
+    const checked = await checkFolder(key, body[key], key === "notesDir");
+    if (!checked.ok) return Response.json({ error: checked.error }, { status: 400 });
+    change[key] = checked.path;
+  }
   if (!Object.keys(change).length) {
     return Response.json(
       {
         error:
-          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { pdfDarkPages: true | false }, { readingMode: \"scroll\" | \"pages\" }, { epubTheme: \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false } or { panelTab: \"chat\" | \"notes\" | \"highlights\" }.",
+          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { pdfDarkPages: true | false }, { readingMode: \"scroll\" | \"pages\" }, { epubTheme: \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false } { panelTab: \"chat\" | \"notes\" | \"highlights\" }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
       },
       { status: 400 },
     );

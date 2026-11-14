@@ -235,10 +235,13 @@ export interface AppSettings {
   /** The chapters column beside the book. Closed unless opened. */
   chaptersOpen: boolean;
   panelTab: PanelTab;
+  /** Absolute folder of books and of the markdown notes copy, chosen in the app. BOOKS_DIR and NOTES_DIR win over them. */
+  booksDir: string | null;
+  notesDir: string | null;
 }
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode" | "epubTheme" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfDarkPages" | "readingMode" | "epubTheme" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "booksDir" | "notesDir">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 

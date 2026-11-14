@@ -63,7 +63,7 @@ export const updateJson = <T>(file: string, fallback: () => T, change: (current:
     return next;
   });
 
-const stateFile = (id: BookId, dataDir: string) => path.join(dataDir, `${id}.json`);
+const stateFile = (id: BookId, dataDir: string) => path.join(/*turbopackIgnore: true*/ dataDir, `${id}.json`);
 
 /** Threads saved before questions without a passage existed have no kind; every one of them is about a passage. */
 type StoredThread = Thread | Omit<PassageThread, "kind">;

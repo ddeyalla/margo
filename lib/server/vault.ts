@@ -117,7 +117,7 @@ export const renderVault = (book: VaultBook, { highlights, notes, cardSets = [] 
 
 /** Rewrites the book's note file, creating NOTES_DIR if needed. A failure is reported, never thrown. */
 export const writeVault = async (notesDir: string, book: VaultBook, annotations: Parameters<typeof renderVault>[1]): Promise<VaultStatus> => {
-  const file = path.join(notesDir, vaultFileName(book.title));
+  const file = path.join(/*turbopackIgnore: true*/ notesDir, vaultFileName(book.title));
   try {
     await writeFileAtomic(file, renderVault(book, annotations));
     return { state: "written", file };

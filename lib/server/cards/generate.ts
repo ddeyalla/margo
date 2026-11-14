@@ -15,7 +15,7 @@ export interface CardSource {
 
 /* Read once per server start. Next runs the server from the project folder. */
 let system: string | null = null;
-const cardSystem = () => (system ??= readFileSync(path.join(process.cwd(), "lib/server/cards/prompt.md"), "utf8"));
+const cardSystem = () => (system ??= readFileSync(path.join(/*turbopackIgnore: true*/ process.cwd(), "lib/server/cards/prompt.md"), "utf8"));
 
 export const cardRequest = (book: BookLabel, source: CardSource, existing: Cue[]): string =>
   [

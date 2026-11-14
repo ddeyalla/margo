@@ -162,6 +162,6 @@ describe("library lookup", () => {
   it("names a missing books folder the same way on every page", async () => {
     const missing = path.join(root, "Nowhere");
     const error = await findBook(bookIdOf("Fiction/Dune.epub"), missing).catch((cause: unknown) => cause);
-    expect(libraryProblem(error, missing)).toBe(`The books folder ${missing} does not exist. Check BOOKS_DIR in .env.local.`);
+    expect(libraryProblem(error, missing)).toBe(`The books folder ${missing} does not exist. Check the books folder under Folders, or BOOKS_DIR in .env.local.`);
   });
 });

@@ -78,7 +78,7 @@ const imageToJpeg = async (bytes: Uint8Array) => {
 /** The first page of a PDF, drawn at the cover width. */
 const pdfFirstPage = async (data: Uint8Array) => {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const assets = path.join(process.cwd(), "node_modules/pdfjs-dist");
+  const assets = path.join(/*turbopackIgnore: true*/ process.cwd(), "node_modules/pdfjs-dist");
   const task = pdfjs.getDocument({
     data,
     standardFontDataUrl: `${assets}/standard_fonts/`,
@@ -119,9 +119,9 @@ const stampedWith = async (file: string, time: number) => {
  * gets a new cover. A book without one leaves a `.none` marker, so it isn't
  * tried again on every visit.
  */
-export const bookCover = (found: FoundBook, dir = path.join(getConfig().dataDir, "covers")): Promise<Buffer | null> => {
-  const jpg = path.join(dir, `${found.book.id}.jpg`);
-  const none = path.join(dir, `${found.book.id}.none`);
+export const bookCover = (found: FoundBook, dir = path.join(/*turbopackIgnore: true*/ getConfig().dataDir, "covers")): Promise<Buffer | null> => {
+  const jpg = path.join(/*turbopackIgnore: true*/ dir, `${found.book.id}.jpg`);
+  const none = path.join(/*turbopackIgnore: true*/ dir, `${found.book.id}.none`);
   return serialized(jpg, async () => {
     const time = Date.parse(found.book.modifiedAt);
     if (await stampedWith(jpg, time)) return readFile(jpg);
