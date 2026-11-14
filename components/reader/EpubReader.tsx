@@ -513,11 +513,8 @@ export function EpubReader({
           pinnedRef.current = false;
           emitInteract();
         }
-        if (e.key === "Escape") {
-          doc.getSelection()?.removeAllRanges();
-          emitSelectionRect();
-        }
-        /* Keys pressed while the book's frame has focus reach the page's shortcuts too. */
+        /* Keys pressed while the book's frame has focus reach the page's shortcuts too. Esc included: the page
+           clears the selection itself, so it can tell whether that Esc had a selection to clear. */
         const { key, code, metaKey, ctrlKey, shiftKey, altKey, repeat } = e;
         const forwarded = new KeyboardEvent("keydown", { key, code, metaKey, ctrlKey, shiftKey, altKey, repeat, bubbles: true, cancelable: true });
         if (!host.dispatchEvent(forwarded)) e.preventDefault();

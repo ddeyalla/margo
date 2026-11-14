@@ -45,7 +45,9 @@ export const parseCardReply = (text: string): CardReply | string => {
   if (fact === null) return { fact: null, reason: field(reason) ?? "The passage holds no fact worth a card." };
   const statement = field(fact);
   if (!statement) return '"fact" must be a sentence, or null.';
-  if (!Array.isArray(cards) || cards.length === 0) return '"cards" must list one to three cards when "fact" is set.';
+  if (!Array.isArray(cards)) return '"cards" must list one to three cards when "fact" is set.';
+  /* The prompt tells the model to return no cards when the reader's cards already cover the passage: nothing new, not a bad reply. */
+  if (cards.length === 0) return { fact: null, reason: field(reason) ?? "The cards you already have cover this passage." };
   const checked: { question: string; answer: string }[] = [];
   for (const card of cards) {
     const question = field(card?.question);

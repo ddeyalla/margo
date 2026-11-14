@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { ArrowUp, ImagePlus, Square } from "lucide-react";
 import { IMAGE_TYPES } from "@/lib/shared/attachments";
+import { useUnsentText } from "@/lib/client/unsent";
 import { insertAtCaret } from "@/lib/shared/dictation";
 import { DraftImages } from "./Images";
 import { DictationNote, MicButton } from "./MicButton";
@@ -49,6 +50,7 @@ export function Composer({
     caret.current = next.caret;
     setText(next.value);
   });
+  useUnsentText(text.trim().length > 0);
   const hasContent = text.trim().length > 0 || images.ready.length > 0;
   const canSend = !disabledReason && !sending && !images.uploading && !images.failed && hasContent;
   const problem = images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;

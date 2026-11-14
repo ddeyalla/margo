@@ -22,9 +22,10 @@ const noteBody = (value: unknown): string | null => shortText(value, MAX_NOTE);
 const parsePassage = (value: unknown, format: BookFormat): Passage | null => {
   if (!isObject(value) || !isId(value.id)) return null;
   const anchor = parseAnchor(value.anchor, format);
-  const quote = shortText(value.quote, MAX_QUOTE * 2);
+  /* A long selection keeps its first MAX_QUOTE characters rather than failing; the anchor still covers all of it. */
+  const quote = typeof value.quote === "string" ? normalizeText(value.quote.slice(0, MAX_QUOTE * 2)).slice(0, MAX_QUOTE).trim() : "";
   if (!anchor || !quote) return null;
-  return { id: value.id, anchor, quote: normalizeText(quote).slice(0, MAX_QUOTE), chapterTitle: shortText(value.chapterTitle, 500) };
+  return { id: value.id, anchor, quote, chapterTitle: shortText(value.chapterTitle, 500) };
 };
 
 /** Validates a change sent as JSON. It travels with its own method: POST adds, PATCH edits, DELETE removes. */

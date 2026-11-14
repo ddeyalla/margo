@@ -23,6 +23,16 @@ const readSets = async (response: Response): Promise<{ cardSets: CardSet[]; adde
   return { cardSets: body.cardSets, added: body.added, reason: body.reason };
 };
 
+/** The cards the server holds, or null when it can't be reached. */
+const fetchSets = async (bookId: BookId): Promise<CardSet[] | null> => {
+  try {
+    const response = await fetch(`/api/books/${bookId}/state`, { cache: "no-store" });
+    return response.ok ? ((await response.json()) as { cardSets: CardSet[] }).cardSets : null;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * The book's card sets. Making cards waits on the tutor, so each passage shows
  * as a job until its answer comes back. Edits and reviews show at once, then
@@ -73,6 +83,8 @@ export function useCards(bookId: BookId, initial: CardSet[]) {
         answer = (await readSets(response)).cardSets;
       } catch (error) {
         setNotice({ kind: "error", text: error instanceof Error ? error.message : "Saving the change failed." });
+        /* The change was shown at once; take the server's cards back so the list shows what was really saved. */
+        answer = await fetchSets(bookId);
       }
       if (--pending.current === 0 && answer) setSets(answer);
     });

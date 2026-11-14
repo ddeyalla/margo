@@ -87,6 +87,23 @@ describe("the model folder", () => {
     expect(await readdir(path.join(root, "models"))).toEqual([]);
   });
 
+  it("gives up a download that stops receiving bytes, and leaves nothing behind", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(10));
+            init?.signal?.addEventListener("abort", () => controller.error(new DOMException("aborted", "AbortError")));
+          },
+        });
+        return new Response(body);
+      }),
+    );
+    await expect(installModel("https://example.test/model.tar.bz2", 200, 50)).rejects.toThrow("stalled");
+    expect(await readdir(path.join(root, "models"))).toEqual([]);
+  });
+
   it("clears the leftovers of a crashed download", async () => {
     await mkdir(path.join(root, "models", ".tmp-crashed"), { recursive: true });
     vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 404 })));

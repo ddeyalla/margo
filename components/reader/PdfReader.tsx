@@ -172,15 +172,18 @@ export function PdfReader({
     const pageBox = startLayer.getBoundingClientRect();
     const text = texts.get(page) ?? "";
     const endLayer = layerOf(range.endContainer);
-    const endPage = endLayer ? Number(endLayer.dataset.page) : page;
+    /* An anchor lies on one page, so a selection running into the next page keeps only what is on this one;
+       the quote and the words around it are cut at the same place as the anchor. */
+    const crosses = !!endLayer && Number(endLayer.dataset.page) !== page;
+    const kept = range.cloneRange();
+    if (crosses) kept.setEnd(startLayer, startLayer.childNodes.length);
     const start = offsetInLayer(startLayer, range.startContainer, range.startOffset);
-    const endText = texts.get(endPage) ?? "";
-    const endInEndPage = endLayer ? offsetInLayer(endLayer, range.endContainer, range.endOffset) : endText.length;
+    const end = crosses || !endLayer ? text.length : offsetInLayer(endLayer, range.endContainer, range.endOffset);
     return {
-      text: normalizeText(flowText(blockText(range.cloneContents()))),
+      text: normalizeText(flowText(blockText(kept.cloneContents()))),
       before: trimBefore(flowText((texts.get(page - 1) ?? "") + "\n" + text.slice(0, start))),
-      after: trimAfter(flowText(endText.slice(endInEndPage) + "\n" + (texts.get(endPage + 1) ?? ""))),
-      anchor: { kind: "pdf", page, start, end: endPage === page ? endInEndPage : text.length },
+      after: trimAfter(flowText(text.slice(end) + "\n" + (texts.get(page + 1) ?? ""))),
+      anchor: { kind: "pdf", page, start, end },
       chapterTitle: chapterAt(outline, page, (rect.top - pageBox.top) / Math.max(1, pageBox.height))?.label ?? null,
       rect,
     };

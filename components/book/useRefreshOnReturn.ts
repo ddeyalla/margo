@@ -8,7 +8,7 @@ import { markRefresh } from "@/lib/client/open";
  * Shows what another window changed. When this window loses focus or hides it takes a snapshot of
  * `readRevision`; when it comes back it reads the revision again and refreshes the route if it differs.
  * Writes this window made were all done before the snapshot, so it never reloads for its own changes.
- * With no `readRevision` it refreshes on every return. `beforeLeave` runs first, so a pending save lands before the snapshot.
+ * With no `readRevision` it refreshes on every return, without the mark: only a refreshed book page stays quiet. `beforeLeave` runs first, so a pending save lands before the snapshot.
  * While `isBusy` is true, such as an answer still streaming in, this window is still writing, so it skips the refresh:
  * reloading then would cut the work off, and the change it sees may be its own.
  */
@@ -47,10 +47,7 @@ export function useRefreshOnReturn(
       if (!before) return;
       const then = await before;
       if (busyAtLeave.current || busy()) return;
-      if (!readRevision) {
-        markRefresh();
-        return router.refresh();
-      }
+      if (!readRevision) return router.refresh();
       const now = await readRevision().catch(() => null);
       if (then && now && then !== now) {
         markRefresh();

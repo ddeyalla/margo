@@ -35,9 +35,14 @@ describe("reading the tutor's cards", () => {
     expect(parsed).toMatchObject({ cards: [{ question: "One?" }, { question: "Two?" }, { question: "Three?" }] });
   });
 
+  it("reads a reply with no cards as nothing new, not a bad reply", () => {
+    expect(parseCardReply('{"fact": "F", "cards": []}')).toEqual({ fact: null, reason: "The cards you already have cover this passage." });
+    expect(parseCardReply('{"fact": "F", "reason": "Already covered.", "cards": []}')).toEqual({ fact: null, reason: "Already covered." });
+  });
+
   it("explains what to fix when the reply can't be used", () => {
     expect(parseCardReply("Sorry, no.")).toBe("The reply had no JSON object.");
-    expect(parseCardReply('{"fact": "F", "cards": []}')).toMatch(/one to three cards/);
+    expect(parseCardReply('{"fact": "F", "cards": "none"}')).toMatch(/one to three cards/);
     expect(parseCardReply('{"fact": "F", "cards": [{"question": "Q"}]}')).toMatch(/non-empty/);
   });
 });

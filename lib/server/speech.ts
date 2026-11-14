@@ -13,6 +13,8 @@ export const MODEL_NAME = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8";
 export const MODEL_URL = `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${MODEL_NAME}.tar.bz2`;
 /** The archive's exact size. A download of any other length is thrown away. */
 export const MODEL_BYTES = 487_211_443;
+/** A download that receives nothing for this long is given up, so a retry can start. */
+const STALL_MS = 60_000;
 const MODEL_FILES = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
 
 export const SAMPLE_RATE = 16_000;
@@ -69,17 +71,32 @@ const extract = (archive: string, into: string) =>
  * Downloads the archive to a temp file, checks its size, unpacks it in a temp folder and renames
  * that into place. A crash leaves temp files, which the next download clears, never a half model.
  */
-export const installModel = async (url = MODEL_URL, bytes = MODEL_BYTES) => {
+export const installModel = async (url = MODEL_URL, bytes = MODEL_BYTES, stallMs = STALL_MS) => {
   const root = modelsDir();
   await mkdir(root, { recursive: true });
   for (const entry of await readdir(root)) if (entry.startsWith(".tmp-")) await rm(path.join(root, entry), { recursive: true, force: true });
   const work = await mkdtemp(path.join(root, ".tmp-"));
+  /* The timer restarts whenever bytes arrive; if it runs out the transfer is aborted. */
+  const controller = new AbortController();
+  let stalled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const watch = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      stalled = true;
+      controller.abort();
+    }, stallMs);
+  };
   try {
-    const response = await fetch(url);
+    watch();
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok || !response.body) throw new Error(`The download failed (HTTP ${response.status}).`);
     const archive = path.join(work, "model.tar.bz2");
     const counted = Readable.fromWeb(response.body as import("node:stream/web").ReadableStream<Uint8Array>);
-    counted.on("data", (chunk: Buffer) => (state.done += chunk.length));
+    counted.on("data", (chunk: Buffer) => {
+      state.done += chunk.length;
+      watch();
+    });
     await pipeline(counted, createWriteStream(archive));
     const size = (await stat(archive)).size;
     if (size !== bytes) throw new Error(`The download was ${size} bytes, expected ${bytes}.`);
@@ -90,7 +107,11 @@ export const installModel = async (url = MODEL_URL, bytes = MODEL_BYTES) => {
     if (!(await isInstalled(found))) throw new Error("The download did not contain the model.");
     await rm(modelDir(), { recursive: true, force: true });
     await rename(found, modelDir());
+  } catch (error) {
+    if (stalled) throw new Error(`The download stalled: nothing arrived for ${Math.round(stallMs / 1000)} seconds. Try again.`);
+    throw error;
   } finally {
+    clearTimeout(timer);
     await rm(work, { recursive: true, force: true });
   }
 };

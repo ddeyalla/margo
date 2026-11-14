@@ -132,6 +132,26 @@ describe("the Obsidian note file", () => {
     );
   });
 
+  it("never overwrites a file this book did not write, and keeps the name it took", async () => {
+    const notesDir = await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-"));
+    const mine = path.join(notesDir, "Generative AI Design Patterns - Solutions.md");
+    await writeFile(mine, "My own note, no frontmatter.\n");
+    const first = await writeVault(notesDir, book, { highlights, notes });
+    expect(first).toEqual({ state: "written", file: path.join(notesDir, "Generative AI Design Patterns - Solutions (2).md") });
+    expect(await readFile(mine, "utf8")).toBe("My own note, no frontmatter.\n");
+
+    /* Another book with the same title goes to the next free name; the first keeps its file on every later write. */
+    const other = { ...book, id: "d".repeat(40) as BookId };
+    const second = await writeVault(notesDir, other, { highlights: [], notes: [] });
+    expect(second).toEqual({ state: "written", file: path.join(notesDir, "Generative AI Design Patterns - Solutions (3).md") });
+    expect(await writeVault(notesDir, book, { highlights, notes })).toEqual(first);
+    expect(await readFile(mine, "utf8")).toBe("My own note, no frontmatter.\n");
+
+    /* A book whose plain-named file is its own keeps writing there. */
+    await writeFile(mine, renderVault(other, { highlights: [], notes: [] }));
+    expect(await writeVault(notesDir, other, { highlights: [], notes: [] })).toEqual({ state: "written", file: mine });
+  });
+
   it("reports a folder it cannot create instead of throwing", async () => {
     const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-"));
     await writeFile(path.join(base, "not-a-folder"), "");

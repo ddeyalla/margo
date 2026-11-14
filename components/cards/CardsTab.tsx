@@ -6,6 +6,7 @@ import { Button, EmptyState, IconButton, Spinner } from "@/components/ui";
 import { byChapter, UNTITLED_SECTION } from "@/lib/shared/annotations";
 import { placeLabel } from "@/lib/shared/place";
 import { intervalLabel, isDue, reviewQueue } from "@/lib/shared/schedule";
+import { useUnsentText } from "@/lib/client/unsent";
 import type { Anchor, CardSet, Cue } from "@/lib/shared/types";
 import type { CardsApi } from "./useCards";
 
@@ -22,6 +23,7 @@ const status = (set: CardSet, now: Date): string => {
 function CueEditor({ cue, onSave, onCancel }: { cue: Cue; onSave(question: string, answer: string): void; onCancel(): void }) {
   const [question, setQuestion] = useState(cue.question);
   const [answer, setAnswer] = useState(cue.answer);
+  useUnsentText(question !== cue.question || answer !== cue.answer);
   const ready = question.trim() && answer.trim();
   const save = () => ready && onSave(question.trim(), answer.trim());
   return (

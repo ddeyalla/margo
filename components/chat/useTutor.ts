@@ -51,8 +51,19 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       current.some((t) => t.id === thread.id) ? current.map((t) => (t.id === thread.id ? thread : t)) : [...current, thread],
     );
 
+  /** Reads the threads again from the server, for a turn whose outcome the client never saw. */
+  const reload = async () => {
+    try {
+      const response = await fetch(`/api/books/${bookId}/state`, { cache: "no-store" });
+      if (response.ok) setThreads(((await response.json()) as { threads: Thread[] }).threads);
+    } catch {
+      /* Offline; the list stays as it was. */
+    }
+  };
+
+  /* One request at a time, whichever thread it is for: starting another would cut the first one's answer off. */
   const run = async (request: ChatRequest) => {
-    abortRef.current?.abort();
+    if (abortRef.current) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setFailure(null);
@@ -95,7 +106,14 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     abortRef.current = null;
     setSending(false);
     setLive(null);
-    if (error && !controller.signal.aborted) {
+    /* The server may hold a thread this window never saw: a new question stopped before its first event, or a
+       thread that is gone or has nothing to retry. Ask it, twice, since a stopped request may still be saving. */
+    const aborted = controller.signal.aborted;
+    if (!thread && (aborted ? !("threadId" in request) : "threadId" in request)) {
+      void reload();
+      setTimeout(() => void reload(), 1500);
+    }
+    if (error && !aborted) {
       const inThread = "threadId" in request ? request.threadId : null;
       setFailure({ threadId: thread?.id ?? inThread, message: error, request: thread || inThread ? null : request });
     }
@@ -147,7 +165,10 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
   /** Sends a parked question to the tutor, as an Ask would. It becomes an ordinary thread. */
   const unpark = (id: string, provider: ProviderId) => {
     const thread = threads.find((t) => t.id === id);
-    if (thread && isParked(thread)) void run({ kind: "retry", bookId, provider, threadId: id });
+    if (!thread || !isParked(thread) || abortRef.current) return;
+    /* Opened first, so a failure before the answer starts shows on the thread being asked. */
+    open(id);
+    void run({ kind: "retry", bookId, provider, threadId: id });
   };
 
   /** Deletes a parked question. */

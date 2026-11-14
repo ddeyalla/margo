@@ -21,6 +21,13 @@ let active = 0;
 /** True while any field is recording or transcribing, so a window refresh does not throw the words away. */
 export const dictationBusy = () => active > 0;
 
+/** The one field that is dictating. Starting in another field cancels it, so only one microphone is open and Escape means one thing. */
+let current: (() => void) | null = null;
+const claim = (cancel: () => void) => {
+  if (current && current !== cancel) current();
+  current = cancel;
+};
+
 const readStatus = async (): Promise<ModelStatus> => {
   const response = await fetch("/api/speech", { cache: "no-store" });
   if (!response.ok) throw new Error("Could not check the speech model.");
@@ -75,11 +82,12 @@ export function useDictation(onText: (words: string) => void) {
     void open.context.close().catch(() => {});
   }, []);
 
-  const cancel = useCallback(() => {
+  const cancel: () => void = useCallback(() => {
     run.current++;
     request.current?.abort();
     request.current = null;
     release();
+    if (current === cancel) current = null;
     setNote(null);
     setPhase("idle");
   }, [release]);
@@ -92,8 +100,9 @@ export function useDictation(onText: (words: string) => void) {
       token.current++;
       request.current?.abort();
       release();
+      if (current === cancel) current = null;
     };
-  }, [release]);
+  }, [release, cancel]);
 
   const busy = phase === "starting" || phase === "recording" || phase === "transcribing";
   useEffect(() => {
@@ -217,6 +226,7 @@ export function useDictation(onText: (words: string) => void) {
   };
 
   const confirmDownload = async () => {
+    claim(cancel);
     const mine = ++run.current;
     setNotice(null);
     setProgress({ done: 0, total: 0 });
@@ -236,6 +246,7 @@ export function useDictation(onText: (words: string) => void) {
     if (phase === "recording") return stop();
     if (phase === "starting" || phase === "downloading" || phase === "consent") return cancel();
     if (phase === "transcribing") return;
+    claim(cancel);
     const mine = ++run.current;
     setNotice(null);
     try {

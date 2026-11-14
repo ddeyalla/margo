@@ -1,3 +1,4 @@
+import { open } from "node:fs/promises";
 import path from "node:path";
 import { byChapter, sameAnchor, UNTITLED_SECTION } from "@/lib/shared/annotations";
 import type { Anchor, Annotations, BookFormat, BookId, CardSet, Cue, LibraryBook, Note, VaultStatus } from "@/lib/shared/types";
@@ -115,11 +116,55 @@ export const renderVault = (book: VaultBook, { highlights, notes, cardSets = [] 
   return `${lines.join("\n")}\n`;
 };
 
-/** Rewrites the book's note file, creating NOTES_DIR if needed. A failure is reported, never thrown. */
-export const writeVault = async (notesDir: string, book: VaultBook, annotations: Parameters<typeof renderVault>[1]): Promise<VaultStatus> => {
-  const file = path.join(/*turbopackIgnore: true*/ notesDir, vaultFileName(book.title));
+/** The `bookId` in a note file's frontmatter, or null when the file is missing, is someone else's note or has none. */
+const fileBookId = async (file: string): Promise<string | null> => {
+  let handle;
   try {
-    await writeFileAtomic(file, renderVault(book, annotations));
+    handle = await open(file, "r");
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(2048), 0, 2048, 0);
+    const head = buffer.toString("utf8", 0, bytesRead);
+    if (!/^---\r?\n/.test(head)) return null;
+    const end = head.indexOf("\n---", 3);
+    return (head.slice(0, end === -1 ? undefined : end).match(/^bookId: *(\S+)\s*$/m) ?? [])[1] ?? null;
+  } catch {
+    return null;
+  } finally {
+    await handle?.close();
+  }
+};
+
+const exists = (file: string) => open(file, "r").then((handle) => handle.close().then(() => true), () => false);
+
+const MAX_COPIES = 99;
+
+/**
+ * Where this book's note file goes: its title's name, or "Title (2).md", "Title (3).md" when that name holds a
+ * file this book did not write, such as another book with the same title or a note of the reader's own. A file is
+ * this book's when its frontmatter `bookId` is this book's id (every version has written it). The book keeps
+ * the file it already has, wherever it sits in the sequence, and otherwise takes the first free name.
+ */
+export const vaultFilePath = async (notesDir: string, book: VaultBook): Promise<string> => {
+  const base = vaultFileName(book.title).slice(0, -3);
+  const names = [`${base}.md`, ...Array.from({ length: MAX_COPIES }, (_, i) => `${base} (${i + 2}).md`)];
+  let free: string | null = null;
+  for (const name of names) {
+    const file = path.join(/*turbopackIgnore: true*/ notesDir, name);
+    if ((await fileBookId(file)) === book.id) return file;
+    if (free === null && !(await exists(file))) free = file;
+  }
+  if (free === null) throw new Error(`Every file name for "${base}" is taken by notes this app did not write.`);
+  return free;
+};
+
+/** Rewrites the book's note file, creating NOTES_DIR if needed. Never overwrites a file this book did not write. A failure is reported, never thrown. */
+export const writeVault = async (notesDir: string, book: VaultBook, annotations: Parameters<typeof renderVault>[1]): Promise<VaultStatus> => {
+  try {
+    /* One book at a time picks its name, so two books with the same title cannot both take a free one. */
+    const file = await serialized(`vault-names:${notesDir}`, async () => {
+      const target = await vaultFilePath(notesDir, book);
+      await writeFileAtomic(target, renderVault(book, annotations));
+      return target;
+    });
     return { state: "written", file };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);

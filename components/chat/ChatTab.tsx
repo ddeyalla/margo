@@ -48,6 +48,7 @@ export function ChatTab({
         bookId={tutor.bookId}
         thread={active}
         streaming={tutor.streaming}
+        sending={tutor.sending}
         failure={failure}
         unavailable={unavailable}
         onBack={() => tutor.open(null)}
@@ -87,6 +88,7 @@ function Threads({
           threads={tutor.threads}
           parked={tutor.parked}
           unavailable={unavailable}
+          sending={tutor.sending}
           onJump={onJump}
           onSend={onSendParked}
           onDiscard={tutor.discard}
@@ -119,12 +121,14 @@ function Threads({
 function ParkedList({
   parked,
   unavailable,
+  sending,
   onJump,
   onSend,
   onDiscard,
 }: {
   parked: ParkedThread[];
   unavailable: string | null;
+  sending: boolean;
   onJump(anchor: Anchor): void;
   onSend(id: string): void;
   onDiscard(id: string): void;
@@ -147,7 +151,7 @@ function ParkedList({
               </button>
               <p className="whitespace-pre-wrap break-words text-body leading-snug text-paper">{thread.messages[0]?.content}</p>
               <div className="flex items-center gap-1">
-                <Button size="sm" disabled={!!unavailable} title={unavailable ?? "Send this question to the tutor"} onClick={() => onSend(thread.id)}>
+                <Button size="sm" disabled={!!unavailable || sending} title={unavailable ?? "Send this question to the tutor"} onClick={() => onSend(thread.id)}>
                   <Send />
                   Ask now
                 </Button>
@@ -168,6 +172,7 @@ function ThreadList({
   threads,
   parked,
   unavailable,
+  sending,
   onJump,
   onSend,
   onDiscard,
@@ -176,6 +181,7 @@ function ThreadList({
   threads: Thread[];
   parked: ParkedThread[];
   unavailable: string | null;
+  sending: boolean;
   onJump(anchor: Anchor): void;
   onSend(id: string): void;
   onDiscard(id: string): void;
@@ -183,7 +189,7 @@ function ThreadList({
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-      {parked.length ? <ParkedList parked={parked} unavailable={unavailable} onJump={onJump} onSend={onSend} onDiscard={onDiscard} /> : null}
+      {parked.length ? <ParkedList parked={parked} unavailable={unavailable} sending={sending} onJump={onJump} onSend={onSend} onDiscard={onDiscard} /> : null}
       {threads.length ? (
         <p className="px-2 pb-1.5 pt-1 text-[11px] text-dim">
           {threads.length} {threads.length === 1 ? "thread" : "threads"} in this book
@@ -232,6 +238,7 @@ function ThreadView({
   bookId,
   thread,
   streaming,
+  sending,
   failure,
   unavailable,
   onBack,
@@ -243,6 +250,8 @@ function ThreadView({
   bookId: BookId;
   thread: Thread;
   streaming: string | null;
+  /** Any request is in flight, for this thread or another. */
+  sending: boolean;
   failure: FailedTurn | null;
   unavailable: string | null;
   onBack(): void;
@@ -262,9 +271,9 @@ function ThreadView({
   }, [thread.messages.length, streaming, failure]);
 
   /* The reader's last message went unanswered: stopped before the first word, or failed. */
-  const unanswered = streaming === null && awaitsAnswer(thread);
+  const unanswered = !sending && awaitsAnswer(thread);
   const { leading, hintsUsed } = workState(thread);
-  const busy = streaming !== null || !!unavailable;
+  const busy = sending || !!unavailable;
 
   return (
     <DropArea onFiles={images.add} enabled={!unavailable} className="flex min-h-0 flex-1 flex-col">
@@ -362,7 +371,7 @@ function ThreadView({
       <Composer
         placeholder="Ask a follow-up…"
         disabledReason={unavailable}
-        sending={streaming !== null}
+        sending={sending}
         images={images}
         onSend={onReply}
         onStop={onStop}

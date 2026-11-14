@@ -17,6 +17,8 @@ const HOST = "127.0.0.1";
 const ORIGIN = `http://${HOST}:${PORT}`;
 const BROWSER_URL = `http://localhost:${PORT}`;
 const START_TIMEOUT_MS = 30_000;
+/** How long a server gets to exit after SIGTERM before it is killed. */
+const STOP_TIMEOUT_MS = 3000;
 
 // The name sets the menu title. The path is set outright so it is exactly this folder.
 app.setName("rigg learn");
@@ -31,12 +33,19 @@ let server = null;
 let serverExit = null; // { code, signal } once it has exited
 let mainWindow = null;
 let quitting = false;
+/** True once launch has finished: before that no window opens, since launch makes the one window itself. */
+let launched = false;
+let stopping = false;
 
 // ---- Server discovery ---------------------------------------------------------------------
 
-/** "ours": rigg learn answered. "free": nothing is listening. "other": a port taken by something else. */
+/**
+ * "ours": rigg learn answered. "free": nothing is listening. "other": a port taken by something else.
+ * "slow": something accepted the connection but did not answer in time, such as a dev server compiling its first route.
+ */
 const probe = (timeoutMs) =>
   new Promise((resolve) => {
+    let timedOut = false;
     const req = http.get({ host: HOST, port: PORT, path: "/api/health", timeout: timeoutMs }, (res) => {
       let body = "";
       res.setEncoding("utf8");
@@ -49,8 +58,11 @@ const probe = (timeoutMs) =>
         }
       });
     });
-    req.on("timeout", () => req.destroy(new Error("timeout")));
-    req.on("error", (error) => resolve(error.code === "ECONNREFUSED" ? "free" : "other"));
+    req.on("timeout", () => {
+      timedOut = true;
+      req.destroy();
+    });
+    req.on("error", (error) => resolve(timedOut ? "slow" : error.code === "ECONNREFUSED" ? "free" : "other"));
   });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -148,6 +160,7 @@ const startServer = async (serverDir) => {
   fs.closeSync(log); // the child has its own copy
   server.on("exit", (code, signal) => {
     serverExit = { code, signal };
+    if (launched && !quitting) void offerRestart(serverExit);
   });
   server.on("error", (error) => {
     fs.appendFileSync(logPath, `\nCould not start the server: ${error.message}\n`);
@@ -155,8 +168,32 @@ const startServer = async (serverDir) => {
   });
 };
 
-const stopServer = () => {
-  if (server && !serverExit) server.kill("SIGTERM");
+/** Asks the server to stop and resolves once it has, killing it if it has not after a few seconds. */
+const stopServer = () =>
+  new Promise((resolve) => {
+    if (!server || serverExit) return resolve();
+    const child = server;
+    const timer = setTimeout(() => child.kill("SIGKILL"), STOP_TIMEOUT_MS);
+    child.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill("SIGTERM");
+  });
+
+/** The server this app started died after launch. Say so, and offer a fresh start. */
+const offerRestart = async ({ code, signal }) => {
+  const { response } = await dialog.showMessageBox({
+    type: "error",
+    message: "The rigg learn server stopped",
+    detail: `It exited unexpectedly (${code ?? signal ?? "unknown"}), so the app cannot load pages until it is restarted.\n\nLast lines of ${logPath}:\n\n${lastLogLines(10)}`,
+    buttons: ["Restart", "Quit"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  quitting = true;
+  if (response === 0) app.relaunch();
+  app.exit(0);
 };
 
 /** Waits for the server this app started to answer. Throws with the log's last lines if it dies or is too slow. */
@@ -294,10 +331,10 @@ const buildMenu = () => {
 
 // ---- Start up -----------------------------------------------------------------------------
 
-const fail = (title, detail) => {
+const fail = async (title, detail) => {
   dialog.showErrorBox(title, detail);
   quitting = true;
-  stopServer();
+  await stopServer();
   app.exit(1);
 };
 
@@ -313,10 +350,15 @@ const launch = async () => {
     return result.canceled || !result.filePaths[0] ? null : result.filePaths[0];
   });
 
-  // A dev server compiling its first route can be slow, so give the first look a few seconds.
-  const found = await probe(5000);
+  // A dev server compiling its first route can be slow, so a probe that times out is tried again for a while.
+  const giveUp = Date.now() + START_TIMEOUT_MS;
+  let found = await probe(5000);
+  while (found === "slow" && Date.now() < giveUp) found = await probe(5000);
+  if (found === "slow") {
+    return fail("rigg learn is not answering", `Something on port ${PORT} accepted the connection but did not answer for 30 seconds. If it is the dev server, wait for it to finish compiling and open rigg learn again.`);
+  }
   if (found === "other") {
-    return fail("Port 3210 is in use", "Another program is using port 3210, so rigg learn cannot start. Close that program and open rigg learn again.");
+    return fail(`Port ${PORT} is in use`, `Another program is using port ${PORT}, so rigg learn cannot start. Close that program and open rigg learn again.`);
   }
   if (found === "free") {
     const serverDir = findServerDir();
@@ -330,6 +372,7 @@ const launch = async () => {
       return fail("rigg learn could not start", `${error.message}\n\nLast lines of ${logPath}:\n\n${lastLogLines(15)}`);
     }
   }
+  launched = true;
   createWindow();
 };
 
@@ -337,18 +380,25 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (app.isReady()) showWindow();
+    if (launched) showWindow();
   });
   // Clicking the Dock icon with no window open brings one back.
   app.on("activate", () => {
-    if (app.isReady() && !quitting && !BrowserWindow.getAllWindows().length) createWindow();
+    if (launched && !quitting && !BrowserWindow.getAllWindows().length) createWindow();
   });
   // As on any Mac app, closing the last window leaves the app (and its server) running. Quit with Cmd+Q.
   app.on("window-all-closed", () => {});
-  app.on("before-quit", () => {
+  // Quit waits for the server to stop, so it is never left running behind a closed app.
+  app.on("before-quit", (event) => {
     quitting = true;
-    stopServer();
+    if (!server || serverExit || stopping) return;
+    event.preventDefault();
+    stopping = true;
+    void stopServer().then(() => app.quit());
   });
-  process.on("exit", stopServer);
+  // The last resort if the process ends some other way.
+  process.on("exit", () => {
+    if (server && !serverExit) server.kill("SIGKILL");
+  });
   void app.whenReady().then(launch);
 }

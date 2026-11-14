@@ -5,6 +5,7 @@ import { ArrowUp, BookOpenText, CircleParking, Highlighter, Layers, Lightbulb, M
 import { Toolbar, ToolbarButton, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
 import { DictationNote, MicButton } from "@/components/chat/MicButton";
 import { useDictation } from "@/components/chat/useDictation";
+import { useUnsentText } from "@/lib/client/unsent";
 import { insertAtCaret } from "@/lib/shared/dictation";
 import type { SelectionContext } from "@/lib/shared/types";
 import { placeFloating } from "./floating";
@@ -22,6 +23,8 @@ interface SelectionToolbarProps {
   readSelection(): SelectionContext | null;
   /** Why the tutor can't answer right now; the actions are disabled and say this. */
   disabledReason: string | null;
+  /** The tutor is answering; its actions wait, while highlighting, notes and parking stay open. */
+  tutorBusy: boolean;
   onAction(action: "explain" | "deeper" | "work", selection: SelectionContext): void;
   /** The reader's own words: a question, or an explanation to check. */
   onAsk(text: string, selection: SelectionContext, kind: Exclude<InputKind, "park">): void;
@@ -66,6 +69,7 @@ export function SelectionToolbar({
   bounds,
   readSelection,
   disabledReason,
+  tutorBusy,
   onAction,
   onAsk,
   onPark,
@@ -83,6 +87,7 @@ export function SelectionToolbar({
   const askingRef = useRef(false);
   const fieldRef = useRef<HTMLInputElement>(null);
   const caret = useRef<number | null>(null);
+  useUnsentText(question.trim().length > 0);
   const dictation = useDictation((words) => {
     const field = fieldRef.current;
     if (!field) return;
@@ -153,6 +158,7 @@ export function SelectionToolbar({
     const text = question.trim();
     if (!selection || !text || !asking) return;
     const kind = asking;
+    if (kind !== "park" && tutorBusy) return;
     reset();
     if (kind === "park") onPark(text, selection);
     else onAsk(text, selection, kind);
@@ -164,8 +170,10 @@ export function SelectionToolbar({
   };
 
   const disabled = disabledReason !== null;
-  /* Parking never calls the tutor, so it works when the tutor is unavailable. */
-  const inputDisabled = disabled && asking !== "park";
+  const tutorOff = disabled || tutorBusy;
+  const tutorTitle = disabledReason ?? (tutorBusy ? "The tutor is still answering." : undefined);
+  /* Parking never calls the tutor, so it works when the tutor is unavailable or busy. */
+  const inputDisabled = tutorOff && asking !== "park";
   const input = INPUTS[asking ?? "ask"];
   const open = (kind: InputKind) => {
     if (!take()) return;
@@ -232,21 +240,21 @@ export function SelectionToolbar({
           </>
         ) : (
           <>
-            <Action icon={<Sparkles />} label="Explain" title={disabledReason ?? undefined} disabled={disabled} onPress={() => act("explain")} />
-            <Action icon={<Layers />} label="Go deeper" title={disabledReason ?? undefined} disabled={disabled} onPress={() => act("deeper")} />
-            <Action icon={<Lightbulb />} label="Work it out" title={disabledReason ?? undefined} disabled={disabled} onPress={() => act("work")} />
+            <Action icon={<Sparkles />} label="Explain" title={tutorTitle} disabled={tutorOff} onPress={() => act("explain")} />
+            <Action icon={<Layers />} label="Go deeper" title={tutorTitle} disabled={tutorOff} onPress={() => act("deeper")} />
+            <Action icon={<Lightbulb />} label="Work it out" title={tutorTitle} disabled={tutorOff} onPress={() => act("work")} />
             <Action
               icon={<MessageCircleQuestion />}
               label="Ask…"
-              title={disabledReason ?? undefined}
-              disabled={disabled}
+              title={tutorTitle}
+              disabled={tutorOff}
               onPress={() => open("ask")}
             />
             <Action
               icon={<PenLine />}
               label="Explain it back"
-              title={disabledReason ?? undefined}
-              disabled={disabled}
+              title={tutorTitle}
+              disabled={tutorOff}
               onPress={() => open("explainBack")}
             />
             <ToolbarSeparator className="mx-1 h-4 w-px shrink-0 bg-line-strong" />

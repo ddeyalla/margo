@@ -23,6 +23,7 @@ import { EmptyState, IconButton, Segmented } from "@/components/ui";
 import { patchBookState, patchSettings } from "@/lib/client/api";
 import { isTextEntry } from "@/lib/client/keys";
 import { consumeRefreshMark } from "@/lib/client/open";
+import { hasUnsentText } from "@/lib/client/unsent";
 import { anchorAt } from "@/lib/shared/place";
 import { recentMarks, shouldShowResume } from "@/lib/shared/resume";
 import { reviewQueue } from "@/lib/shared/schedule";
@@ -144,8 +145,8 @@ export function BookWorkspace({
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
-  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note or mid-dictation. */
-  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy());
+  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note, mid-dictation or holding words typed but not sent. */
+  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText());
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
 
   /* What greets the reader on a fresh open: where they left off, and the cards that are due. */
@@ -274,7 +275,7 @@ export function BookWorkspace({
   };
 
   const startThread = (action: TutorAction, selection: SelectionContext, question: string | null) => {
-    if (!provider) return;
+    if (!provider || tutor.sending) return;
     readerRef.current?.clearSelection();
     showTab("chat");
     tutor.start(action, selection, question, provider);
@@ -286,13 +287,14 @@ export function BookWorkspace({
     tutor.ask(draft, position && { anchor: anchorAt(position), chapterTitle: chapter?.label ?? null }, provider);
   };
 
+  const endSpotlight = () => {
+    setSpotlight(false);
+    if (panelWasOpen.current && layout.isCollapsed(PANEL_ID)) layout.expand(PANEL_ID);
+  };
+
   const toggleSpotlight = () => {
+    if (spotlight) return endSpotlight();
     if (book.format !== "epub" || error) return;
-    if (spotlight) {
-      setSpotlight(false);
-      if (panelWasOpen.current && layout.isCollapsed(PANEL_ID)) layout.expand(PANEL_ID);
-      return;
-    }
     panelWasOpen.current = !layout.isCollapsed(PANEL_ID);
     if (panelWasOpen.current) layout.collapse(PANEL_ID);
     dismissNotice();
@@ -307,7 +309,7 @@ export function BookWorkspace({
   };
 
   const sendParked = (id: string) => {
-    if (!provider) return;
+    if (!provider || tutor.sending) return;
     showTab("chat");
     tutor.unpark(id, provider);
   };
@@ -315,7 +317,7 @@ export function BookWorkspace({
   /* Asks for a recap of what came before the reader's place. Given the text just before it, or, with none, only the place. */
   const recap = () => {
     const resume = notice?.resume;
-    if (!provider || !resume) return;
+    if (!provider || !resume || tutor.sending) return;
     dismissNotice();
     showTab("chat");
     if (position && resume.glimpse && resume.before !== null) {
@@ -332,6 +334,12 @@ export function BookWorkspace({
     } else {
       askAnywhere({ text: "Give me a short recap of what came before my place in this chapter. Say nothing about what comes after it.", attachments: [] });
     }
+  };
+
+  /* The greeting is hidden while reviewing, so it goes for good once a review starts. */
+  const startReview = () => {
+    dismissNotice();
+    setReviewing(true);
   };
 
   const highlight = (selection: SelectionContext) => {
@@ -441,7 +449,11 @@ export function BookWorkspace({
       }
     },
     onInteract: dismissNotice,
-    onError: setError,
+    onError: (failure) => {
+      setError(failure);
+      /* A book that failed to open has no page to spotlight, and the header must come back. */
+      if (failure && spotlight) endSpotlight();
+    },
     onHighlightClick: (id, rect) => setMenu({ id, rect }),
   };
 
@@ -580,12 +592,9 @@ export function BookWorkspace({
               {notice && !spotlight && !reviewing ? (
                 <OpeningNotice
                   notice={notice}
-                  tutorReady={!!provider && !unavailable}
+                  tutorReady={!!provider && !unavailable && !tutor.sending}
                   onRecap={recap}
-                  onReview={() => {
-                    dismissNotice();
-                    setReviewing(true);
-                  }}
+                  onReview={startReview}
                   onClose={dismissNotice}
                 />
               ) : null}
@@ -644,7 +653,7 @@ export function BookWorkspace({
             onNoteDraft={setNoteDraft}
             onOpenNote={openNote}
             cards={cards}
-            onReview={() => setReviewing(true)}
+            onReview={startReview}
           />
         </ResizablePanel>
       </Resizable>
@@ -653,6 +662,7 @@ export function BookWorkspace({
         bounds={readerBounds}
         readSelection={readSelection}
         disabledReason={unavailable}
+        tutorBusy={tutor.sending}
         onAction={(action, selection) => startThread(action, selection, null)}
         onAsk={(text, selection, kind) => startThread(kind, selection, text)}
         onPark={(text, selection) => void park(selection, text)}

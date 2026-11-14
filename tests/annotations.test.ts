@@ -51,6 +51,12 @@ describe("annotation changes", () => {
     expect(state.notes).toEqual([]);
   });
 
+  it("keeps the start of a very long selection instead of refusing it", () => {
+    const parsed = change("POST", { op: "add-highlight", highlight: { id: H1, ...passage, quote: "word ".repeat(10_000) } });
+    expect(parsed.op === "add-highlight" && parsed.highlight.quote.length).toBe(12_000 - 1);
+    expect(parseChange("POST", { op: "add-highlight", highlight: { id: H1, ...passage, quote: "   " } }, "pdf")).toBe("Invalid highlight.");
+  });
+
   it("refuses what it cannot trust", () => {
     expect(parseChange("POST", { op: "add-highlight", highlight: { id: "../x", ...passage } }, "pdf")).toBe("Invalid highlight.");
     expect(parseChange("POST", { op: "add-highlight", highlight: { id: H1, ...passage } }, "epub")).toBe("Invalid highlight.");

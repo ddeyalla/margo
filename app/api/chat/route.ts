@@ -38,7 +38,15 @@ export async function POST(request: Request) {
   const turn = await openTurn(found.book.id, parsed, providerId);
   if (typeof turn === "string") return badRequest(turn);
   const { thread } = turn;
-  const prompt = buildTurn(label, thread, model, await readMessageImages(found.book.id, thread.messages));
+  let prompt;
+  try {
+    prompt = buildTurn(label, thread, model, await readMessageImages(found.book.id, thread.messages));
+  } catch (error) {
+    /* The turn holds the thread's lock; without this the thread would stay locked until the server restarts. */
+    await turn.close({ text: "", sessionId: thread.sessionId, partial: true });
+    const reason = error instanceof Error ? error.message : "";
+    return Response.json({ error: `The tutor could not start. ${reason}`.trim() }, { status: 500 });
+  }
 
   const abort = new AbortController();
   if (request.signal.aborted) abort.abort();
