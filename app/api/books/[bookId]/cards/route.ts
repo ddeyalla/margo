@@ -1,19 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { cardRequest, generateCards } from "@/lib/server/cards/generate";
 import { getConfig } from "@/lib/server/config";
-import { findBook } from "@/lib/server/library";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState, updateBookState } from "@/lib/server/store";
 import { CODEX_DEFAULT_MODEL } from "@/lib/server/tutor/codex";
 import { PROVIDERS, isProviderId } from "@/lib/server/tutor/providers";
 import { isObject, MAX_QUOTE, parseAnchor, shortText } from "@/lib/server/validate";
 import { mirrorVault } from "@/lib/server/vault";
+import { readBody, withBook } from "@/lib/server/with-book";
 import { addCards, changeCards, type CardChange } from "@/lib/shared/cards";
 import { sameAnchor } from "@/lib/shared/annotations";
 import { trimAfter, trimBefore } from "@/lib/shared/context";
 import { isRating, type ProviderId } from "@/lib/shared/types";
-
-type Context = RouteContext<"/api/books/[bookId]/cards">;
 
 const DEFAULT_MODELS: Partial<Record<ProviderId, string>> = { codex: CODEX_DEFAULT_MODEL };
 const MAX_FIELD = 2_000;
@@ -24,18 +22,14 @@ const dirs = () => {
 };
 
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
-const notFound = () => Response.json({ error: "Book not found." }, { status: 404 });
 
 /**
  * Makes cards for a selected passage through the chosen tutor and stores them.
  * Answers with every card set, how many cues were added and, when none were,
  * why. Takes as long as the tutor does; nothing is stored if it fails.
  */
-export async function POST(request: Request, ctx: Context) {
-  const found = await findBook((await ctx.params).bookId);
-  if (!found) return notFound();
-  const { book } = found;
-  const body: unknown = await request.json().catch(() => null);
+export const POST = withBook(async ({ book, request }) => {
+  const body = await readBody(request);
   if (!isObject(body) || !isProviderId(body.provider)) return badRequest("Expected { provider, selection }.");
   const providerId = body.provider;
   const selection = isObject(body.selection) ? body.selection : null;
@@ -75,7 +69,7 @@ export async function POST(request: Request, ctx: Context) {
     added,
     reason: added ? null : "The tutor found nothing new to ask beyond the cards you already have.",
   });
-}
+});
 
 const parseChange = (body: unknown, method: "PATCH" | "DELETE"): CardChange | string => {
   if (!isObject(body) || typeof body.setId !== "string") return "Expected { op, setId }.";
@@ -99,16 +93,15 @@ const parseChange = (body: unknown, method: "PATCH" | "DELETE"): CardChange | st
 };
 
 /** Edits a card or records a review (PATCH), or deletes a card or a set (DELETE). Answers with every card set. */
-const handle = (method: "PATCH" | "DELETE") => async (request: Request, ctx: Context) => {
-  const found = await findBook((await ctx.params).bookId);
-  if (!found) return notFound();
-  const change = parseChange(await request.json().catch(() => null), method);
-  if (typeof change === "string") return badRequest(change);
-  const saved = await updateBookState(found.book.id, (state) => ({ ...state, cardSets: changeCards(state.cardSets, change, new Date()) }));
-  /* A review changes only the schedule, which the markdown copy doesn't show. */
-  if (change.op !== "review") await mirrorVault(found.book, ...dirs());
-  return Response.json({ cardSets: saved.cardSets });
-};
+const handle = (method: "PATCH" | "DELETE") =>
+  withBook(async ({ book, request }) => {
+    const change = parseChange(await readBody(request), method);
+    if (typeof change === "string") return badRequest(change);
+    const saved = await updateBookState(book.id, (state) => ({ ...state, cardSets: changeCards(state.cardSets, change, new Date()) }));
+    /* A review changes only the schedule, which the markdown copy doesn't show. */
+    if (change.op !== "review") await mirrorVault(book, ...dirs());
+    return Response.json({ cardSets: saved.cardSets });
+  });
 
 export const PATCH = handle("PATCH");
 export const DELETE = handle("DELETE");

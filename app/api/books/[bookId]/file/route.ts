@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import type { NextRequest } from "next/server";
-import { findBook } from "@/lib/server/library";
+import { withBook } from "@/lib/server/with-book";
 
 const CONTENT_TYPES = { epub: "application/epub+zip", pdf: "application/pdf" } as const;
 
@@ -19,12 +19,7 @@ const parseRange = (header: string, size: number): ByteRange | "invalid" | null 
   return { start, end };
 };
 
-export async function GET(request: NextRequest, ctx: RouteContext<"/api/books/[bookId]/file">) {
-  const { bookId } = await ctx.params;
-  const found = await findBook(bookId);
-  if (!found) return Response.json({ error: "Book not found." }, { status: 404 });
-
-  const { book, absPath } = found;
+export const GET = withBook<NextRequest>(({ book, absPath, request }) => {
   const size = book.sizeBytes;
   const headers = new Headers({
     "Content-Type": CONTENT_TYPES[book.format],
@@ -46,4 +41,4 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/books/[b
   if (range) headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
   const body = Readable.toWeb(createReadStream(absPath, { start, end })) as ReadableStream<Uint8Array>;
   return new Response(body, { status: range ? 206 : 200, headers });
-}
+});
