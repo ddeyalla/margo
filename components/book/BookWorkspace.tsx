@@ -94,8 +94,8 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
     highlights: annotations.highlights,
     notes: annotations.notes,
   });
-  const noticeExit = useNoticeExit(notice);
   const { on: spotlight, end: endSpotlight, toggle: toggleSpotlight } = useSpotlight(panel, book.format === "epub" && !error, dismissNotice);
+  const noticeExit = useNoticeExit(notice, spotlight || reviewing);
   const [toast, setToast] = useToast();
 
   /* The book's own title and author replace the file name once it has been opened. */

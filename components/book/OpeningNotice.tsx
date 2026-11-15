@@ -25,10 +25,12 @@ export interface OpeningNotice {
 /**
  * Keeps the last notice on screen after it is dismissed, so it can fade out. The dismissal itself has already
  * happened by then; the copy left behind is only a picture, inert, and goes once its exit animation ends.
+ * While something covers the notice (`hidden`) a dismissed one is dropped outright, so it can't fade in later.
  */
-export function useNoticeExit(notice: OpeningNotice | null) {
+export function useNoticeExit(notice: OpeningNotice | null, hidden: boolean) {
   const [last, setLast] = useState(notice);
   if (notice !== null && notice !== last) setLast(notice);
+  if (notice === null && last !== null && hidden) setLast(null);
   return { shown: notice ?? last, leaving: notice === null && last !== null, done: () => setLast(null) };
 }
 

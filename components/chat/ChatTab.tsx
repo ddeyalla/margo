@@ -41,6 +41,7 @@ type StaggerRow = ReturnType<typeof staggerRow>;
 
 export function ChatTab({
   shown,
+  keyed,
   tutor,
   unavailable,
   onJump,
@@ -51,6 +52,8 @@ export function ChatTab({
 }: {
   /** The tab is on screen: selected, in an open panel. */
   shown: boolean;
+  /** The reader last changed tabs with the keyboard. */
+  keyed: boolean;
   tutor: Tutor;
   /** Why the tutor can't take a message, or null. */
   unavailable: string | null;
@@ -63,9 +66,13 @@ export function ChatTab({
   onRetry(): void;
 }) {
   const { active, failure } = tutor;
-  /* Decided in the render that first shows the tab, so the rows never paint in place before they rise. */
-  const [entrance, setEntrance] = useState<"waiting" | "playing" | "done">("waiting");
-  if (entrance === "waiting" && shown) setEntrance(!active && !shownVisits.has(tutor.live) ? "playing" : "done");
+  /* Decided in the render that first shows the tab, so the rows never paint in place before they rise. The tab
+     mounts when it is selected, so the list staggers when the book opens on it or the reader clicks over to it. A
+     keyboard switch, or opening a collapsed panel that already holds it, is meant to be instant and shows it still. */
+  const [entrance, setEntrance] = useState<"waiting" | "playing" | "done">(() =>
+    !shown ? "waiting" : !keyed && !active && !shownVisits.has(tutor.live) ? "playing" : "done",
+  );
+  if (entrance === "waiting" && shown) setEntrance("done");
   /* Opening a thread ends the entrance, so coming back to the list is still. */
   if (entrance === "playing" && active) setEntrance("done");
   useEffect(() => {

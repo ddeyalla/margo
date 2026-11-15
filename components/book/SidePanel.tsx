@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
 import { HighlightsTab } from "@/components/annotations/HighlightsTab";
 import { NotesTab, type NoteDraft } from "@/components/annotations/NotesTab";
@@ -63,12 +63,15 @@ export const SidePanel = memo(function SidePanel({
   panelOpen: boolean;
 }) {
   const { groupRef, pill, sliding, choose } = usePill(tab, "[data-selected]");
+  const [keyed, setKeyed] = useState(false);
   return (
     <Tabs
       value={tab}
       onValueChange={(value, details) => {
         if (!value) return;
-        choose(value as PanelTab, details.source === "mouse" || details.source === "touch" || details.source === "pen");
+        const pointer = details.source === "mouse" || details.source === "touch" || details.source === "pen";
+        choose(value as PanelTab, pointer);
+        setKeyed(!pointer);
         onTabChange(value as PanelTab);
       }}
       data-slide={sliding || undefined}
@@ -89,7 +92,7 @@ export const SidePanel = memo(function SidePanel({
         </TabsList>
       </div>
       <TabsPanel value="chat" className={panelClass}>
-        <ChatTab shown={panelOpen && tab === "chat"} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} />
+        <ChatTab shown={panelOpen && tab === "chat"} keyed={keyed} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} />
       </TabsPanel>
       <TabsPanel value="notes" className={panelClass}>
         <NotesTab
