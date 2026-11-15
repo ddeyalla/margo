@@ -1,6 +1,7 @@
 import { memo, type ElementType, type JSX } from "react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { settledLength } from "./settled";
 
 type Tag = keyof JSX.IntrinsicElements;
 
@@ -36,13 +37,35 @@ const components: Components = {
   td: styled("td", "border-b border-line px-2 py-1.5 align-top"),
 };
 
+const plugins = [remarkGfm];
+
+/* The blocks alone, with no wrapper, so a streaming answer's two parts sit in one box and keep its spacing rules. */
+const Blocks = memo(function Blocks({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={plugins} components={components}>
+      {text}
+    </ReactMarkdown>
+  );
+});
+
+const boxClass = "min-w-0 break-words text-body text-paper";
+
 /** An assistant reply or a note: plain body text, no bubble. Memoised so a streaming answer doesn't re-parse earlier messages. */
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
-    <div className="min-w-0 break-words text-body text-paper">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {text}
-      </ReactMarkdown>
+    <div className={boxClass}>
+      <Blocks text={text} />
     </div>
   );
 });
+
+/** An answer still arriving. Its finished blocks are parsed once; only the block being written is parsed again per update. */
+export function StreamingMarkdown({ text }: { text: string }) {
+  const split = settledLength(text);
+  return (
+    <div className={boxClass}>
+      {split > 0 ? <Blocks text={text.slice(0, split)} /> : null}
+      <Blocks text={text.slice(split)} />
+    </div>
+  );
+}

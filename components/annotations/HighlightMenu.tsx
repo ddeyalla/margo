@@ -9,7 +9,7 @@ import type { SelectionRect } from "@/components/reader/types";
 const itemClass =
   "press inline-flex h-7 shrink-0 select-none items-center gap-1.5 rounded-sm px-2 text-label text-fog outline-none transition-[color,background-color,scale] duration-[var(--duration-fast)] ease-out hover:bg-tint hover:text-paper focus-visible:bg-tint focus-visible:text-paper [&>svg]:size-3.5 [&>svg]:shrink-0";
 
-/** Floats over a highlight the reader clicked: open its note, or remove the highlight. */
+/** Floats over a highlight the reader clicked: open its note, or remove the highlight. Esc is the workspace's, so one press closes only this. */
 export function HighlightMenu({
   rect,
   bounds,
@@ -37,15 +37,8 @@ export function HighlightMenu({
     const onPointerDown = (event: PointerEvent) => {
       if (!boxRef.current?.contains(event.target as Node)) onClose();
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
     window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown);
-    };
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
   }, [onClose]);
 
   return (

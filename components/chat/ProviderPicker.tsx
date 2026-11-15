@@ -24,7 +24,7 @@ const statusLine = (provider: ProviderInfo) =>
     ? ["Ready", provider.version].filter(Boolean).join(" · ")
     : (provider.detail ?? STATUS_NOTE[provider.status]);
 
-/** One pill naming the tutor in use, like rigg-video's model picker. Providers that can't answer stay listed, disabled, with the reason. */
+/** One pill naming the tutor in use. Providers that can't answer stay listed, disabled, with the reason. */
 export function ProviderPicker({
   providers,
   current,

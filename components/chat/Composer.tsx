@@ -17,7 +17,7 @@ const MAX_TEXT = 8000;
 const MAX_LINES = 8;
 
 /**
- * The raised card at the foot of the chat. Its round white send button is the
+ * The raised card at the foot of the chat. Its round send button is the
  * panel's one primary button; it turns into Stop while an answer streams.
  * Images come in by paste, by the attach button, or by a drop the panel
  * forwards to `images`; a message may be images alone.
@@ -47,6 +47,8 @@ export function Composer({
     const input = inputRef.current;
     if (!input) return;
     const next = insertAtCaret(input.value, input.selectionStart, input.selectionEnd, words, MAX_TEXT);
+    /* An unchanged box doesn't re-render, so the caret effect would not run and the caret would wait for the next keystroke. */
+    if (next.value === input.value) return;
     caret.current = next.caret;
     setText(next.value);
   });

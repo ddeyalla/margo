@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
 import { HighlightsTab } from "@/components/annotations/HighlightsTab";
 import { NotesTab, type NoteDraft } from "@/components/annotations/NotesTab";
@@ -17,8 +18,8 @@ const TABS: { value: PanelTab; label: string }[] = [
   { value: "cards", label: "Cards" },
 ];
 
-/** The right panel: the tutor chat, and the book's notes, highlights and cards. */
-export function SidePanel({
+/** The right panel: the tutor chat, and the book's notes, highlights and cards. Memoised, so it skips the workspace's renders that change nothing here. */
+export const SidePanel = memo(function SidePanel({
   tab,
   onTabChange,
   tutor,
@@ -105,4 +106,4 @@ export function SidePanel({
       </TabsPanel>
     </Tabs>
   );
-}
+});

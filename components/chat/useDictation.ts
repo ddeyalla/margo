@@ -168,7 +168,6 @@ export function useDictation(onText: (words: string) => void) {
     const mine = ++run.current;
     setNotice(null);
     setPhase("starting");
-    /* Made inside the click, so the browser lets it run. */
     const context = new AudioContext({ sampleRate: SAMPLE_RATE });
     let stream: MediaStream | null = null;
     try {
@@ -279,10 +278,12 @@ export function useDictation(onText: (words: string) => void) {
   }, [phase, cancel]);
 
   /** How loud the mic is right now, 0 to 1, for the bars on the button. Read every frame, so it never re-renders. */
+  const levelBuffer = useRef<Float32Array<ArrayBuffer> | null>(null);
   const level = useCallback(() => {
     const analyser = capture.current?.analyser;
     if (!analyser) return 0;
-    const samples = new Float32Array(analyser.fftSize);
+    let samples = levelBuffer.current;
+    if (samples?.length !== analyser.fftSize) samples = levelBuffer.current = new Float32Array(analyser.fftSize);
     analyser.getFloatTimeDomainData(samples);
     let sum = 0;
     for (const sample of samples) sum += sample * sample;

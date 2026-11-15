@@ -18,8 +18,9 @@ import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/reader/SelectionToolbar";
 import type { OpenFailure } from "@/components/reader/errors";
-import type { ReaderHandle, ReaderMeta, ReaderPlace, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
+import type { ReaderHandle, ReaderMeta, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton, Segmented } from "@/components/ui";
+import { createStore, useStableCallback } from "@/components/ui/store";
 import { useResolvedTheme } from "@/components/ui/theme";
 import { patchBookState, patchSettings } from "@/lib/client/api";
 import { isTextEntry } from "@/lib/client/keys";
@@ -28,8 +29,9 @@ import { hasUnsentText } from "@/lib/client/unsent";
 import { anchorAt } from "@/lib/shared/place";
 import { recentMarks, shouldShowResume } from "@/lib/shared/resume";
 import { reviewQueue } from "@/lib/shared/schedule";
-import type { Anchor, BookFormat, BookId, BookState, PanelTab, Position, ProviderId, ReadingFont, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
+import type { Anchor, BookFormat, BookId, BookState, PanelTab, ProviderId, ReadingFont, ReadingMode, ReadingTheme, SelectionContext, TutorAction } from "@/lib/shared/types";
 import { OpeningNotice, type OpeningNotice as OpeningNoticeData } from "./OpeningNotice";
+import { useChapter, type PlaceStore, type ReadingSpot } from "./place";
 import { ReadingFooter } from "./ReadingFooter";
 import { ReadingSettings } from "./ReadingSettings";
 import { SidePanel } from "./SidePanel";
@@ -51,7 +53,6 @@ const SPOTLIGHT_SHORTCUT = "⌘⇧F";
 const SETTLE_MS = 700;
 /** How long the small confirmation after parking a question stays. */
 const TOAST_MS = 4000;
-/** The chapters column's width. */
 const TOC_WIDTH = 280;
 /** The narrowest the book may get beside the chapters column; below this the chapters slide over the book instead. */
 const READER_MIN_WIDTH = 480;
@@ -120,10 +121,9 @@ export function BookWorkspace({
   const closeToc = useCallback(() => chooseToc(false), [chooseToc]);
   /* Whether the reader pane has room for the chapters as a column beside the book. */
   const [tocDocked, setTocDocked] = useState(true);
-  /* How far into the book the reader is, and the chapter and page that is. */
-  const [position, setPosition] = useState<Position | null>(null);
-  const [place, setPlace] = useState<ReaderPlace | null>(null);
-  const chapter = place?.chapter ?? null;
+  /* Reported on every scroll frame, so it lives outside state: only the chapter label, the footer and the
+     chapters list subscribe, and everything else reads it when it needs it. */
+  const [spot] = useState<PlaceStore>(() => createStore<ReadingSpot | null>(null));
   const [mode, setMode] = useState(savedReadingMode);
   const [error, setError] = useState<OpenFailure | null>(null);
   const [pdfTheme, setPdfTheme] = useState(savedPdfTheme);
@@ -178,17 +178,19 @@ export function BookWorkspace({
   /* Once the place has held still, the greeting is made from it: where the reader left off is where the book now is. */
   useEffect(() => {
     const hello = greeting.current;
-    if (!settled || !hello || !position) return;
+    const here = spot.get();
+    if (!settled || !hello || !here) return;
     greeting.current = null;
+    const { position } = here;
     const glimpse = hello.resume ? readerRef.current?.peek(position) ?? null : null;
-    const label = chapter?.label ?? null;
+    const label = here.place?.chapter?.label ?? null;
     setNotice({
       resume: hello.resume
         ? { glimpse: glimpse?.text ?? null, before: glimpse?.before ?? null, chapter: label, fraction: position.fraction, marks: recentMarks(annotations.highlights, annotations.notes, label) }
         : null,
       due: hello.due,
     });
-  }, [settled, position, chapter, annotations.highlights, annotations.notes]);
+  }, [settled, spot, annotations.highlights, annotations.notes]);
   useEffect(() => () => clearTimeout(settleTimer.current), []);
 
   /* The spotlight dims all but one paragraph and clears the chrome away. */
@@ -267,11 +269,11 @@ export function BookWorkspace({
     void patchSettings({ readingMode: next });
   };
 
-  const chooseTab = (next: PanelTab) => {
+  const chooseTab = useStableCallback((next: PanelTab) => {
     if (next === tab) return;
     setTab(next);
     void patchSettings({ panelTab: next });
-  };
+  });
 
   const showTab = (next: PanelTab) => {
     chooseTab(next);
@@ -286,10 +288,11 @@ export function BookWorkspace({
   };
 
   /* A question with no passage remembers where the reader was, so its thread can lead back there. */
-  const askAnywhere = (draft: MessageDraft) => {
+  const askAnywhere = useStableCallback((draft: MessageDraft) => {
     if (!provider) return;
-    tutor.ask(draft, position && { anchor: anchorAt(position), chapterTitle: chapter?.label ?? null }, provider);
-  };
+    const here = spot.get();
+    tutor.ask(draft, here && { anchor: anchorAt(here.position), chapterTitle: here.place?.chapter?.label ?? null }, provider);
+  });
 
   const endSpotlight = () => {
     setSpotlight(false);
@@ -312,11 +315,14 @@ export function BookWorkspace({
     setToast({ text: saved ? "Parked. It waits in the Chat tab." : "Couldn't park that question. Try again.", action: saved });
   };
 
-  const sendParked = (id: string) => {
+  const sendParked = useStableCallback((id: string) => {
     if (!provider || tutor.sending) return;
     showTab("chat");
     tutor.unpark(id, provider);
-  };
+  });
+
+  const reply = useStableCallback((draft: MessageDraft) => provider && tutor.reply(draft, provider));
+  const retry = useStableCallback(() => provider && tutor.retry(provider));
 
   /* Asks for a recap of what came before the reader's place. Given the text just before it, or, with none, only the place. */
   const recap = () => {
@@ -324,14 +330,15 @@ export function BookWorkspace({
     if (!provider || !resume || tutor.sending) return;
     dismissNotice();
     showTab("chat");
-    if (position && resume.glimpse && resume.before !== null) {
+    const here = spot.get();
+    if (here && resume.glimpse && resume.before !== null) {
       readerRef.current?.clearSelection();
       const selection: SelectionContext = {
         text: resume.glimpse,
         before: resume.before,
         after: "",
-        anchor: anchorAt(position),
-        chapterTitle: chapter?.label ?? null,
+        anchor: anchorAt(here.position),
+        chapterTitle: here.place?.chapter?.label ?? null,
         rect: { top: 0, left: 0, width: 0, height: 0 },
       };
       tutor.start("recap", selection, null, provider);
@@ -341,10 +348,10 @@ export function BookWorkspace({
   };
 
   /* The greeting is hidden while reviewing, so it goes for good once a review starts. */
-  const startReview = () => {
+  const startReview = useCallback(() => {
     dismissNotice();
     setReviewing(true);
-  };
+  }, [dismissNotice]);
 
   const highlight = (selection: SelectionContext) => {
     readerRef.current?.clearSelection();
@@ -364,21 +371,26 @@ export function BookWorkspace({
     void cards.make(selection, provider);
   };
 
-  const openNote = (noteId: string) => {
+  const openNote = useStableCallback((noteId: string) => {
     showTab("notes");
     setNoteFocus({ id: noteId, at: Date.now() });
-  };
+  });
 
   /* The docked column stays open; the sliding one gets out of the way. */
-  const openEntry = (entry: TocEntry) => {
+  const openEntry = useStableCallback((entry: TocEntry) => {
     dismissNotice();
     if (!tocDocked) setTocOpen(false);
     void readerRef.current?.goToEntry(entry);
-  };
+  });
 
   /* Keys from the EPUB's frame are forwarded here too. */
   const onShortcut = useEffectEvent((event: KeyboardEvent) => {
     const mod = event.metaKey || event.ctrlKey;
+    /* The highlight menu goes first and alone, so the same press doesn't also dismiss the greeting or the spotlight. */
+    if (event.key === "Escape" && menu) {
+      setMenu(null);
+      return;
+    }
     /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
     if (reviewing && !mod) return;
     if (mod && !event.shiftKey && !event.altKey && event.code === "Backslash") {
@@ -430,10 +442,21 @@ export function BookWorkspace({
     readerRef.current?.turnPage(direction);
   };
 
-  const jumpTo = (anchor: Anchor) => {
-    dismissNotice();
-    void readerRef.current?.goTo(anchor);
-  };
+  const jumpTo = useCallback(
+    (anchor: Anchor) => {
+      dismissNotice();
+      void readerRef.current?.goTo(anchor);
+    },
+    [dismissNotice],
+  );
+
+  const seek = useCallback(
+    (fraction: number) => {
+      dismissNotice();
+      readerRef.current?.seek(fraction);
+    },
+    [dismissNotice],
+  );
 
   const readerProps: ReaderProps = {
     ref: readerRef,
@@ -443,8 +466,7 @@ export function BookWorkspace({
     onSelectionChange: handleSelection,
     mode,
     onPositionChange: (next, nextPlace) => {
-      setPlace(nextPlace);
-      setPosition(next);
+      spot.set({ position: next, place: nextPlace });
       savePosition(next);
       setMenu(null);
       if (greeting.current) {
@@ -487,7 +509,7 @@ export function BookWorkspace({
             <BookOpen aria-hidden className="size-3.5 shrink-0 text-dim" />
             <span className="truncate">{title}</span>
           </h1>
-          {chapter ? <span className="truncate text-label text-dim">{chapter.label}</span> : null}
+          <ChapterLabel spot={spot} />
         </div>
         <div className="shrink-0">
           <ProviderPicker providers={providers} current={provider} onSelect={chooseProvider} />
@@ -544,7 +566,7 @@ export function BookWorkspace({
                 className="h-full shrink-0 overflow-hidden transition-[width] duration-[var(--duration-base)] ease-out"
                 style={{ width: tocOpen && !spotlight ? TOC_WIDTH : 0 }}
               >
-                <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked onSelect={openEntry} onClose={closeToc} />
               </div>
             ) : null}
             <main
@@ -583,11 +605,7 @@ export function BookWorkspace({
                       </>
                     ) : null}
                   </div>
-                  <ReadingFooter fraction={position?.fraction ?? 0} place={place} onSeek={(fraction) => {
-                      dismissNotice();
-                      readerRef.current?.seek(fraction);
-                    }}
-                  />
+                  <ReadingFooter spot={spot} onSeek={seek} />
                 </>
               )}
               {spotlight ? (
@@ -632,7 +650,7 @@ export function BookWorkspace({
               ) : null}
               {reviewing ? <ReviewSheet cards={cards} onClose={() => setReviewing(false)} onJump={jumpTo} /> : null}
               {!tocDocked && !error ? (
-                <TocDrawer toc={toc} current={chapter} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !spotlight} docked={false} onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !spotlight} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
             </main>
           </div>
@@ -657,8 +675,8 @@ export function BookWorkspace({
             onJump={jumpTo}
             onAsk={askAnywhere}
             onSendParked={sendParked}
-            onReply={(draft) => provider && tutor.reply(draft, provider)}
-            onRetry={() => provider && tutor.retry(provider)}
+            onReply={reply}
+            onRetry={retry}
             annotations={annotations}
             noteDraft={noteDraft}
             noteFocus={noteFocus}
@@ -702,6 +720,12 @@ export function BookWorkspace({
       ) : null}
     </div>
   );
+}
+
+/** The chapter being read, beside the title. */
+function ChapterLabel({ spot }: { spot: PlaceStore }) {
+  const chapter = useChapter(spot);
+  return chapter ? <span className="truncate text-label text-dim">{chapter.label}</span> : null;
 }
 
 /** A quiet strip along the reader's left or right edge that turns the page in Pages mode. */

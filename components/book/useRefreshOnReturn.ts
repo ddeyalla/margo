@@ -32,8 +32,10 @@ export function useRefreshOnReturn(
       })().catch(() => null);
     };
     /* Focus moving into an iframe, such as an EPUB page, also blurs the window; the document keeps focus then. */
+    let blurTimer = 0;
     const onBlur = () => {
-      setTimeout(() => {
+      clearTimeout(blurTimer);
+      blurTimer = window.setTimeout(() => {
         if (!document.hasFocus()) leave();
       }, 0);
     };
@@ -58,6 +60,7 @@ export function useRefreshOnReturn(
     window.addEventListener("focus", back);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      clearTimeout(blurTimer);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("focus", back);
       document.removeEventListener("visibilitychange", onVisibility);

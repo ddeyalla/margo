@@ -10,10 +10,19 @@ export type AppTheme = "system" | "light" | "dark";
 const KEY = "rigg-learn.theme";
 
 /**
- * Runs in <head> before the first paint, so the page never flashes the wrong colours.
- * It sets data-theme on <html> to light or dark and follows macOS while the choice is "system".
+ * The colours in force for a stored choice. Written into the inline script as source, so it must stay
+ * self-contained: no imports, helpers or newer syntax.
  */
-export const themeScript = `(function(){try{var k=${JSON.stringify(KEY)},m=matchMedia("(prefers-color-scheme: light)"),a=function(){var c=localStorage.getItem(k);document.documentElement.dataset.theme=c==="light"||c==="dark"?c:m.matches?"light":"dark"};a();m.addEventListener("change",a)}catch(e){}})()`;
+function resolveTheme(saved: string | null, prefersLight: boolean): "light" | "dark" {
+  return saved === "light" || saved === "dark" ? saved : prefersLight ? "light" : "dark";
+}
+
+/**
+ * Runs in <head> before the first paint, so the page never flashes the wrong colours.
+ * It sets data-theme on <html> to light or dark, follows macOS while the choice is "system",
+ * and follows a choice made in another window.
+ */
+export const themeScript = `(function(){try{var k=${JSON.stringify(KEY)},r=(${resolveTheme.toString()}),m=matchMedia("(prefers-color-scheme: light)"),a=function(){document.documentElement.dataset.theme=r(localStorage.getItem(k),m.matches)};a();m.addEventListener("change",a);addEventListener("storage",function(e){if(e.key===k||e.key===null)a()})}catch(e){}})()`;
 
 const listeners = new Set<() => void>();
 
@@ -33,14 +42,21 @@ const choose = (theme: AppTheme) => {
   } catch {
     /* Storage is off: the choice lasts until the page reloads. */
   }
-  const light = theme === "light" || (theme === "system" && matchMedia("(prefers-color-scheme: light)").matches);
-  document.documentElement.dataset.theme = light ? "light" : "dark";
+  document.documentElement.dataset.theme = resolveTheme(theme === "system" ? null : theme, matchMedia("(prefers-color-scheme: light)").matches);
   listeners.forEach((listener) => listener());
 };
 
+/* A choice made in another window arrives as a storage event; the inline script re-applies it, and this updates the control. */
 const subscribe = (listener: () => void) => {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === KEY || event.key === null) listener();
+  };
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
 };
 
 const OPTIONS: { value: AppTheme; label: string; icon: React.ReactNode }[] = [

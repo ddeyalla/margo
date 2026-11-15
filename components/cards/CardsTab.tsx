@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpenText, Pencil, Play, Trash2 } from "lucide-react";
+import { BookOpenText, Pencil, Play, Trash2, X } from "lucide-react";
 import { Button, EmptyState, IconButton, Spinner } from "@/components/ui";
 import { byChapter, UNTITLED_SECTION } from "@/lib/shared/annotations";
 import { placeLabel } from "@/lib/shared/place";
@@ -68,9 +68,15 @@ export function CardsTab({ cards, onReview, onJump }: { cards: CardsApi; onRevie
         </p>
       ))}
       {cards.notice ? (
-        <p role="status" className={`px-3 py-1.5 text-label ${cards.notice.kind === "error" ? "text-danger" : "text-fog"}`}>
-          {cards.notice.text}
-        </p>
+        <div role="status" className={`flex items-start gap-1 py-1.5 pl-3 pr-1.5 text-label ${cards.notice.kind === "error" ? "text-danger" : "text-fog"}`}>
+          <p className="min-w-0 flex-1 py-px [overflow-wrap:anywhere]">{cards.notice.text}</p>
+          {/* Errors stay until dismissed; the others go by themselves. */}
+          {cards.notice.kind === "error" ? (
+            <IconButton label="Dismiss" size="sm" onClick={cards.dismissNotice}>
+              <X />
+            </IconButton>
+          ) : null}
+        </div>
       ) : null}
     </>
   );

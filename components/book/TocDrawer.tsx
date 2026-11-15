@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useRef } from "react";
 import clsx from "clsx";
 import { TableOfContents, X } from "lucide-react";
 import type { TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton, Spinner } from "@/components/ui";
 import type { BookFormat } from "@/lib/shared/types";
+import { useChapter, type PlaceStore } from "./place";
 
 /**
  * The book's table of contents. Docked, it is a column beside the book that
@@ -13,9 +14,9 @@ import type { BookFormat } from "@/lib/shared/types";
  * book with a scrim and closes on any press outside it. The chapter being read
  * is marked.
  */
-export function TocDrawer({
+export const TocDrawer = memo(function TocDrawer({
   toc,
-  current,
+  spot,
   format,
   shortcut,
   open,
@@ -25,7 +26,7 @@ export function TocDrawer({
 }: {
   /** Null until the reader has opened the book. */
   toc: TocEntry[] | null;
-  current: TocEntry | null;
+  spot: PlaceStore;
   format: BookFormat;
   shortcut: string;
   open: boolean;
@@ -33,15 +34,27 @@ export function TocDrawer({
   onSelect(entry: TocEntry): void;
   onClose(): void;
 }) {
+  const current = useChapter(spot);
   const navRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
+  /* A column restored open on load must not take the keys from the book; only opening it does. */
+  const wasOpen = useRef(open);
+  const wantsFocus = useRef(false);
 
   /* Open on the chapter being read, with focus on it so the keyboard starts there. */
   useLayoutEffect(() => {
-    if (!open) return;
+    if (open && !wasOpen.current) wantsFocus.current = true;
+    wasOpen.current = open;
+    if (!open) {
+      wantsFocus.current = false;
+      return;
+    }
     const target = listRef.current?.querySelector<HTMLButtonElement>("[aria-current]") ?? listRef.current?.querySelector("button");
     target?.scrollIntoView({ block: "center" });
+    if (!wantsFocus.current) return;
     (target ?? navRef.current)?.focus({ preventScroll: true });
+    /* Opened before the contents arrived: focus moves onto the list once it does. */
+    if (target || toc !== null) wantsFocus.current = false;
   }, [open, toc]);
 
   /* While docked the list stays up as you read, so keep the chapter being read in sight. */
@@ -141,4 +154,4 @@ export function TocDrawer({
       {nav}
     </>
   );
-}
+});

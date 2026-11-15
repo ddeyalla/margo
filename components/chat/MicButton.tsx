@@ -6,6 +6,8 @@ import { LoaderCircle, Mic } from "lucide-react";
 import type { Dictation } from "./useDictation";
 
 const MB = 1_000_000;
+/** The speech model's download size, until the server reports the real total. */
+const MODEL_MB = 487;
 
 const LABELS = {
   idle: "Speak instead of typing",
@@ -86,7 +88,7 @@ export function DictationNote({ dictation, className }: { dictation: Dictation; 
     body = (
       <>
         {note?.error ? `${note.text} ` : null}
-        Voice input needs a speech model, about 490 MB, downloaded once. It runs on this Mac and no audio leaves it.{" "}
+        Voice input needs a speech model, about {MODEL_MB} MB, downloaded once. It runs on this Mac and no audio leaves it.{" "}
         <button type="button" className={button} onMouseDown={(event) => event.preventDefault()} onClick={() => void dictation.confirmDownload()}>
           Download
         </button>
@@ -99,7 +101,7 @@ export function DictationNote({ dictation, className }: { dictation: Dictation; 
     const percent = progress.total ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
     body = (
       <>
-        Downloading the speech model, {Math.round(progress.done / MB)} of {progress.total ? Math.round(progress.total / MB) : 487} MB
+        Downloading the speech model, {Math.round(progress.done / MB)} of {progress.total ? Math.round(progress.total / MB) : MODEL_MB} MB
         <span aria-hidden className="mt-1 block h-1 overflow-hidden rounded-full bg-tint-strong">
           <span className="block h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
         </span>
