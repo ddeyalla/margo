@@ -14,7 +14,7 @@ export const sameAnchor = (a: Anchor, b: Anchor): boolean =>
     ? a.page === b.page && a.start === b.start && a.end === b.end
     : a.kind === "epub" && b.kind === "epub" && a.cfi === b.cfi;
 
-interface Placed {
+export interface Placed {
   anchor: Anchor;
   chapterTitle: string | null;
   createdAt: string;
@@ -29,9 +29,10 @@ export interface ChapterGroup<T> {
 /**
  * Items in reading order, split into runs that share a chapter. Runs, not one
  * bucket per title: a PDF outline repeats titles such as "Problem" under
- * every pattern, and those are different sections.
+ * every pattern, and those are different sections. `within` reorders each
+ * run without changing which run an item falls in.
  */
-export const byChapter = <T extends Placed>(items: T[]): ChapterGroup<T>[] => {
+export const byChapter = <T extends Placed>(items: T[], within?: (a: T, b: T) => number): ChapterGroup<T>[] => {
   const groups: ChapterGroup<T>[] = [];
   const ordered = [...items].sort((a, b) => compareAnchors(a.anchor, b.anchor) || a.createdAt.localeCompare(b.createdAt));
   for (const item of ordered) {
@@ -39,8 +40,16 @@ export const byChapter = <T extends Placed>(items: T[]): ChapterGroup<T>[] => {
     if (last && last.title === item.chapterTitle) last.items.push(item);
     else groups.push({ title: item.chapterTitle, items: [item] });
   }
+  if (within) for (const group of groups) group.items.sort(within);
   return groups;
 };
+
+export const newestFirst = (a: { createdAt: string }, b: { createdAt: string }): number => b.createdAt.localeCompare(a.createdAt);
+
+const shortDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+
+/** A timestamp as "Nov 14" in the reader's time zone. */
+export const formatShortDate = (iso: string): string => shortDate.format(new Date(iso));
 
 export const UNTITLED_SECTION = "Untitled section";
 
