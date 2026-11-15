@@ -84,7 +84,7 @@ export function Composer({
 
   return (
     <div className="shrink-0 px-3 pb-3 pt-1">
-      <div className="rounded-xl bg-panel-raised shadow-float ring-1 ring-inset ring-line transition-shadow duration-[var(--duration-base)] focus-within:ring-line-strong">
+      <div className="rounded-xl bg-panel-raised shadow-raised ring-1 ring-inset ring-line transition-shadow duration-[var(--duration-base)] focus-within:ring-line-strong">
         {images.images.length ? <DraftImages images={images.images} onRemove={images.remove} /> : null}
         {problem ? (
           <p role="alert" className="px-3.5 pt-2 text-[11px] leading-relaxed text-danger">

@@ -87,6 +87,7 @@
   --shadow-dialog: var(--elevation-dialog);
   --shadow-canvas: var(--elevation-canvas);
   --shadow-chip: var(--elevation-chip);
+  --shadow-raised: var(--elevation-raised);
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -100,6 +101,8 @@
   --elevation-dialog: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 32px 96px -24px rgba(0, 0, 0, 0.8);
   --elevation-canvas: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.3);
   --elevation-chip: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.25);
+  /* For a control docked in a panel, like the composer: its blur stays inside a 12px gutter, so an overflow-hidden parent never cuts it off. No ring, the control draws its own. */
+  --elevation-raised: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px -1px rgba(0, 0, 0, 0.25);
 }
 
 [data-theme="light"] {
@@ -127,6 +130,7 @@
   --elevation-dialog: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 32px 96px -24px rgba(0, 0, 0, 0.3);
   --elevation-canvas: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.06);
   --elevation-chip: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.08);
+  --elevation-raised: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.06);
 }
 
 /* Book text colours only the EPUB's frame reads, so no utility needs them.
