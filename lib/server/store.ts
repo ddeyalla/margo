@@ -55,7 +55,8 @@ export const writeFileAtomic = async (file: string, content: string | Uint8Array
   }
 };
 
-const pretty = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
+/** The format of every hand-readable JSON file in the data folder. */
+export const prettyJson = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
 const compact = (value: unknown) => JSON.stringify(value) + "\n";
 
 /** Read, change and write one file inside its queue, so two updates never lose each other's fields. */
@@ -63,7 +64,7 @@ export const updateJson = <T>(
   file: string,
   fallback: () => T,
   change: (current: T) => T,
-  format: (value: T) => string = pretty,
+  format: (value: T) => string = prettyJson,
 ): Promise<T> =>
   serialized(file, async () => {
     const next = change((await readJson<T>(file)) ?? fallback());

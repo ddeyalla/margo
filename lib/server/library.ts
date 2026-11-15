@@ -1,24 +1,25 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import type { BookFormat, BookId, LibraryBook } from "@/lib/shared/types";
+import type { BookFormat, LibraryBook } from "@/lib/shared/types";
 import { ConfigError, getConfig } from "./config";
-import { parseFileName } from "./filename";
-import { reconcile, type FileStat, type LibraryIndex } from "./library-index";
-import { readJson, serialized, writeFileAtomic } from "./store";
+import { parseFileName, type FileTitle } from "./filename";
+import { isBookId, LibraryIndexError, readIndex, reconcile, type FileStat, type StoredIndex } from "./library-index";
+import { prettyJson, serialized, writeFileAtomic } from "./store";
 
-export { bookIdOf } from "./library-index";
+export { bookIdOf, isBookId } from "./library-index";
 
 const FORMATS: Record<string, BookFormat> = { ".epub": "epub", ".pdf": "pdf" };
 
-export const isBookId = (value: unknown): value is BookId =>
-  typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
-
 const toPosix = (relPath: string) => relPath.split(path.sep).join("/");
 
-type ScannedFile = FileStat & { book: Omit<LibraryBook, "id"> };
+interface ScannedFile extends FileStat {
+  format: BookFormat;
+  folder: string;
+  name: FileTitle;
+}
 
 const walkLibrary = async (root: string): Promise<ScannedFile[]> => {
-  const books: ScannedFile[] = [];
+  const files: ScannedFile[] = [];
   const walk = async (dir: string): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true });
     await Promise.all(
@@ -34,51 +35,58 @@ const walkLibrary = async (root: string): Promise<ScannedFile[]> => {
           throw error;
         });
         if (!info) return;
-        const relPath = toPosix(path.relative(root, absPath));
-        const { title, author } = parseFileName(entry.name);
-        const size = Number(info.size);
-        books.push({
-          relPath,
-          size,
+        files.push({
+          relPath: toPosix(path.relative(root, absPath)),
+          size: Number(info.size),
           mtimeMs: Number(info.mtimeMs),
           ino: info.ino.toString(),
           dev: info.dev.toString(),
-          book: {
-            format,
-            relPath,
-            folder: toPosix(path.relative(root, dir)),
-            fileTitle: title,
-            fileAuthor: author,
-            sizeBytes: size,
-            modifiedAt: info.mtime.toISOString(),
-          },
+          format,
+          folder: toPosix(path.relative(root, dir)),
+          name: parseFileName(entry.name),
         });
       }),
     );
   };
   await walk(root);
-  return books.sort((a, b) => a.relPath.localeCompare(b.relPath));
+  return files.sort((a, b) => a.relPath.localeCompare(b.relPath));
 };
 
-interface StoredIndex {
-  version: 1;
-  books: LibraryIndex;
-}
+const toBook = (id: LibraryBook["id"], file: ScannedFile): LibraryBook => ({
+  id,
+  format: file.format,
+  relPath: file.relPath,
+  folder: file.folder,
+  fileTitle: file.name.title,
+  fileAuthor: file.name.author,
+  sizeBytes: file.size,
+  modifiedAt: new Date(file.mtimeMs).toISOString(),
+});
 
 const indexFile = (dataDir: string) => path.join(/*turbopackIgnore: true*/ dataDir, "library.json");
 
+/* Hard links are reported once per index file and set of paths, not on every scan. */
+const reportedSkips = new Map<string, string>();
+const reportSkipped = (file: string, skipped: ScannedFile[]) => {
+  const paths = skipped.map(({ relPath }) => relPath).join(", ");
+  if (reportedSkips.get(file) === paths) return;
+  reportedSkips.set(file, paths);
+  if (paths) console.warn(`Left out of the library because another path already names the same file: ${paths}`);
+};
+
 /**
- * Lists the books folder, then gives each file its id from library.json. The index is read and written
- * inside its queue, so concurrent scans each reconcile against the one before.
+ * Lists the books folder and gives each file its id from library.json. The listing happens inside the
+ * index's queue too, so a scan that listed the folder earlier can never write after one that listed it later.
  */
-const identify = async (root: string, dataDir: string): Promise<LibraryBook[]> => {
-  const files = await walkLibrary(root);
+const identify = (root: string, dataDir: string): Promise<LibraryBook[]> => {
   const file = indexFile(dataDir);
   return serialized(file, async () => {
-    const stored = await readJson<StoredIndex>(file);
-    const { index, books, changed } = reconcile(stored?.books ?? null, files);
-    if (changed) await writeFileAtomic(file, JSON.stringify({ version: 1, books: index } satisfies StoredIndex, null, 2) + "\n");
-    return books.map(({ id, file: { book } }) => ({ id, ...book }));
+    const current = await readIndex(file);
+    const files = await walkLibrary(root);
+    const { index, books, skipped, changed } = reconcile(current, files);
+    reportSkipped(file, skipped);
+    if (changed) await writeFileAtomic(file, prettyJson({ version: 1, books: index } satisfies StoredIndex));
+    return books.map(({ id, file }) => toBook(id, file));
   });
 };
 
@@ -139,9 +147,11 @@ export const findBook = async (
   return { book, absPath };
 };
 
-/** Plain words for why the books folder can't be listed, for the library and book pages alike. */
+/** Plain words for why the library can't be listed, for the library and book pages alike. */
 export const libraryProblem = (error: unknown, root?: string): string => {
   if (error instanceof ConfigError) return error.message;
+  if (error instanceof LibraryIndexError)
+    return `The saved library index in the data folder (${error.file}) can't be read, so nothing was changed. Fix or restore that file, then reload.`;
   const missing = error instanceof Error && "code" in error && error.code === "ENOENT";
   return missing
     ? `The books folder ${root ?? getConfig().booksDir} does not exist. Check the books folder under Folders, or BOOKS_DIR in .env.local.`

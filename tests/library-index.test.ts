@@ -33,7 +33,7 @@ describe("reconcile", () => {
     const result = reconcile(null, [a, b]);
     expect(idsOf(result)).toEqual({ "a.epub": bookIdOf("a.epub"), "Shelf/b.pdf": bookIdOf("Shelf/b.pdf") });
     expect(result.changed).toBe(true);
-    expect(result.index[bookIdOf("a.epub")]).toEqual({ ...a, sha256: null });
+    expect(result.index[bookIdOf("a.epub")]).toEqual({ ...a, sha256: null, missingSince: null });
   });
 
   it("seeds from an index that exists but is empty", () => {
@@ -72,7 +72,8 @@ describe("reconcile", () => {
     const expected = counter()();
     const result = reconcile(seeded([a]), [a, copy], newId);
     expect(idsOf(result)).toEqual({ "a.epub": bookIdOf("a.epub"), "a copy.epub": expected });
-    expect(result.index[expected]).toEqual({ ...copy, sha256: null });
+    expect(result.index[expected]).toEqual({ ...copy, sha256: null, missingSince: null });
+    expect(result.minted).toEqual([expected]);
   });
 
   it("follows the files when two books swap names", () => {
@@ -107,7 +108,7 @@ describe("reconcile", () => {
     index[bookIdOf("a.epub")] = { ...index[bookIdOf("a.epub")], sha256: "0".repeat(64) };
     const result = reconcile(index, [saved], counter());
     expect(idsOf(result)).toEqual({ "a.epub": bookIdOf("a.epub") });
-    expect(result.index[bookIdOf("a.epub")]).toEqual({ ...saved, sha256: null });
+    expect(result.index[bookIdOf("a.epub")]).toEqual({ ...saved, sha256: null, missingSince: null });
   });
 
   it("keeps the hash of a file whose size and mtime did not change", () => {
@@ -151,6 +152,7 @@ describe("reconcile", () => {
     const index = seeded([a]);
     const result = reconcile(index, [a, moved(a, "link.epub")], counter());
     expect(idsOf(result)).toEqual({ "a.epub": bookIdOf("a.epub") });
+    expect(result.skipped.map(({ relPath }) => relPath)).toEqual(["link.epub"]);
     expect(result.index).toEqual(index);
     expect(result.changed).toBe(false);
   });
@@ -163,22 +165,48 @@ describe("reconcile", () => {
     expect(idsOf(after)).toEqual({ "Shelf/a.epub": bookIdOf("a.epub") });
   });
 
-  it("does not bind a path that two unmatched entries both claim", () => {
+  it("gives a new file at the path of a book deleted in an earlier scan a new id", () => {
     const a = file("a.epub");
     const b = file("b.epub");
-    /* b is deleted and a renamed onto its path: both entries now name b.epub. */
-    const both = reconcile(seeded([a, b]), [moved(a, "b.epub")], counter()).index;
-    expect(both[bookIdOf("a.epub")].relPath).toBe("b.epub");
-    expect(both[bookIdOf("b.epub")].relPath).toBe("b.epub");
+    const afterDelete = reconcile(seeded([a, b]), [b], counter(), 5).index;
     const expected = counter()();
-    const result = reconcile(both, [file("b.epub")], counter());
-    expect(idsOf(result)).toEqual({ "b.epub": expected });
+    const result = reconcile(afterDelete, [b, file("a.epub")], counter(), 9);
+    expect(idsOf(result)).toEqual({ "b.epub": bookIdOf("b.epub"), "a.epub": expected });
+    expect(result.index[bookIdOf("a.epub")]).toEqual(afterDelete[bookIdOf("a.epub")]);
+    expect(result.orphans).toEqual([bookIdOf("a.epub")]);
+  });
+
+  it("gives a file renamed onto a deleted book's path the id it already had", () => {
+    const a = file("a.epub");
+    const b = file("b.epub");
+    const result = reconcile(seeded([a, b]), [moved(a, "b.epub")], counter());
+    expect(idsOf(result)).toEqual({ "b.epub": bookIdOf("a.epub") });
+    expect(result.orphans).toEqual([bookIdOf("b.epub")]);
+  });
+
+  it("gives a new file that reuses a deleted book's inode number a new id", () => {
+    const a = file("a.epub");
+    const afterDelete = reconcile(seeded([a, file("b.epub")]), [file("b.epub")], counter()).index;
+    const expected = counter()();
+    const reused = file("c.epub", { ino: a.ino, dev: a.dev, size: a.size, mtimeMs: a.mtimeMs + 60_000 });
+    const result = reconcile(afterDelete, [reused], counter());
+    expect(idsOf(result)).toEqual({ "c.epub": expected });
+  });
+
+  it("finds a book missing for several scans again by its inode", () => {
+    const a = file("a.epub");
+    const b = file("b.epub");
+    const gone = reconcile(reconcile(seeded([a, b]), [b], counter(), 5).index, [b], counter(), 9).index;
+    const result = reconcile(gone, [b, moved(a, "Shelf/a.epub")], counter());
+    expect(idsOf(result)).toEqual({ "b.epub": bookIdOf("b.epub"), "Shelf/a.epub": bookIdOf("a.epub") });
+    expect(result.index[bookIdOf("a.epub")].missingSince).toBeNull();
+    expect(result.orphans).toEqual([]);
   });
 
   it("leaves the index alone when the scan finds no books", () => {
     const index = seeded([file("a.epub"), file("b.pdf")]);
     const result = reconcile(index, [], counter());
-    expect(result).toEqual({ index, books: [], changed: false });
+    expect(result).toEqual({ index, books: [], skipped: [], orphans: [], minted: [], changed: false });
   });
 
   it("does not seed from an empty scan, so books found later still get their old ids", () => {
@@ -187,13 +215,18 @@ describe("reconcile", () => {
     expect(idsOf(reconcile(empty.index, [file("a.epub")]))).toEqual({ "a.epub": bookIdOf("a.epub") });
   });
 
-  it("keeps an orphan's entry unchanged", () => {
+  it("marks an orphan missing from the first scan that does not find it", () => {
     const a = file("a.epub");
     const b = file("b.pdf");
     const index = seeded([a, b]);
-    const result = reconcile(index, [b], counter());
-    expect(result.index[bookIdOf("a.epub")]).toEqual(index[bookIdOf("a.epub")]);
-    expect(result.changed).toBe(false);
+    const first = reconcile(index, [b], counter(), 5);
+    expect(first.index[bookIdOf("a.epub")]).toEqual({ ...index[bookIdOf("a.epub")], missingSince: 5 });
+    expect(first.orphans).toEqual([bookIdOf("a.epub")]);
+    expect(first.changed).toBe(true);
+    const second = reconcile(first.index, [b], counter(), 9);
+    expect(second.index).toEqual(first.index);
+    expect(second.changed).toBe(false);
+    expect(reconcile(second.index, [a, b], counter()).index).toEqual(index);
   });
 
   it("never hands out an id already in the index", () => {

@@ -1,17 +1,16 @@
-import { mkdir, mkdtemp, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { parseFileName } from "@/lib/server/filename";
 import { bookIdOf, findBook, libraryProblem, scanLibrary } from "@/lib/server/library";
-import type { LibraryIndex } from "@/lib/server/library-index";
+import { LibraryIndexError, readIndex, type LibraryIndex } from "@/lib/server/library-index";
 import type { BookId } from "@/lib/shared/types";
 
 const tempDir = () => mkdtemp(path.join(tmpdir(), "rigg-learn-library-"));
 const indexPath = (dataDir: string) => path.join(dataDir, "library.json");
-const readIndex = async (dataDir: string): Promise<LibraryIndex> =>
+const storedBooks = async (dataDir: string): Promise<LibraryIndex> =>
   (JSON.parse(await readFile(indexPath(dataDir), "utf8")) as { books: LibraryIndex }).books;
-
 
 describe("parseFileName", () => {
   it("moves a trailing author parenthetical into the author line", () => {
@@ -165,7 +164,8 @@ describe("library lookup", () => {
     expect(await findBook(bookIdOf("Dune.epub"), shelf, shelfData)).not.toBeNull();
     /* An entry already waiting at the new file's path, so its id is known before the file exists. */
     const known = "e".repeat(40) as BookId;
-    const index = await readIndex(shelfData);
+    /* Written without missingSince, which an index may lack and reads as present. */
+    const index: Record<string, unknown> = await storedBooks(shelfData);
     index[known] = { relPath: "Emma.epub", size: 0, mtimeMs: 0, ino: "0", dev: "0", sha256: null };
     await writeFile(indexPath(shelfData), JSON.stringify({ version: 1, books: index }));
     await writeFile(path.join(shelf, "Emma.epub"), "epub");
@@ -208,7 +208,7 @@ describe("library index on disk", () => {
   it("seeds an existing library with the ids its paths gave it", async () => {
     const { books, data } = await shelfWith(["a.epub", "Shelf/b.pdf"]);
     expect(await idsByPath(books, data)).toEqual({ "a.epub": bookIdOf("a.epub"), "Shelf/b.pdf": bookIdOf("Shelf/b.pdf") });
-    expect(Object.keys(await readIndex(data)).sort()).toEqual([bookIdOf("a.epub"), bookIdOf("Shelf/b.pdf")].sort());
+    expect(Object.keys(await storedBooks(data)).sort()).toEqual([bookIdOf("a.epub"), bookIdOf("Shelf/b.pdf")].sort());
   });
 
   it("keeps a book's id across scans after it is moved and renamed on disk", async () => {
@@ -220,7 +220,7 @@ describe("library index on disk", () => {
     expect((await findBook(bookIdOf("a.epub"), books, data))?.absPath).toBe(path.join(books, "Shelf", "renamed.epub"));
     await rename(path.join(books, "Shelf", "renamed.epub"), path.join(books, "again.epub"));
     expect((await idsByPath(books, data))["again.epub"]).toBe(bookIdOf("a.epub"));
-    expect((await readIndex(data))[bookIdOf("a.epub")].relPath).toBe("again.epub");
+    expect((await storedBooks(data))[bookIdOf("a.epub")].relPath).toBe("again.epub");
   });
 
   it("gives a book added after seeding a new random id", async () => {
@@ -268,7 +268,7 @@ describe("library index on disk", () => {
     const ids = await idsByPath(books, data);
     expect(ids["moved.epub"]).toBe(bookIdOf("book 0.epub"));
     expect(new Set(Object.values(ids)).size).toBe(names.length);
-    const index = await readIndex(data);
+    const index = await storedBooks(data);
     expect(Object.keys(index)).toHaveLength(names.length);
     expect(index[bookIdOf("book 0.epub")].relPath).toBe("moved.epub");
   });
@@ -280,7 +280,45 @@ describe("library index on disk", () => {
     const scans = await Promise.all(Array.from({ length: 12 }, () => scanLibrary(books, data)));
     const ids = new Set(scans.map((found) => found.find((book) => book.relPath === "new.epub")?.id));
     expect(ids.size).toBe(1);
-    const entries = Object.entries(await readIndex(data)).filter(([, entry]) => entry.relPath === "new.epub");
+    const entries = Object.entries(await storedBooks(data)).filter(([, entry]) => entry.relPath === "new.epub");
     expect(entries.map(([id]) => id)).toEqual([...ids]);
+  });
+
+  describe("an index that cannot be read", () => {
+    const cases: [string, string][] = [
+      ["is not JSON", "{ not json"],
+      ["has another version", JSON.stringify({ version: 2, books: {} })],
+      ["has no books object", JSON.stringify({ version: 1, books: [] })],
+      ["has an entry with a wrong field type", JSON.stringify({ version: 1, books: { ["a".repeat(40)]: { relPath: 3 } } })],
+      ["has a key that is not an id", JSON.stringify({ version: 1, books: { "a.epub": {} } })],
+    ];
+    it.each(cases)("stops the scan and leaves the file alone when it %s", async (_, text) => {
+      const { books, data } = await shelfWith(["a.epub"]);
+      await writeFile(indexPath(data), text);
+      await expect(readIndex(indexPath(data))).rejects.toBeInstanceOf(LibraryIndexError);
+      const error = await scanLibrary(books, data).catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(LibraryIndexError);
+      expect(libraryProblem(error)).toMatch(/^The saved library index in the data folder .* can't be read, so nothing was changed\./);
+      expect(await readFile(indexPath(data), "utf8")).toBe(text);
+    });
+  });
+
+  it("lists a hard-linked book once and reports the other path once", async () => {
+    const { books, data } = await shelfWith(["a.epub"]);
+    await scanLibrary(books, data);
+    await link(path.join(books, "a.epub"), path.join(books, "z link.epub"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await idsByPath(books, data)).toEqual({ "a.epub": bookIdOf("a.epub") });
+      expect(await idsByPath(books, data)).toEqual({ "a.epub": bookIdOf("a.epub") });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain("z link.epub");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("reads no index as none yet", async () => {
+    expect(await readIndex(indexPath(await tempDir()))).toBeNull();
   });
 });

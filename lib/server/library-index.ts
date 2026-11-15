@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import type { BookId } from "@/lib/shared/types";
 
 /** What a scan sees of one book file. `ino` and `dev` are decimal strings because they can exceed 2^53. */
@@ -10,13 +11,25 @@ export interface FileStat {
   dev: string;
 }
 
-/** The last thing seen of a book's file. `sha256` is null until the file has been hashed. */
+/**
+ * The last thing seen of a book's file. `sha256` is null until the file has been hashed. `missingSince` is
+ * when a scan first failed to find the file, or null while the last scan found it.
+ */
 export interface IndexEntry extends FileStat {
   sha256: string | null;
+  missingSince: number | null;
 }
 
 /** Every book that has ever been given an id, by that id. A book whose file is gone stays here. */
 export type LibraryIndex = Record<BookId, IndexEntry>;
+
+/** library.json as it is stored. */
+export interface StoredIndex {
+  version: 1;
+  books: LibraryIndex;
+}
+
+export const isBookId = (value: unknown): value is BookId => typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
 
 /** The id every book had before ids were stored, so a library seeded from it keeps its saved data. */
 export const bookIdOf = (relPath: string): BookId => createHash("sha1").update(relPath).digest("hex") as BookId;
@@ -24,107 +37,211 @@ export const bookIdOf = (relPath: string): BookId => createHash("sha1").update(r
 /* Random rather than a path hash, so a new book at a path an old book left does not inherit its data. */
 export const randomBookId = (): BookId => randomBytes(20).toString("hex") as BookId;
 
-const sameEntry = (a: IndexEntry, b: IndexEntry) =>
-  a.relPath === b.relPath && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ino === b.ino && a.dev === b.dev && a.sha256 === b.sha256;
+/**
+ * library.json exists but is not an index this code wrote. Scans stop rather than re-seed over it, because
+ * re-seeding would hand out ids again and strand every moved book's data.
+ */
+export class LibraryIndexError extends Error {
+  override name = "LibraryIndexError";
+  constructor(
+    readonly file: string,
+    reason: string,
+    options?: ErrorOptions,
+  ) {
+    super(`${file}: ${reason}`, options);
+  }
+}
 
-/* A changed size or mtime means the bytes may differ, so the old hash no longer describes them. */
-const refreshed = (entry: IndexEntry, file: FileStat): IndexEntry => ({
-  relPath: file.relPath,
-  size: file.size,
-  mtimeMs: file.mtimeMs,
-  ino: file.ino,
-  dev: file.dev,
-  sha256: entry.size === file.size && entry.mtimeMs === file.mtimeMs ? entry.sha256 : null,
-});
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isEntry = (value: unknown): value is Omit<IndexEntry, "missingSince"> & { missingSince?: number | null } =>
+  isRecord(value) &&
+  typeof value.relPath === "string" &&
+  typeof value.size === "number" &&
+  typeof value.mtimeMs === "number" &&
+  typeof value.ino === "string" &&
+  typeof value.dev === "string" &&
+  (value.sha256 === null || typeof value.sha256 === "string") &&
+  (value.missingSince === undefined || value.missingSince === null || typeof value.missingSince === "number");
+
+/** The saved index, or null when there is none yet. Anything else that is not a valid index throws `LibraryIndexError`. */
+export const readIndex = async (file: string): Promise<LibraryIndex | null> => {
+  let text: string;
+  try {
+    text = await readFile(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw new LibraryIndexError(file, "could not be read", { cause: error });
+  }
+  let stored: unknown;
+  try {
+    stored = JSON.parse(text);
+  } catch (error) {
+    throw new LibraryIndexError(file, "is not valid JSON", { cause: error });
+  }
+  if (!isRecord(stored) || stored.version !== 1) throw new LibraryIndexError(file, "is not a version 1 library index");
+  if (!isRecord(stored.books)) throw new LibraryIndexError(file, "has no books");
+  const index: LibraryIndex = {};
+  for (const [id, entry] of Object.entries(stored.books)) {
+    if (!isBookId(id) || !isEntry(entry)) throw new LibraryIndexError(file, `has a malformed entry ${JSON.stringify(id)}`);
+    index[id] = { ...entry, missingSince: entry.missingSince ?? null };
+  }
+  return index;
+};
+
+type Entry = [BookId, IndexEntry];
+type Key = (stat: FileStat) => string;
+
+/* mtime is part of the key because exFAT and ext4 reuse inode numbers: a new file that lands on a dead
+   book's inode almost never has its size and mtime as well. */
+const inodeKey: Key = (stat) => `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+const fileKey: Key = (stat) => `${stat.dev}:${stat.ino}`;
+const pathKey: Key = (stat) => stat.relPath;
+
+interface Matcher {
+  key: Key;
+  /** Which unbound entries this matcher may bind. */
+  eligible: (entry: IndexEntry) => boolean;
+}
+
+/**
+ * Strongest signal first. A path is only evidence for a book the last scan saw there: a book that was
+ * already gone must not be handed to whatever file later lands at its old path.
+ */
+const MATCHERS: readonly Matcher[] = [
+  { key: inodeKey, eligible: () => true },
+  { key: pathKey, eligible: (entry) => entry.missingSince === null },
+];
 
 const groupBy = <T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T[]> => {
   const groups = new Map<K, T[]>();
   for (const item of items) {
     const k = key(item);
-    groups.set(k, [...(groups.get(k) ?? []), item]);
+    const group = groups.get(k);
+    if (group) group.push(item);
+    else groups.set(k, [item]);
   }
   return groups;
 };
+
+/** Binds every key shared by exactly one of `files` and exactly one of `entries`; anything ambiguous stays unbound. */
+export const bindOneToOne = <F extends FileStat>(files: readonly F[], entries: readonly Entry[], key: Key): Map<F, BookId> => {
+  const entriesByKey = groupBy(entries, ([, entry]) => key(entry));
+  const bound = new Map<F, BookId>();
+  for (const [k, group] of groupBy(files, key)) {
+    const matches = entriesByKey.get(k);
+    if (group.length === 1 && matches?.length === 1) bound.set(group[0], matches[0][0]);
+  }
+  return bound;
+};
+
+const sameEntry = (a: IndexEntry, b: IndexEntry) =>
+  a.relPath === b.relPath &&
+  a.size === b.size &&
+  a.mtimeMs === b.mtimeMs &&
+  a.ino === b.ino &&
+  a.dev === b.dev &&
+  a.sha256 === b.sha256 &&
+  a.missingSince === b.missingSince;
+
+/* A changed size or mtime means the bytes may differ, so the old hash no longer describes them. */
+const refreshed = (entry: IndexEntry | undefined, file: FileStat): IndexEntry => ({
+  relPath: file.relPath,
+  size: file.size,
+  mtimeMs: file.mtimeMs,
+  ino: file.ino,
+  dev: file.dev,
+  sha256: entry && entry.size === file.size && entry.mtimeMs === file.mtimeMs ? entry.sha256 : null,
+  missingSince: null,
+});
 
 export interface Reconciled<F extends FileStat> {
   index: LibraryIndex;
   /** The scanned files that have an id, in the order given. */
   books: { id: BookId; file: F }[];
+  /** Other paths to a file that already has its id this scan, such as hard links. They are left out. */
+  skipped: F[];
+  /** Entries no file was bound to this scan. */
+  orphans: BookId[];
+  /** Ids created this scan. */
+  minted: BookId[];
   /** False when the index is entry for entry what it was, so a steady-state scan writes nothing. */
   changed: boolean;
 }
 
+/* With no index, every file keeps the id its path gave it before ids were stored. */
+const seed = <F extends FileStat>(files: readonly F[]): Reconciled<F> => {
+  const index: LibraryIndex = {};
+  const books = files.map((file) => {
+    const id = bookIdOf(file.relPath);
+    index[id] = refreshed(undefined, file);
+    return { id, file };
+  });
+  return { index, books, skipped: [], orphans: [], minted: books.map(({ id }) => id), changed: true };
+};
+
 /**
- * Gives every scanned file an id, matching the whole scan against the index at once:
+ * Gives every scanned file an id, matching the whole scan against the index at once. Each matcher in
+ * `MATCHERS` binds only one-to-one matches among what earlier matchers left:
  *
- * 1. Same inode: a file whose dev + inode + size matches exactly one entry, and that entry no other file,
- *    takes that entry's id wherever it now lives. This covers renames, moves on one volume and two files
- *    swapping names, and lets a moved book keep its id when a new file lands at its old path.
- * 2. Same path: a file still unmatched takes the one unmatched entry recorded at its path. This covers
- *    editors that save by replacing the file, and a volume remounted with a new device number.
- * 3. Anything left is a new book with a random id, except another path to a file that already matched:
- *    a hard link, or a book seen at both ends of a move made during the scan. That path is left out of
- *    this scan, because an id minted for it would share the book's inode and strand the book's data on
- *    the next scan.
+ * 1. Same inode, size and mtime: renames, moves on one volume and two files swapping names. A moved book
+ *    keeps its id even when a new file lands at its old path.
+ * 2. Same path, for books the previous scan found: editors that save by replacing the file, and a volume
+ *    remounted with new device numbers.
  *
- * Every match is one-to-one; anything ambiguous becomes a new book and leaves the entries as they were.
- * With no index entries the files are seeded with `bookIdOf(relPath)`. A scan with no files changes
- * nothing, because an empty or unmounted books folder must not be read as every book being gone.
+ * A file still unbound is another path to a file already bound (a hard link, or a book seen at both ends
+ * of a move made during the scan) and is skipped, because an id minted for it would share the book's inode
+ * and strand the book's data on the next scan. Anything else gets a new random id.
+ *
+ * With no index entries the files are seeded. A scan with no files changes nothing, because an empty or
+ * unmounted books folder must not be read as every book being gone.
  */
 export const reconcile = <F extends FileStat>(
   current: LibraryIndex | null,
   files: readonly F[],
   newId: () => BookId = randomBookId,
+  now: number = Date.now(),
 ): Reconciled<F> => {
   const before = current ?? {};
-  const entries = Object.entries(before) as [BookId, IndexEntry][];
-  if (files.length === 0) return { index: before, books: [], changed: false };
+  const entries = Object.entries(before) as Entry[];
+  if (files.length === 0) return { index: before, books: [], skipped: [], orphans: [], minted: [], changed: false };
+  if (entries.length === 0) return seed(files);
 
   const ids = new Map<F, BookId>();
-  const skipped = new Set<F>();
-  if (entries.length === 0) {
-    for (const file of files) ids.set(file, bookIdOf(file.relPath));
-  } else {
-    const bound = new Set<BookId>();
-    const inodeKey = (stat: FileStat) => `${stat.dev}:${stat.ino}:${stat.size}`;
-    const filesByInode = groupBy(files, inodeKey);
-    const entriesByInode = groupBy(entries, ([, entry]) => inodeKey(entry));
-    for (const file of files) {
-      const key = inodeKey(file);
-      const matches = entriesByInode.get(key) ?? [];
-      if (matches.length !== 1 || filesByInode.get(key)?.length !== 1) continue;
-      ids.set(file, matches[0][0]);
-      bound.add(matches[0][0]);
-    }
-
-    const entriesByPath = groupBy(
-      entries.filter(([id]) => !bound.has(id)),
-      ([, entry]) => entry.relPath,
-    );
-    for (const file of files) {
-      if (ids.has(file)) continue;
-      const matches = entriesByPath.get(file.relPath) ?? [];
-      if (matches.length === 1) ids.set(file, matches[0][0]);
-    }
-
-    for (const file of files) {
-      if (!ids.has(file) && filesByInode.get(inodeKey(file))!.some((twin) => ids.has(twin))) skipped.add(file);
-    }
-    for (const file of files) {
-      if (ids.has(file) || skipped.has(file)) continue;
-      let id = newId();
-      while (id in before) id = newId();
+  const boundIds = new Set<BookId>();
+  for (const { key, eligible } of MATCHERS) {
+    const unboundFiles = files.filter((file) => !ids.has(file));
+    const unboundEntries = entries.filter(([id, entry]) => !boundIds.has(id) && eligible(entry));
+    for (const [file, id] of bindOneToOne(unboundFiles, unboundEntries, key)) {
       ids.set(file, id);
+      boundIds.add(id);
     }
   }
 
+  const boundFiles = new Set([...ids.keys()].map(fileKey));
+  const skipped = files.filter((file) => !ids.has(file) && boundFiles.has(fileKey(file)));
+  const skip = new Set(skipped);
+  const minted = new Set<BookId>();
+  for (const file of files) {
+    if (ids.has(file) || skip.has(file)) continue;
+    let id = newId();
+    while (id in before || minted.has(id)) id = newId();
+    ids.set(file, id);
+    minted.add(id);
+  }
+
   const index: LibraryIndex = { ...before };
-  const books = files.filter((file) => !skipped.has(file)).map((file) => {
-    const id = ids.get(file)!;
-    const entry = before[id];
-    index[id] = refreshed(entry ?? { ...file, sha256: null }, file);
-    return { id, file };
+  const books = files.flatMap((file) => {
+    const id = ids.get(file);
+    if (!id) return [];
+    index[id] = refreshed(before[id], file);
+    return [{ id, file }];
   });
-  const changed = books.some(({ id }) => !before[id] || !sameEntry(before[id], index[id]));
-  return { index, books, changed };
+  const orphans = entries.filter(([id]) => !boundIds.has(id)).map(([id]) => id);
+  for (const id of orphans) {
+    if (before[id].missingSince === null) index[id] = { ...before[id], missingSince: now };
+  }
+  const changed = minted.size > 0 || entries.some(([id, entry]) => !sameEntry(entry, index[id]));
+  return { index, books, skipped, orphans, minted: [...minted], changed };
 };
