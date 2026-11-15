@@ -14,8 +14,12 @@ import type { BookId } from "@/lib/shared/types";
 /* Outside a request there is no render to mark dynamic. */
 vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), connection: async () => undefined }));
 
-/* A rename the test picks fails once, so a move part-way through can be checked. Every other call is the real one. */
-const fsHook = vi.hoisted(() => ({ failRename: null as ((from: string, to: string) => boolean) | null }));
+/* A rename the test picks fails once, so a move part-way through can be checked, and a folder listing the test
+   picks runs a callback once, so a write can be started at a known point. Every other call is the real one. */
+const fsHook = vi.hoisted(() => ({
+  failRename: null as ((from: string, to: string) => boolean) | null,
+  onReaddir: null as ((dir: string) => boolean) | null,
+}));
 vi.mock("node:fs/promises", async (original) => {
   const actual = await original<typeof import("node:fs/promises")>();
   const rename: typeof actual.rename = async (from, to) => {
@@ -25,7 +29,11 @@ vi.mock("node:fs/promises", async (original) => {
     }
     return actual.rename(from, to);
   };
-  return { ...actual, rename, default: { ...actual, rename } };
+  const readdir = ((dir: string, ...rest: unknown[]) => {
+    if (fsHook.onReaddir?.(String(dir))) fsHook.onReaddir = null;
+    return (actual.readdir as (...args: unknown[]) => unknown)(dir, ...rest);
+  }) as typeof actual.readdir;
+  return { ...actual, rename, readdir, default: { ...actual, rename, readdir } };
 });
 
 let root: string;
@@ -75,6 +83,7 @@ beforeEach(async () => {
 afterEach(() => {
   vi.unstubAllEnvs();
   fsHook.failRename = null;
+  fsHook.onReaddir = null;
 });
 
 const missingNow = async () => (await listMissing(await readLibrary(root, dataDir), dataDir)).missing;
@@ -237,6 +246,23 @@ describe("rebind racing a save", () => {
     expect(await exists(positionFile)).toBe(false);
     /* The book keeps taking saves under the id it was given. */
     await saveBookPosition(first, position, dataDir);
+  });
+
+  it("makes a save that starts between the relink's check and its commit wait, then refuses it", async () => {
+    const { first, target, positionFile } = await lostWithTarget();
+    let saving: Promise<string> | null = null;
+    /* The relink lists the data folder for saved ids only once it holds the queues. */
+    fsHook.onReaddir = (dir) => {
+      if (dir !== dataDir) return false;
+      saving = saveBookPosition(target, position, dataDir).then(
+        () => "saved",
+        (error: Error) => error.name,
+      );
+      return true;
+    };
+    await rebind(first, target, root, dataDir);
+    expect(await saving).toBe("BookClosedError");
+    expect(await exists(positionFile)).toBe(false);
   });
 
   it("never leaves a target's saved file without an index entry, whichever lands first", async () => {
