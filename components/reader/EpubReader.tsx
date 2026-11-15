@@ -79,17 +79,6 @@ const pageNumber = ({ pageItem, location }: RelocateDetail): PageNumber | null =
   return location ? { kind: "location", current: location.current, total: location.total } : null;
 };
 
-/**
- * Pages left in the section after the ones on screen. foliate pads each
- * paginated section with a blank screen at either end, and a screen holds a
- * page per column; the section's last screen may fill only its first column.
- */
-const pagesLeftInSection = (renderer: FoliateRenderer): number | null => {
-  const screens = renderer.pages - 2;
-  if (screens <= 0) return null;
-  return Math.max(0, screens - renderer.page) * (renderer.heads?.length || 1);
-};
-
 /** Words in each loaded section, counted once. */
 const wordCounts = new WeakMap<Document, number>();
 const wordsIn = (doc: Document): number => {
@@ -102,14 +91,21 @@ const wordsIn = (doc: Document): number => {
 };
 
 /**
- * Minutes left in a section that is one whole chapter. The screen or the stretch on view counts as still to
- * read, so the last screen says one minute rather than none.
+ * What is left of a section that is one whole chapter. foliate pads each paginated section with a blank
+ * screen at either end, and a screen holds a page per column; the section's last screen may fill only its
+ * first column. Pages are counted in Pages mode only. For minutes, the screen or the stretch on view counts
+ * as still to read, so the last screen says one minute rather than none; they need the section's document.
  */
-const sectionMinutesLeft = (renderer: FoliateRenderer, doc: Document, paged: boolean): number | null => {
-  if (!renderer.viewSize) return null;
+const leftInSection = (
+  renderer: FoliateRenderer,
+  doc: Document | null,
+  paged: boolean,
+): { pages: number | null; minutes: number | null } => {
   const screens = renderer.pages - 2;
+  const pages = paged && screens > 0 ? Math.max(0, screens - renderer.page) * (renderer.heads?.length || 1) : null;
+  if (!doc || !renderer.viewSize) return { pages, minutes: null };
   const fractionLeft = paged ? (screens > 0 ? (screens - renderer.page + 1) / screens : NaN) : 1 - renderer.start / renderer.viewSize;
-  return minutesLeft(wordsIn(doc), fractionLeft);
+  return { pages, minutes: minutesLeft(wordsIn(doc), fractionLeft) };
 };
 
 /** Served from public/ and imported at runtime, never bundled. */
@@ -146,8 +142,16 @@ const metaText = (value: unknown): string | null => {
 };
 
 /** The page's @font-face rules with absolute URLs, so foliate's blob iframes can load Literata.
-    URLs are resolved against their own stylesheet, since a blob document has no usable base. */
+    URLs are resolved against their own stylesheet, since a blob document has no usable base.
+    Read again only when the page's stylesheets change in number, as when one loads late. */
+let fontFaces: { sheets: number; css: string } | null = null;
 const pageFontFaces = (): string => {
+  const sheets = document.styleSheets.length;
+  if (fontFaces?.sheets !== sheets) fontFaces = { sheets, css: readFontFaces() };
+  return fontFaces.css;
+};
+
+const readFontFaces = (): string => {
   const rules: string[] = [];
   for (const sheet of Array.from(document.styleSheets)) {
     let cssRules: CSSRuleList;
@@ -243,6 +247,8 @@ export function EpubReader({
   const wholeChaptersRef = useRef(new Set<number>());
   /* Pages mode: foliate lays sections out in columns and turns page by page, crossing sections itself. */
   const pagedRef = useRef(false);
+  /* Turns to the next or previous section, ignoring presses while a turn is under way. */
+  const turnRef = useRef<((direction: 1 | -1) => void) | null>(null);
   const [atSectionEnd, setAtSectionEnd] = useState(false);
 
   const chapterOf = (item: FoliateTocItem | null | undefined) => (item && tocRef.current.get(item)) ?? null;
@@ -447,6 +453,7 @@ export function EpubReader({
         turning = false;
       });
     };
+    turnRef.current = turn;
 
     /* Scroll mode shows one section at a time; keep scrolling past an edge to turn. */
     const onWheel = (event: WheelEvent) => {
@@ -528,16 +535,16 @@ export function EpubReader({
       const detail = (event as CustomEvent<RelocateDetail>).detail;
       const { cfi, fraction, tocItem, section } = detail;
       const renderer = view?.renderer;
-      const counted = pagedRef.current && renderer && section && wholeChaptersRef.current.has(section.current);
       const current = sectionRef.current;
-      const wholeDoc = renderer && section && wholeChaptersRef.current.has(section.current) && current?.index === section.current ? current.doc : null;
+      const whole = renderer && section && wholeChaptersRef.current.has(section.current);
+      const left = whole ? leftInSection(renderer, current?.index === section.current ? current.doc : null, pagedRef.current) : null;
       emitPosition(
         { kind: "epub", cfi, fraction: fraction ?? 0 },
         {
           chapter: (tocItem && tocRef.current.get(tocItem)) ?? null,
           page: pageNumber(detail),
-          pagesLeftInChapter: counted ? pagesLeftInSection(renderer) : null,
-          minutesLeftInChapter: renderer && wholeDoc ? sectionMinutesLeft(renderer, wholeDoc, pagedRef.current) : null,
+          pagesLeftInChapter: left?.pages ?? null,
+          minutesLeftInChapter: left?.minutes ?? null,
         },
       );
       updateEdge();
@@ -607,6 +614,7 @@ export function EpubReader({
       view?.close();
       view?.remove();
       viewRef.current = null;
+      turnRef.current = null;
       openRef.current = false;
       sectionRef.current = null;
     };
@@ -618,7 +626,10 @@ export function EpubReader({
       {atSectionEnd ? (
         <button
           type="button"
-          onClick={() => viewRef.current?.renderer.next()}
+          onClick={() => {
+            onInteract?.();
+            turnRef.current?.(1);
+          }}
           className="press animate-rise absolute bottom-6 left-1/2 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full bg-panel-raised px-3.5 text-label font-medium text-fog shadow-float transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover hover:text-paper"
         >
           Next chapter

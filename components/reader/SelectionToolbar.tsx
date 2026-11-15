@@ -1,6 +1,6 @@
 "use client";
 
-import { useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { ArrowUp, BookOpenText, CircleParking, Highlighter, Layers, Lightbulb, MessageCircleQuestion, NotebookPen, PenLine, Sparkles } from "lucide-react";
 import { Toolbar, ToolbarButton, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
 import { DictationNote, MicButton } from "@/components/chat/MicButton";
@@ -61,8 +61,8 @@ function Action({ icon, label, title, disabled, onPress }: { icon: ReactNode; la
 
 /**
  * Floats above the selected passage (below it when there's no room) and offers
- * the tutor's actions, Highlight and Note. Ask… and Explain it back swap the
- * buttons for an inline text field.
+ * the tutor's actions, Highlight, Note, Park a question and Make cards. Ask…,
+ * Explain it back and Park swap the buttons for an inline text field.
  */
 export function SelectionToolbar({
   ref,
@@ -78,7 +78,14 @@ export function SelectionToolbar({
   onCard,
   onDismiss,
 }: SelectionToolbarProps) {
-  const [rect, setRect] = useState<SelectionRect | null>(null);
+  /* The selection's latest rect lives in a ref; state changes only when the bar appears or goes. */
+  const rectRef = useRef<SelectionRect | null>(null);
+  const [shown, setShown] = useState(false);
+  const shownRef = useRef(false);
+  const show = (next: boolean) => {
+    shownRef.current = next;
+    setShown(next);
+  };
   const [asking, setAsking] = useState<InputKind | null>(null);
   const [question, setQuestion] = useState("");
   const boxRef = useRef<HTMLDivElement>(null);
@@ -110,7 +117,16 @@ export function SelectionToolbar({
     snapshot.current = null;
     setAsking(null);
     setQuestion("");
-    setRect(null);
+    rectRef.current = null;
+    show(false);
+  };
+
+  /* Moves the bar to the selection; called straight from update, so following a selection while scrolling never re-renders. */
+  const place = () => {
+    const box = boxRef.current;
+    const rect = rectRef.current;
+    const area = rect && bounds();
+    if (box && rect && area) placeFloating(box, rect, area);
   };
 
   useImperativeHandle(ref, () => ({
@@ -118,23 +134,29 @@ export function SelectionToolbar({
       /* Focusing the question field clears a PDF selection; the snapshot holds it until the question is sent. */
       if (askingRef.current) return;
       if (!next) snapshot.current = null;
-      setRect(next);
+      rectRef.current = next;
+      if (shownRef.current !== !!next) show(!!next);
+      else place();
     },
   }));
 
+  const placeLater = useEffectEvent(place);
+
+  /* Placed again whenever the bar changes size, such as a line under the question appearing, so it never covers the passage. */
   useLayoutEffect(() => {
     const box = boxRef.current;
-    const area = bounds();
-    if (!box || !rect || !area) return;
-    /* Placed again whenever the bar changes size, such as a line under the question appearing, so it never covers the passage. */
-    const place = () => placeFloating(box, rect, area);
-    place();
-    const observer = new ResizeObserver(place);
+    if (!shown || !box) return;
+    placeLater();
+    const observer = new ResizeObserver(() => placeLater());
     observer.observe(box);
     return () => observer.disconnect();
-  }, [rect, asking, bounds]);
+  }, [shown]);
 
-  if (!rect) return null;
+  useLayoutEffect(() => {
+    if (shown) placeLater();
+  }, [shown, asking, bounds]);
+
+  if (!shown) return null;
 
   const take = () => (snapshot.current ??= readSelection());
 
@@ -145,7 +167,7 @@ export function SelectionToolbar({
     onAction(action, selection);
   };
 
-  /* Highlight and Note need no tutor, so they work even when it's unavailable. */
+  /* Acts on the passage and closes the bar: Highlight and Note, which work without the tutor, and Make cards. */
   const keep = (save: (selection: SelectionContext) => void) => {
     const selection = take();
     if (!selection) return;

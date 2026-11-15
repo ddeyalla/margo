@@ -2,7 +2,7 @@
 
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from "react";
 import { ScanText, X } from "lucide-react";
-import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask, TextLayer } from "pdfjs-dist";
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
 import { tailExcerpt } from "@/lib/shared/resume";
 import { IconButton } from "@/components/ui";
@@ -20,6 +20,7 @@ import {
   rangeInLayer,
   readOutline,
   samplePages,
+  textPieces,
   type OutlineEntry,
 } from "./pdf";
 import { mergeLineBoxes, unionBox } from "./rects";
@@ -49,6 +50,8 @@ interface Slot {
   width: number;
   /** Bumped on every release so a stale render stops. */
   generation: number;
+  /** The page being drawn, kept so a release can free what pdf.js holds for it. */
+  proxy: PDFPageProxy | null;
   task: RenderTask | null;
   textLayer: TextLayer | null;
   /** The text layer has finished, so highlights can find their characters. */
@@ -59,11 +62,18 @@ interface Engine {
   slots: Slot[];
   texts: Map<number, string>;
   outline: OutlineEntry[];
+  /** Whether pages are laid out one per screen, as the engine has them now. */
+  isPaged(): boolean;
   /** Switches between one continuous column and one page per screen, keeping the page in view. */
   setPaged(paged: boolean): void;
 }
 
-const emptyEngine = (): Engine => ({ slots: [], texts: new Map(), outline: [], setPaged: () => undefined });
+const emptyEngine = (): Engine => ({ slots: [], texts: new Map(), outline: [], isPaged: () => false, setPaged: () => undefined });
+
+/** Scroll position updates between page or chapter changes are sent at most this often; the resting position always is. */
+const POSITION_THROTTLE_MS = 250;
+/** A move within the page smaller than this share of it waits for the resting position. */
+const POSITION_STEP = 0.01;
 
 /** The slot whose sheet holds a vertical offset in the scroller, by binary search over sheet tops. */
 const slotAt = (slots: Slot[], y: number): Slot => {
@@ -117,10 +127,12 @@ const paintPage = (slot: Slot | undefined, highlights: Map<string, Highlight>) =
   if (!slot || !layer || !marks) return;
   const page = slot.el.getBoundingClientRect();
   const drawn: HTMLElement[] = [];
+  let pieces: ReturnType<typeof textPieces> | null = null;
   for (const highlight of highlights.values()) {
     const { anchor } = highlight;
     if (anchor.kind !== "pdf" || anchor.page !== slot.page) continue;
-    const range = rangeInLayer(layer, anchor.start, anchor.end);
+    pieces ??= textPieces(layer);
+    const range = rangeInLayer(layer, anchor.start, anchor.end, pieces);
     for (const box of range ? mergeLineBoxes(range.getClientRects()) : []) {
       const mark = document.createElement("div");
       mark.className = "pdf-mark";
@@ -198,6 +210,29 @@ export function PdfReader({
     };
   };
 
+  /* Showing or removing many highlights at once, as when a book opens, paints each page once on the next frame. */
+  const dirtyPagesRef = useRef(new Set<number>());
+  const paintFrameRef = useRef(0);
+  const repaint = (page: number) => {
+    dirtyPagesRef.current.add(page);
+    if (paintFrameRef.current) return;
+    paintFrameRef.current = requestAnimationFrame(() => {
+      paintFrameRef.current = 0;
+      const { slots } = engineRef.current;
+      for (const dirty of dirtyPagesRef.current) paintPage(slots[dirty - 1], highlightsRef.current);
+      dirtyPagesRef.current.clear();
+    });
+  };
+  useEffect(() => {
+    const frame = paintFrameRef;
+    const dirty = dirtyPagesRef.current;
+    return () => {
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
+      dirty.clear();
+    };
+  }, []);
+
   useImperativeHandle(ref, () => ({
     getSelection: readSelection,
     clearSelection() {
@@ -208,7 +243,7 @@ export function PdfReader({
       const scroller = scrollRef.current;
       const slot = anchor.kind === "pdf" ? engineRef.current.slots[anchor.page - 1] : null;
       if (!scroller || !slot || anchor.kind !== "pdf") return;
-      if (mode === "pages") {
+      if (engineRef.current.isPaged()) {
         scroller.scrollTo({ top: slot.sheet.offsetTop, behavior: "smooth" });
         return;
       }
@@ -220,8 +255,8 @@ export function PdfReader({
       const scroller = scrollRef.current;
       const slot = entry.target.kind === "pdf" ? engineRef.current.slots[entry.target.page - 1] : null;
       if (!scroller || !slot || entry.target.kind !== "pdf") return;
-      scroller.scrollTop =
-        mode === "pages" ? slot.sheet.offsetTop : Math.max(0, slot.el.offsetTop + entry.target.top * slot.el.offsetHeight - ENTRY_MARGIN);
+      scroller.scrollTop = engineRef.current.isPaged()
+        ? slot.sheet.offsetTop : Math.max(0, slot.el.offsetTop + entry.target.top * slot.el.offsetHeight - ENTRY_MARGIN);
     },
     turnPage(direction) {
       const scroller = scrollRef.current;
@@ -235,26 +270,26 @@ export function PdfReader({
       const { slots } = engineRef.current;
       if (!scroller || !slots.length) return;
       const top = fraction * (scroller.scrollHeight - scroller.clientHeight);
-      scroller.scrollTop = mode === "pages" ? slotAt(slots, top + scroller.clientHeight / 2).sheet.offsetTop : top;
+      scroller.scrollTop = engineRef.current.isPaged() ? slotAt(slots, top + scroller.clientHeight / 2).sheet.offsetTop : top;
     },
     showHighlight(highlight) {
       highlightsRef.current.set(highlight.id, highlight);
-      if (highlight.anchor.kind === "pdf") paintPage(engineRef.current.slots[highlight.anchor.page - 1], highlightsRef.current);
+      if (highlight.anchor.kind === "pdf") repaint(highlight.anchor.page);
     },
     peek(position) {
       if (position.kind !== "pdf") return null;
       const { texts } = engineRef.current;
       const text = texts.get(position.page);
       if (!text) return null;
-      const upTo = flowText(text.slice(0, Math.round(position.offset * text.length)));
-      const before = flowText((texts.get(position.page - 1) ?? "") + "\n" + text.slice(0, Math.round(position.offset * text.length)));
-      const excerpt = tailExcerpt(normalizeText(upTo));
+      const read = text.slice(0, Math.round(position.offset * text.length));
+      const before = flowText((texts.get(position.page - 1) ?? "") + "\n" + read);
+      const excerpt = tailExcerpt(normalizeText(flowText(read)));
       return excerpt ? { text: excerpt, before: trimBefore(before, 6000) } : null;
     },
     removeHighlight(id) {
       const highlight = highlightsRef.current.get(id);
       highlightsRef.current.delete(id);
-      if (highlight?.anchor.kind === "pdf") paintPage(engineRef.current.slots[highlight.anchor.page - 1], highlightsRef.current);
+      if (highlight?.anchor.kind === "pdf") repaint(highlight.anchor.page);
     },
   }));
 
@@ -324,6 +359,14 @@ export function PdfReader({
       slot.task = null;
       slot.textLayer = null;
       slot.textReady = false;
+      /* pdf.js frees the page's operator list and objects once its render has stopped. */
+      slot.proxy?.cleanup();
+      slot.proxy = null;
+      /* A canvas's backing store can outlive the element; emptying it frees the memory now. */
+      for (const canvas of slot.el.querySelectorAll("canvas")) {
+        canvas.width = 0;
+        canvas.height = 0;
+      }
       slot.el.replaceChildren();
       delete slot.el.dataset.rendered;
       delete slot.el.dataset.tone;
@@ -337,6 +380,7 @@ export function PdfReader({
         const pdfjs = await loadPdfJs();
         const page = await doc.getPage(slot.page);
         if (generation !== slot.generation) return;
+        slot.proxy = page;
         const unscaled = page.getViewport({ scale: 1 });
         slot.ratio = unscaled.height / unscaled.width;
         sizeSlot(slot);
@@ -427,21 +471,42 @@ export function PdfReader({
       restore(position);
       observeAll();
     };
+    engine.isPaged = () => paged;
     engine.setPaged = (next) => relayout(next);
+
+    /* The last position sent, so scrolling within a page sends a few updates rather than one a frame. */
+    let sent: { position: PdfPosition; chapter: OutlineEntry | null; at: number } | null = null;
+    let restTimer = 0;
+    const sendPosition = (resting: boolean) => {
+      if (!slots.length) return;
+      const position = currentPosition();
+      /* Pages mode shows the whole page, so its chapter is the one in effect at the page's middle. */
+      const chapter = chapterAt(engine.outline, position.page, paged ? 0.5 : position.offset);
+      const now = performance.now();
+      const last = sent?.position;
+      const turned = !sent || last?.page !== position.page || sent.chapter !== chapter;
+      const moved = !!last && Math.abs(position.offset - last.offset) > POSITION_STEP;
+      const due = !!sent && now - sent.at >= POSITION_THROTTLE_MS;
+      const changed = !last || last.page !== position.page || last.offset !== position.offset || last.fraction !== position.fraction;
+      if (!turned && !(moved && due) && !(resting && changed)) return;
+      sent = { position, chapter, at: now };
+      emitPosition(position, {
+        chapter,
+        page: { kind: "pdf", page: position.page, total: slots.length },
+        pagesLeftInChapter: null,
+        minutesLeftInChapter: null,
+      });
+    };
 
     const onScroll = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         if (!slots.length) return;
         emitSelectionRect();
-        const position = currentPosition();
-        emitPosition(position, {
-          /* Pages mode shows the whole page, so its chapter is the one in effect at the page's middle. */
-          chapter: chapterAt(engine.outline, position.page, paged ? 0.5 : position.offset),
-          page: { kind: "pdf", page: position.page, total: slots.length },
-          pagesLeftInChapter: null,
-          minutesLeftInChapter: null,
-        });
+        sendPosition(false);
+        /* Once scrolling stops, the exact resting position is sent. */
+        clearTimeout(restTimer);
+        restTimer = window.setTimeout(() => sendPosition(true), POSITION_THROTTLE_MS);
       });
     };
 
@@ -506,7 +571,7 @@ export function PdfReader({
         el.className = "pdf-page";
         el.dataset.page = String(page);
         sheet.append(el);
-        const slot: Slot = { page, sheet, el, ratio: null, width, generation: 0, task: null, textLayer: null, textReady: false };
+        const slot: Slot = { page, sheet, el, ratio: null, width, generation: 0, proxy: null, task: null, textLayer: null, textReady: false };
         sizeSlot(slot);
         slots.push(slot);
       }
@@ -544,6 +609,7 @@ export function PdfReader({
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
+      clearTimeout(restTimer);
       clearTimeout(resizeTimer);
       observer?.disconnect();
       resizer?.disconnect();
