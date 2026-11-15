@@ -173,7 +173,7 @@ export const TocDrawer = memo(function TocDrawer({
   if (!open) return null;
   return (
     <>
-      <div aria-hidden className="absolute inset-0 z-30 bg-black/30" />
+      <div aria-hidden className="absolute inset-0 z-30 bg-scrim" />
       {nav}
     </>
   );

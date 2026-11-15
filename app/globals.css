@@ -30,6 +30,8 @@
   --color-glass: rgba(40, 40, 40, 0.78);
   --color-select: #3b82f6;
   --color-select-soft: rgba(59, 130, 246, 0.28);
+  /* Behind a dialog or drawer: dims the app without blacking it out. */
+  --color-scrim: rgba(0, 0, 0, 0.4);
   --color-live: #4ade80;
   --color-warn: #f0b429;
   --color-danger: #f87171;
@@ -131,6 +133,7 @@
   --color-tint-strong: rgba(0, 0, 0, 0.08);
   --color-glass: rgba(255, 255, 255, 0.72);
   --color-select-soft: rgba(59, 130, 246, 0.2);
+  --color-scrim: rgba(0, 0, 0, 0.2);
   --color-live: #15803d;
   --color-warn: #9a6700;
   --color-danger: #dc2626;
@@ -149,6 +152,10 @@
   --prose-heading: #ededed;
   --prose-rule: rgba(255, 255, 255, 0.1);
   --prose-wash: rgba(255, 255, 255, 0.04);
+  /* Book images are often black line art on a transparent ground, which vanishes on a
+     dark page. A light card behind them keeps it legible; a little under paper so it
+     doesn't glare. */
+  --prose-image: #e4e4e4;
   /* Bold starts: light strokes on dark read heavier, so a lighter weight in a brighter tone. */
   --prose-fixation-weight: 600;
 }
@@ -174,6 +181,8 @@
   --prose-heading: #141414;
   --prose-rule: rgba(31, 31, 31, 0.14);
   --prose-wash: rgba(31, 31, 31, 0.05);
+  /* On the light page the paper already backs a transparent image. */
+  --prose-image: transparent;
   --prose-fixation-weight: 700;
 }
 
@@ -500,7 +509,7 @@
   }
 
   ::selection {
-    background: rgba(59, 130, 246, 0.32);
+    background: var(--color-select-soft);
     color: transparent;
   }
 

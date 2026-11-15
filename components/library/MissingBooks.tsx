@@ -35,7 +35,7 @@ function Modal({ title, onClose, children }: { title: string; onClose(): void; c
     <ModalDialog
       aria-labelledby={titleId}
       onClose={onClose}
-      className="m-auto w-[min(520px,calc(100vw-32px))] rounded-xl bg-panel-raised p-0 text-paper shadow-dialog outline-none backdrop:bg-black/40"
+      className="m-auto w-[min(520px,calc(100vw-32px))] rounded-xl bg-panel-raised p-0 text-paper shadow-dialog outline-none backdrop:bg-scrim"
     >
       <div className="flex flex-col gap-4 p-5">
         <h2 id={titleId} className="text-title text-paper">

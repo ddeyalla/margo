@@ -211,9 +211,9 @@ pre, code, kbd, samp { font-family: "JetBrains Mono", ui-monospace, Menlo, monos
 rl-fx { font-weight: ${token("--prose-fixation-weight")} !important; color: ${token("--prose-heading")} !important; }
 :is(h1, h2, h3, h4, h5, h6, b, strong, th) rl-fx { font-weight: bolder !important; }
 pre { background-color: ${token("--prose-wash")} !important; padding: 0.9em 1.1em !important; border-radius: 8px; white-space: pre-wrap !important; line-height: 1.55 !important; }
-img { background-color: #ececef !important; border-radius: 4px; }
+img { background-color: ${token("--prose-image")} !important; border-radius: 4px; }
 hr { border: 0 !important; height: 1px; background-color: ${token("--prose-rule")} !important; }
-::selection { background: rgba(59, 130, 246, 0.32); }
+::selection { background: ${token("--color-select-soft")}; }
 `;
 };
 

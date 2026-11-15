@@ -161,23 +161,20 @@ at the token, not per component.
       faintly blue, which read as a hole on a long page rather than a surface. Text
       follows: paper `#f2f2f2`, fog `#b9b9b9`, dim `#9e9e9e`, prose `#dcdcdc`. The window
       colour in `electron/main.cjs` moved with it, so nothing flashes on launch.
-- [ ] **Theme files, the way learnharness does them.** One JSON per theme: `name`, `mode`
-      (`dark` or `light`, which drives `color-scheme`, the native window and the reading
-      page), and the token values. Export the active theme, import one back, and let a
-      single colour be overridden without forking the palette. That turns "is the light
-      theme right?" into a file you can edit and diff, instead of a hunt through
-      components. Their `docs/themes.md` is the reference; the code is AGPL, so this is a
-      format to copy, not source.
-- [ ] Screenshot every surface in both themes: library, reader (EPUB and PDF), chat,
-      highlights, notes, cards, review sheet, TOC, dialogs, settings.
+- [x] Screenshot every surface in both themes: library, reader (EPUB and PDF), chat,
+      highlights, notes, cards, TOC, reading settings, tutor menu, and a book figure.
 - [x] Check text and control contrast against the tokens, in both themes. `dim`, `page-dim`,
       light `warn` and `live` failed; retuned to pass 4.5:1 (3:1 for icons). Dark now
       passes with margin on every surface, including `panel-hover`, the worst case.
-- [ ] Replace hardcoded colours with tokens: cover fallback in `BookList.tsx`, TOC
-      backdrop, injected styles in `EpubReader.tsx` (`img { background-color: #ececef }`
-      is a light-theme value baked into the dark reader), the `::selection` wash.
-- [ ] Make the app theme and the reading page theme (`data-reading-theme`) agree where
-      they should, and differ only on purpose.
+- [x] Replace hardcoded colours with tokens. Dialog and drawer backdrops read `scrim`
+      (lighter in light). Book images sit on `--prose-image`: a light card on the dark
+      page so black line art stays visible, nothing on the light page. Both selection
+      washes, EPUB and PDF, read `select-soft`. Left alone on purpose: the generated
+      cover tones in `BookList.tsx` (a book's colour, not a surface), the image viewer's
+      black backdrop, and the white fill used when flattening covers to JPEG.
+- [x] Make the app theme and the reading page theme (`data-reading-theme`) agree where
+      they should, and differ only on purpose. On "Auto" the page follows the app; a
+      chosen page theme carries every page token with it, image backing included.
 
 Done when no surface has unreadable text or a leftover colour in either theme.
 
@@ -383,6 +380,18 @@ you.
       project once.
 - [ ] "Mark done" in the app plus an optional reflection note saved to the notes. It
       counts as evidence for mastery (Phase 18). No hint counters.
+
+## Phase 25 — Theme files · S
+
+Moved out of Phase 12: the audit's done-when needed none of it, and it's a feature.
+
+- [ ] **One JSON per theme, the way learnharness does them:** `name`, `mode`
+      (`dark` or `light`, which drives `color-scheme`, the native window and the reading
+      page), and the token values. Export the active theme, import one back, and let a
+      single colour be overridden without forking the palette. That turns "is the light
+      theme right?" into a file you can edit and diff, instead of a hunt through
+      components. Their `docs/themes.md` is the reference; the code is AGPL, so this is a
+      format to copy, not source.
 
 ## Open: where the books come from
 
