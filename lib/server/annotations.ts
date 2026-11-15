@@ -8,10 +8,9 @@ import {
 import { normalizeText } from "@/lib/shared/context";
 import type { Annotations, BookFormat, LibraryBook, VaultStatus } from "@/lib/shared/types";
 import { updateBookState } from "./store";
-import { isObject, parseAnchor, shortText } from "./validate";
+import { isObject, MAX_QUOTE, parseAnchor, shortText } from "./validate";
 import { mirrorVault } from "./vault";
 
-const MAX_QUOTE = 12_000;
 const MAX_NOTE = 20_000;
 
 const isId = (value: unknown): value is string =>

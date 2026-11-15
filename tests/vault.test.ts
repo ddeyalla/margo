@@ -61,10 +61,10 @@ describe("the Obsidian note file", () => {
     expect(renderVault(book, { highlights, notes })).toBe(
       [
         "---",
+        "bookId: c7a9708c8427667f67560c06eade4af41a47400d",
         'title: "Generative AI Design Patterns: Solutions"',
         'author: "Valliappa Lakshmanan, Hannes Hapke"',
         "format: pdf",
-        "bookId: c7a9708c8427667f67560c06eade4af41a47400d",
         "tags:",
         '  - "patterns"',
         '  - "design"',
@@ -150,6 +150,26 @@ describe("the Obsidian note file", () => {
     /* A book whose plain-named file is its own keeps writing there. */
     await writeFile(mine, renderVault(other, { highlights: [], notes: [] }));
     expect(await writeVault(notesDir, other, { highlights: [], notes: [] })).toEqual({ state: "written", file: mine });
+  });
+
+  it("recognises its own file however long the title and author are", async () => {
+    const notesDir = await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-"));
+    const long = { ...book, title: `A Very Long Title ${"word ".repeat(1500)}`, author: "Someone ".repeat(500) };
+    const first = await writeVault(notesDir, long, { highlights, notes });
+    expect(await writeVault(notesDir, long, { highlights, notes })).toEqual(first);
+    expect(await readdir(notesDir)).toHaveLength(1);
+  });
+
+  it("still recognises a file from before bookId came first", async () => {
+    const notesDir = await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-"));
+    const long = { ...book, title: `Older Long Title ${"word ".repeat(500)}` };
+    const [open, idLine, ...rest] = renderVault(long, { highlights, notes }).split("\n");
+    const formatAt = rest.findIndex((line) => line.startsWith("format: "));
+    const older = [open, ...rest.slice(0, formatAt + 1), idLine, ...rest.slice(formatAt + 1)].join("\n");
+    expect(older.indexOf("bookId:")).toBeGreaterThan(2048);
+    const file = path.join(notesDir, vaultFileName(long.title));
+    await writeFile(file, older);
+    expect(await writeVault(notesDir, long, { highlights, notes })).toEqual({ state: "written", file });
   });
 
   it("reports a folder it cannot create instead of throwing", async () => {

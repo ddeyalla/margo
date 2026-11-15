@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   /* The Mac app opens the dev server at 127.0.0.1 rather than localhost. */
   allowedDevOrigins: ["127.0.0.1"],
   cacheComponents: true,
@@ -21,9 +20,9 @@ const nextConfig: NextConfig = {
       "./node_modules/pdfjs-dist/wasm/**",
     ],
   },
-  /* Covers are drawn on the server with pdf.js and a native canvas, and voice input decodes with a native addon: all loaded by Node rather than bundled. */
   /* No Next badge in the corner while running `npm run dev`; error overlays still show. */
   devIndicators: false,
+  /* Covers are drawn on the server with pdf.js and a native canvas, and voice input decodes with a native addon: all loaded by Node rather than bundled. */
   serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas", "sherpa-onnx-node"],
   turbopack: {
     rules: {

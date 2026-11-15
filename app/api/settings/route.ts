@@ -31,7 +31,7 @@ export async function PATCH(request: Request) {
     return Response.json(
       {
         error:
-          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { pdfPage: \"auto\" | \"dark\" | \"light\" }, { readingMode: \"scroll\" | \"pages\" }, { epubPage: \"auto\" | \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false } { panelTab: \"chat\" | \"notes\" | \"highlights\" }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
+          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { pdfPage: \"auto\" | \"dark\" | \"light\" }, { readingMode: \"scroll\" | \"pages\" }, { epubPage: \"auto\" | \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false }, { panelTab: \"chat\" | \"notes\" | \"highlights\" | \"cards\" }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
       },
       { status: 400 },
     );

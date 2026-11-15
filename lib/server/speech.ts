@@ -142,10 +142,11 @@ export const startDownload = async (): Promise<SpeechStatus> => {
 };
 
 /** Raw little-endian 32-bit float samples to a Float32Array this process owns, or why not. */
-export const parsePcm = (body: ArrayBuffer): { ok: true; samples: Float32Array } | { ok: false; status: 400 | 413; error: string } => {
+export const parsePcm = (body: ArrayBuffer | Uint8Array): { ok: true; samples: Float32Array } | { ok: false; status: 400 | 413; error: string } => {
   if (body.byteLength > MAX_PCM_BYTES) return { ok: false, status: 413, error: `Recordings are limited to ${MAX_SECONDS} seconds.` };
   if (body.byteLength === 0 || body.byteLength % 4 !== 0) return { ok: false, status: 400, error: "Expected 16 kHz mono 32-bit float samples." };
-  const view = new DataView(body);
+  /* A Buffer may be a slice of a shared pool, so the view starts at its own offset. */
+  const view = body instanceof Uint8Array ? new DataView(body.buffer, body.byteOffset, body.byteLength) : new DataView(body);
   const samples = new Float32Array(body.byteLength / 4);
   for (let i = 0; i < samples.length; i++) {
     const value = view.getFloat32(i * 4, true);

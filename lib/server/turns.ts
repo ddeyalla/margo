@@ -6,15 +6,13 @@ import { getConfig } from "./config";
 import { passageThread } from "./passage";
 import { hold, readBookState, updateBookState } from "./store";
 import { imageMessage } from "./tutor/prompt";
-import { isObject, parseAnchor, parseAttachmentIds, shortText } from "./validate";
+import { isObject, MAX_MESSAGE, parseAnchor, parseAttachmentIds, shortText } from "./validate";
 
 /** What a chat request asks for, already validated. A new thread arrives built, with the reader's first message. */
 export type TurnRequest =
   | { kind: "new"; thread: Thread }
   | { kind: "reply"; threadId: string; message: ChatMessage }
   | { kind: "retry"; threadId: string };
-
-const MAX_MESSAGE = 8_000;
 
 /** The images a message names, each one stored for this book. */
 const readAttachments = async (value: unknown, bookId: BookId, dataDir: string): Promise<ImageAttachment[] | string> => {

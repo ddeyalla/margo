@@ -13,6 +13,8 @@ import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
 
 const RECENT_LIMIT = 4;
 
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
 async function Library() {
   await connection();
   let books;
@@ -42,22 +44,30 @@ async function Library() {
 
   const entries = await Promise.all(
     books.map(async (book) => {
-      const [state, updatedAt] = await Promise.all([readBookState(book.id), bookStateUpdatedAt(book.id)]);
+      /* One unreadable state file shows that book from its file name, without progress, rather than failing the whole library. */
+      const [state, updatedAt] = await Promise.all([
+        readBookState(book.id).catch(() => null),
+        bookStateUpdatedAt(book.id),
+      ]);
       const shelfBook: ShelfBook = {
         id: book.id,
         format: book.format,
-        title: state.meta?.title || book.fileTitle,
-        author: state.meta?.author ?? book.fileAuthor,
+        title: state?.meta?.title || book.fileTitle,
+        author: state?.meta?.author ?? book.fileAuthor,
         sizeBytes: book.sizeBytes,
-        progress: state.position?.fraction ?? null,
+        progress: state?.position?.fraction ?? null,
         cover: `/api/books/${book.id}/cover?v=${Date.parse(book.modifiedAt)}`,
       };
-      return { folder: book.folder, shelfBook, readAt: state.position ? updatedAt : null };
+      return { folder: book.folder, shelfBook, readAt: state?.position ? updatedAt : null };
     }),
   );
 
   const shelves = new Map<string, ShelfBook[]>();
-  for (const { folder, shelfBook } of entries) shelves.set(folder, [...(shelves.get(folder) ?? []), shelfBook]);
+  for (const { folder, shelfBook } of entries) {
+    const shelf = shelves.get(folder);
+    if (shelf) shelf.push(shelfBook);
+    else shelves.set(folder, [shelfBook]);
+  }
   const sorted: Shelf[] = [...shelves.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([folder, list]) => ({ folder, books: list.sort((a, b) => a.title.localeCompare(b.title)) }));
@@ -70,7 +80,7 @@ async function Library() {
   return (
     <>
       <Heading folders={foldersControl()}>
-        {books.length} books in {shelves.size} folders
+        {plural(books.length, "book")} in {plural(shelves.size, "folder")}
       </Heading>
       <BookList shelves={sorted} recent={recent} />
     </>

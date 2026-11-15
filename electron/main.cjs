@@ -140,12 +140,12 @@ const lastLogLines = (count) => {
   }
 };
 
-const startServer = async (serverDir) => {
+const startServer = (serverDir, shellPath) => {
   fs.mkdirSync(dataDir, { recursive: true });
   const env = {
     ...process.env,
     ...readEnvFile(),
-    PATH: await resolvePath(),
+    PATH: shellPath,
     ELECTRON_RUN_AS_NODE: "1",
     PORT: String(PORT),
     HOSTNAME: HOST,
@@ -325,7 +325,7 @@ const buildMenu = () => {
         ],
       },
       { role: "editMenu" },
-      { role: "viewMenu" }, // reload, developer tools, zoom, full screen
+      { role: "viewMenu" },
       { role: "windowMenu" },
     ]),
   );
@@ -341,6 +341,8 @@ const fail = async (title, detail) => {
 };
 
 const launch = async () => {
+  // The login shell can take seconds to answer, so it runs while the port is probed.
+  const shellPath = resolvePath();
   buildMenu();
   allowMicrophoneForOurPages();
   ipcMain.handle("rigg:pick-folder", async (event) => {
@@ -367,7 +369,7 @@ const launch = async () => {
     if (!serverDir) {
       return fail("No server to start", "There is no built server. Run `npm run app:server` in the project folder, then `npm run app`.");
     }
-    await startServer(serverDir);
+    startServer(serverDir, await shellPath);
     try {
       await waitForServer();
     } catch (error) {

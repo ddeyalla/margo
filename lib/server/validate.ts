@@ -5,6 +5,11 @@ import type { Anchor, BookFormat, Position } from "@/lib/shared/types";
 
 type Json = Record<string, unknown>;
 
+/** The longest passage a highlight, card or tutor question may quote. */
+export const MAX_QUOTE = 12_000;
+/** The longest message the reader may send the tutor. */
+export const MAX_MESSAGE = 8_000;
+
 export const isObject = (value: unknown): value is Json =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 

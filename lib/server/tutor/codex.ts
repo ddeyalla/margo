@@ -99,10 +99,9 @@ export const codex: Provider = {
   id: "codex",
   label: "Codex",
   async probe() {
-    const version = await runQuiet("codex", ["--version"]);
+    const [version, login] = await Promise.all([runQuiet("codex", ["--version"]), runQuiet("codex", ["login", "status"])]);
     if (!version) return { status: "missing", detail: "Install the Codex CLI to use it here.", version: null };
     const label = version.stdout.trim().split(/\s/).at(-1) || null;
-    const login = await runQuiet("codex", ["login", "status"]);
     /* `codex login status` reports on stderr. */
     return login?.code === 0 && /logged in/i.test(login.stdout + login.stderr)
       ? { status: "ready", detail: "Signed in", version: label }

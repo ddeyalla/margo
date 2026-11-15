@@ -8,7 +8,7 @@
   "author": "rigg",
   "scripts": {
     "predev": "node scripts/copy-pdfjs-assets.mjs",
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "prebuild": "node scripts/copy-pdfjs-assets.mjs",
     "build": "next build",
     "start": "next start",

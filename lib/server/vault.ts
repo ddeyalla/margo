@@ -97,10 +97,11 @@ export const renderVault = (book: VaultBook, { highlights, notes, cardSets = [] 
 
   const lines = [
     "---",
+    /* First, so fileBookId finds it however long the title and author are. */
+    `bookId: ${book.id}`,
     `title: ${yaml(book.title)}`,
     `author: ${yaml(book.author ?? "")}`,
     `format: ${book.format}`,
-    `bookId: ${book.id}`,
     ...(tags.size ? ["tags:", ...[...tags.values()].map((tag) => `  - ${yaml(tag)}`)] : ["tags: []"]),
     `generated: ${yaml(GENERATED)}`,
     "---",
@@ -116,12 +117,15 @@ export const renderVault = (book: VaultBook, { highlights, notes, cardSets = [] 
   return `${lines.join("\n")}\n`;
 };
 
+/** Older files put `bookId` after the title and author, so enough is read to reach it past a long pair. */
+const HEAD_BYTES = 8192;
+
 /** The `bookId` in a note file's frontmatter, or null when the file is missing, is someone else's note or has none. */
 const fileBookId = async (file: string): Promise<string | null> => {
   let handle;
   try {
     handle = await open(file, "r");
-    const { buffer, bytesRead } = await handle.read(Buffer.alloc(2048), 0, 2048, 0);
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(HEAD_BYTES), 0, HEAD_BYTES, 0);
     const head = buffer.toString("utf8", 0, bytesRead);
     if (!/^---\r?\n/.test(head)) return null;
     const end = head.indexOf("\n---", 3);

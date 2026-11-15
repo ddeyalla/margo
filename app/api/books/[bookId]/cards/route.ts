@@ -6,7 +6,7 @@ import { readSettings } from "@/lib/server/settings";
 import { readBookState, updateBookState } from "@/lib/server/store";
 import { CODEX_DEFAULT_MODEL } from "@/lib/server/tutor/codex";
 import { PROVIDERS, isProviderId } from "@/lib/server/tutor/providers";
-import { isObject, parseAnchor, shortText } from "@/lib/server/validate";
+import { isObject, MAX_QUOTE, parseAnchor, shortText } from "@/lib/server/validate";
 import { mirrorVault } from "@/lib/server/vault";
 import { addCards, changeCards, type CardChange } from "@/lib/shared/cards";
 import { sameAnchor } from "@/lib/shared/annotations";
@@ -16,7 +16,6 @@ import { isRating, type ProviderId } from "@/lib/shared/types";
 type Context = RouteContext<"/api/books/[bookId]/cards">;
 
 const DEFAULT_MODELS: Partial<Record<ProviderId, string>> = { codex: CODEX_DEFAULT_MODEL };
-const MAX_QUOTE = 12_000;
 const MAX_FIELD = 2_000;
 
 const dirs = () => {

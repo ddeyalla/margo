@@ -87,10 +87,9 @@ export const claude: Provider = {
   id: "claude",
   label: "Claude Code",
   async probe() {
-    const version = await runQuiet("claude", ["--version"]);
+    const [version, auth] = await Promise.all([runQuiet("claude", ["--version"]), runQuiet("claude", ["auth", "status"])]);
     if (!version) return { status: "missing", detail: "Install Claude Code to use it here.", version: null };
     const label = version.stdout.trim().split(/\s/)[0] || null;
-    const auth = await runQuiet("claude", ["auth", "status"]);
     let loggedIn = false;
     try {
       loggedIn = JSON.parse(auth?.stdout ?? "").loggedIn === true;

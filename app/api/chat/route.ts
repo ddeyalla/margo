@@ -34,7 +34,6 @@ export async function POST(request: Request) {
   const label = { title: state.meta?.title ?? found.book.fileTitle, author: state.meta?.author ?? found.book.fileAuthor };
   const model = settings.models[providerId] ?? DEFAULT_MODELS[providerId] ?? null;
 
-  /* Waits for this thread's previous turn to finish saving, then saves the reader's message. */
   const turn = await openTurn(found.book.id, parsed, providerId);
   if (typeof turn === "string") return badRequest(turn);
   const { thread } = turn;

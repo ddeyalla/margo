@@ -1,13 +1,13 @@
 import { connection } from "next/server";
-import { MAX_PCM_BYTES, parsePcm, transcribe } from "@/lib/server/speech";
+import { readCapped } from "@/lib/server/body";
+import { MAX_PCM_BYTES, MAX_SECONDS, parsePcm, transcribe } from "@/lib/server/speech";
 
 /** Body: raw little-endian 32-bit float samples, mono, 16 kHz, at most 90 seconds. Answers { text }. */
 export async function POST(request: Request) {
   await connection();
-  if (Number(request.headers.get("content-length")) > MAX_PCM_BYTES) {
-    return Response.json({ error: "Recordings are limited to 90 seconds." }, { status: 413 });
-  }
-  const parsed = parsePcm(await request.arrayBuffer());
+  const body = await readCapped(request, MAX_PCM_BYTES);
+  if (!body) return Response.json({ error: `Recordings are limited to ${MAX_SECONDS} seconds.` }, { status: 413 });
+  const parsed = parsePcm(body);
   if (!parsed.ok) return Response.json({ error: parsed.error }, { status: parsed.status });
   try {
     const started = Date.now();

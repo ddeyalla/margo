@@ -148,6 +148,14 @@ describe("library lookup", () => {
     expect(await findBook(bookIdOf("Fiction/Missing.epub"), root)).toBeNull();
   });
 
+  it("finds a book added after the last scan", async () => {
+    const shelf = await mkdtemp(path.join(tmpdir(), "rigg-learn-library-"));
+    await writeFile(path.join(shelf, "Dune.epub"), "epub");
+    expect(await findBook(bookIdOf("Dune.epub"), shelf)).not.toBeNull();
+    await writeFile(path.join(shelf, "Emma.epub"), "epub");
+    expect((await findBook(bookIdOf("Emma.epub"), shelf))?.book.fileTitle).toBe("Emma");
+  });
+
   it("rejects a path or a malformed id", async () => {
     expect(await findBook("../secret.pdf", root)).toBeNull();
     expect(await findBook(outside, root)).toBeNull();

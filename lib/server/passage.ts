@@ -2,10 +2,8 @@ import { randomUUID } from "node:crypto";
 import { trimAfter, trimBefore } from "@/lib/shared/context";
 import type { LibraryBook, ProviderId, Thread, TutorAction, TypedAction } from "@/lib/shared/types";
 import { ACTION_MESSAGES } from "./tutor/prompt";
-import { isObject, parseAnchor, shortText } from "./validate";
+import { isObject, MAX_MESSAGE, MAX_QUOTE, parseAnchor, shortText } from "./validate";
 
-const MAX_QUOTE = 12_000;
-const MAX_MESSAGE = 8_000;
 /** A recap reads more of what came before the reader's place than a question about a passage does. */
 const RECAP_BEFORE = 6_000;
 const ACTIONS: TutorAction[] = ["explain", "deeper", "work", "ask", "explainBack", "recap"];
