@@ -333,7 +333,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
         </ResizablePanel>
         <ResizableHandle
           aria-label="Resize the tutor panel"
-          className="group relative z-10 w-2 shrink-0 outline-none before:absolute before:inset-y-3 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors before:duration-[var(--duration-fast)] before:content-[''] focus-visible:before:bg-fog data-[dragging]:before:bg-line-strong data-[hovering]:before:bg-line-strong"
+          className="group relative z-10 w-2 shrink-0 outline-none before:absolute before:left-1/2 before:top-1/2 before:h-10 before:w-[3px] before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors before:duration-[var(--duration-fast)] before:content-[''] focus-visible:before:bg-fog data-[dragging]:before:bg-fog data-[hovering]:before:bg-line-strong"
         />
         <ResizablePanel
           id={PANEL_ID}

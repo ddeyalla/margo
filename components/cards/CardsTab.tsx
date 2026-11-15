@@ -94,10 +94,14 @@ export function CardsTab({ cards, onReview, onJump }: { cards: CardsApi; onRevie
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 px-3 pb-2">
-        <Button variant="primary" onClick={onReview} disabled={!ready}>
-          <Play />
-          {ready ? `Review ${ready}` : "Nothing to review"}
-        </Button>
+        {ready ? (
+          <Button variant="primary" onClick={onReview}>
+            <Play />
+            Review {ready}
+          </Button>
+        ) : (
+          <span className="text-label font-medium text-fog">Nothing to review</span>
+        )}
         <span className="text-[11px] text-dim tabular-nums">
           {total} {total === 1 ? "card" : "cards"} on {cards.sets.length} {cards.sets.length === 1 ? "passage" : "passages"}
         </span>

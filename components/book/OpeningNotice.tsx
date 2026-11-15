@@ -80,7 +80,7 @@ export function OpeningNotice({
         </IconButton>
       </div>
       {resume.glimpse ? (
-        <p className="mt-2 line-clamp-4 font-reading text-[13px] leading-relaxed text-fog/60 [overflow-wrap:anywhere]">{resume.glimpse}</p>
+        <p className="mt-2 line-clamp-4 font-reading text-[13px] leading-relaxed text-dim [overflow-wrap:anywhere]">{resume.glimpse}</p>
       ) : null}
       {resume.marks.length ? (
         <ul className="mt-2.5 flex flex-col gap-1">

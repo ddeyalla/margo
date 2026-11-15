@@ -1,8 +1,9 @@
 # Roadmap
 
 What to build next, in order. Ideas come from
-[learnharness](https://github.com/amosblomqvist/learnharness.git) (AGPL-3.0), so every
-item is rewritten here, never copied.
+[learnharness](https://github.com/amosblomqvist/learnharness.git) (AGPL-3.0) and
+[anything](https://github.com/ai4next/anything) (GPL-3.0), so every item is rewritten
+here, never copied. This repo is MIT; pasting their code in would relicense it.
 
 Effort: `S` hours · `M` a day or two · `L` a week or more.
 
@@ -12,8 +13,15 @@ Effort: `S` hours · `M` a day or two · `L` a week or more.
 - **The highlight owns the schedule, not the card.** Three cards on one highlight are one
   review, not three.
 - **Cards outlive the highlight.** Deleting a highlight keeps its cards and their schedule.
-- **Cards and questioning are opt-in.** Nothing happens until the reader asks.
-- **Every questioning mode has a way out.** "Just tell me" is always one click away.
+- **Cards and tutor questioning are opt-in.** Nothing happens until the reader asks.
+  The exception is a chapter quiz inside a Course (Phase 17), which is part of finishing
+  the chapter.
+- **Every questioning mode has a way out.** "Just tell me" is always one click away. A
+  chapter quiz can be retaken without limit, and a missed question shows its answer.
+- **Mastery is computed from evidence, never stored as a number.** Coverage and retention
+  are read from reading position, card schedules and quiz results, so they can't be
+  inflated and they fall when you stop reviewing.
+- **Quizzes are written ahead, not on the spot.** Taking a quiz never waits on a model.
 
 ## Phase 1 — Tighter tutor answers · S
 
@@ -142,14 +150,261 @@ you ask.
 - [ ] The browser's speech voices read the book aloud, highlighting each word, with a
       speed control. EPUB first.
 
+## Phase 12 — Light and dark audit · S
+
+Fix the theme before new UI lands on it. Colours are tokens in `app/globals.css`, so fix
+at the token, not per component.
+
+- [x] **Dark is grey, not black.** Retuned every dark surface to a neutral ramp with no
+      hue: ink `#1e1e1e`, panel `#232323`, raised `#292929`, hover `#313131`, lines
+      `#2f2f2f` and `#3e3e3e`. The old `#19191b`–`#323236` range was both darker and
+      faintly blue, which read as a hole on a long page rather than a surface. Text
+      follows: paper `#f2f2f2`, fog `#b9b9b9`, dim `#9e9e9e`, prose `#dcdcdc`. The window
+      colour in `electron/main.cjs` moved with it, so nothing flashes on launch.
+- [ ] **Theme files, the way learnharness does them.** One JSON per theme: `name`, `mode`
+      (`dark` or `light`, which drives `color-scheme`, the native window and the reading
+      page), and the token values. Export the active theme, import one back, and let a
+      single colour be overridden without forking the palette. That turns "is the light
+      theme right?" into a file you can edit and diff, instead of a hunt through
+      components. Their `docs/themes.md` is the reference; the code is AGPL, so this is a
+      format to copy, not source.
+- [ ] Screenshot every surface in both themes: library, reader (EPUB and PDF), chat,
+      highlights, notes, cards, review sheet, TOC, dialogs, settings.
+- [x] Check text and control contrast against the tokens, in both themes. `dim`, `page-dim`,
+      light `warn` and `live` failed; retuned to pass 4.5:1 (3:1 for icons). Dark now
+      passes with margin on every surface, including `panel-hover`, the worst case.
+- [ ] Replace hardcoded colours with tokens: cover fallback in `BookList.tsx`, TOC
+      backdrop, injected styles in `EpubReader.tsx` (`img { background-color: #ececef }`
+      is a light-theme value baked into the dark reader), the `::selection` wash.
+- [ ] Make the app theme and the reading page theme (`data-reading-theme`) agree where
+      they should, and differ only on purpose.
+
+Done when no surface has unreadable text or a leftover colour in either theme.
+
+## Phase 13 — Long threads, and what they cost · M
+
+The failure this prevents is already reachable: `lib/server/tutor/api.ts` sends the whole
+thread on every request (`apiMessages`, `lib/server/tutor/api.ts:9`) and the only limit in
+the file is `max_tokens: 64000` (`:33`). A long thread either overflows the window or
+arrives as a bill you didn't see coming, and nothing in the UI says which.
+
+- [ ] Record token usage per turn, per thread, from whatever the provider reports. Never
+      estimate in place of a real number; show "—" when the provider sent none.
+- [ ] A quiet row under the composer: context used out of the model's window, and the
+      session's estimated cost. Click for per-turn detail.
+- [ ] **Compaction.** Past a threshold, replace the oldest turns with a summary and keep
+      the rest. The full history stays on disk and stays readable — only what goes to the
+      model is cut. Summaries keep the position, the open threads and the reader's own
+      words, not just the gist.
+- [ ] A line above the composer when the reader types while a turn is running: queued,
+      not dropped, and sent when the current turn settles. Today `useTutor.ts:84` just
+      refuses the second request.
+
+Done when a thread of 200 turns still answers, and the cost of asking is on screen.
+
+## Phase 14 — Confidence and thinking · S
+
+The cheapest real evidence about whether knowledge exists, and the thing that separates
+"lucky" from "fragile" from "confidently wrong". learnharness puts a 0–100 rail on every
+answer and a free-text thinking field on every instrument; `shared/25-confidence.md` there
+is the argument, and it holds: *wrong + high confidence is the strongest signal you can
+receive — a committed misconception.*
+
+- [ ] Every card rating and quiz answer stores two extra things: a confidence of 0–100,
+      and what the reader was thinking when they answered. Both optional, never required.
+- [ ] One step each: a rail, and one line of text. Skipping is a first-class answer.
+- [ ] Retention (Phase 18) reads them: a card answered right at 30 % is not the same as one
+      answered right at 100 %, and a card answered wrong at 100 % is worth resurfacing
+      sooner.
+- [ ] Card generation (Phase 2's prompt) reads them: a cue that keeps drawing a confident
+      wrong answer is a bad cue, not a bad reader.
+
+Done when a review session can tell a lucky guess from a held fact in one glance.
+
+## Phase 15 — Citations in chat · S
+
+A tutor answer that rests on a passage should be able to point at it, and a reader should
+be able to hand the tutor a quote without retyping it.
+
+- [ ] Quote a highlight into the composer as one atomic chip, not pasted text that can be
+      half-deleted. The anchor travels with it (`Anchor`, `lib/shared/types.ts:18`), so the
+      tutor sees the passage, not a copy of it.
+- [ ] Every claim the tutor makes from a quoted passage carries a link back to it. Hit the
+      link, land on the paragraph.
+- [ ] Citations survive the thread being reread later; they resolve from the anchor, so a
+      moved or re-imported book either finds the passage or says it can't.
+- [ ] "Save to notes" on a citation, matching Phase 22.
+
+Done when no answer needs the phrase "as you can see above".
+
+## Phase 16 — Courses and the roadmap chat · L
+
+Start from home: say what you want to learn and get a plan.
+
+- [ ] A `Course`: name, goal, level, weekly time, ordered units. Each unit lists concepts
+      and the books or chapters that cover them.
+- [ ] Home chat: the tutor asks about level, goal and time per week, then returns a
+      structured roadmap (units, ordered book list with the chapters that matter, rough
+      timeline). Edit it in the same chat, then approve to create the Course.
+- [ ] Match each listed book against the library. Present ones link to the reader;
+      missing ones show as "to find" with title, author and edition.
+- [ ] Course page: units, books and progress.
+
+## Phase 17 — Chapter quizzes · M
+
+- [ ] A short quiz (5–8 questions, recall and "explain why") at the end of each chapter of
+      a book in a Course. Passing it marks the chapter done and unlocks the next one.
+- [ ] Questions are written when the chapter is finished reading, in one batch, and stored.
+- [ ] Retake without limit. A missed question shows its answer and where in the chapter.
+- [ ] Books outside a Course are never gated.
+- [ ] Results feed retention (Phase 18).
+
+## Phase 18 — Mastery and daily learning · M
+
+- [ ] **Coverage:** how much of the Course you've read and passed.
+- [ ] **Retention:** predicted recall over the Course's cards and quiz questions, from the
+      FSRS data already stored, weighted by the confidence recorded in Phase 14. Falls when
+      you stop reviewing.
+- [ ] Show both per Course ("62 % covered · 78 % retained"), never one blended score.
+- [ ] **Learning time:** minutes spent reading, reviewing and quizzing each day, and
+      whether you learned today. Needs reading time recorded, which isn't kept today.
+- [ ] A week view: days learned, minutes per day, per Course.
+
+## Phase 19 — Today and streaks · M
+
+- [ ] Home "Today" card: cards due, the next chapter quiz, minutes left in the current
+      book, one button that starts it.
+- [ ] Daily minimum (one review session or 15 minutes). Meeting it keeps the streak.
+- [ ] Streak freeze and a rest-day token, so one missed day doesn't erase weeks.
+
+## Phase 20 — Find it again · M
+
+Search is the biggest real gap: everything the app knows is reachable only by scrolling to it.
+Cheap first layer, and the expensive one only if the cheap one fails on real queries. Precedent
+for the chunking: `anything`'s segment-aware chunker, which keeps every chunk pointed at a place
+in the book. Reference, not code — that repo is GPL-3.0.
+
+- [ ] **BM25 over the whole library, before any embeddings.** Book text, highlights, notes and
+      cards in one index. No model, no download, no network. It answers exact terms and names,
+      which is most of what you search for in your own books.
+- [ ] **Chunk on the anchors we already have**, not on fixed windows: EPUB CFI
+      (`lib/shared/cfi.ts`), PDF page plus character range
+      (`Anchor` in `lib/shared/types.ts:18`). A result that can't jump to its place is a
+      truncated quote. Target ~300 tokens, 20 % overlap, as a starting point.
+- [ ] **Derived, never authored.** The index lives in `DATA_DIR`, keyed by book id, and rebuilt
+      from the book file when its fingerprint changes (`size`, `mtimeMs`, `ino`, `sha256` are
+      already tracked by the library index in `docs/plans/stable-book-ids.md`). Deleting it costs
+      a rebuild and nothing else.
+- [ ] **One box, opened by a key, over everything.** Results grouped by book then chapter, each
+      line showing the matching words in place, Enter jumps to the anchor and closes the panel.
+- [ ] **Vectors only behind a gate.** First measure the BM25 misses: 20 real queries with the
+      passage you wanted each to find. Add embeddings only for the ones keyword search can't
+      reach. Local model in the same shape as the speech model (Phase 9): downloaded once,
+      listed in a `models` folder, no key needed.
+- [ ] If vectors land: hybrid = BM25 + vector, merged by reciprocal rank fusion, which needs no
+      reranker. Say the *similarity*, higher is better, and test that ordering on five queries
+      before shipping. `anything` stores sqlite-vec's distance (lower is better) and then filters
+      `>= 0.3` and sorts descending, so it keeps its worst matches (`rag/search.ts:115`).
+- [ ] Wire the vector path at startup and prove it runs. `anything` exports a
+      `configureSearch()` that nothing ever calls, so its "semantic search" silently falls back
+      to BM25 on every query. Same trap: a test that catches the fallback, not just the result.
+- [ ] One copy of the vectors. A chunk's embedding goes in one place, not in the book's data and
+      a side database both.
+
+Done when a phrase you half-remember from any book, note or highlight is two keystrokes away and
+lands on the exact paragraph.
+
+## Phase 21 — Diagrams, math and code in chat · S
+
+The tutor gets text formats it can write well. Highest value for the effort, so it goes
+first of this group. `components/chat/Markdown.tsx` and `lib/server/tutor/prompt.ts`.
+
+- [ ] Render Mermaid fences (flowchart, sequence, state, mind map, timeline) as SVG in
+      chat, in strict mode.
+- [ ] The prompt says when a diagram is worth it. No raw SVG from the model.
+- [ ] A Mermaid block that doesn't parse goes back once with the error, like bad card
+      JSON. If it still fails, show the source as code.
+- [ ] KaTeX math and syntax-highlighted code blocks in the same renderer.
+- [ ] "Save to notes" on a diagram drops the Mermaid block into a note. Obsidian renders
+      it there.
+
+Check on 20 real questions first: how often the first Mermaid parses, and whether the
+tutor draws only when it helps.
+
+## Phase 22 — Notes editor · M
+
+Replace the textarea with a live-preview Markdown editor (CodeMirror 6): formatting shows
+inline, raw syntax shows on the line being edited. Not a clone of Obsidian.
+
+- [ ] Standalone notes are real `.md` files in the notes folder. The app edits them in
+      place and picks up changes made in Obsidian.
+- [ ] The app never overwrites a file that changed on disk since it loaded it. On a
+      conflict it keeps both.
+- [ ] Notes on a highlight stay in the app's data and keep mirroring to the vault. That
+      per-book file stays app-owned, with a "generated, don't edit" header.
+- [ ] `[[wikilinks]]`, a backlinks list, `/` commands, `#tags`, checklists, pasted images.
+- [ ] Highlight quotes embed by block id. Code blocks with highlighting, KaTeX math.
+
+## Phase 23 — Whiteboard · L
+
+A free whiteboard per chapter that you and the tutor both draw on. Excalidraw (MIT);
+tldraw is out because its SDK needs a production licence.
+
+- [ ] One `.excalidraw` file per chapter, in the notes folder so Obsidian's Excalidraw
+      plugin opens it.
+- [ ] Review with the tutor: send the scene as compact JSON (text, positions, arrow
+      connections) plus a PNG. The tutor reports missing concepts, wrong links and one
+      "why does A lead to B?" question.
+- [ ] **Draw it back:** a blank board, the book closed. The tutor points at the first
+      wrong link and gives no grade.
+- [ ] The tutor edits the board by returning JSON operations (add, update, delete),
+      validated by the app. Bad JSON goes back once with the error.
+- [ ] **Agent edits are suggestions:** shown in their own colour, accepted or rejected one
+      by one, so the tutor never overwrites your drawing. Undo covers the rest.
+- [ ] Mermaid from chat converts to an editable board.
+- [ ] Results feed retention (Phase 18).
+
+## Phase 24 — Coding tasks · L
+
+Books use different languages, so the app writes no scaffolds or tests. T3 Code's agent
+sets up the project. The design work is making that agent teach, not write the code for
+you.
+
+- [ ] **Code it** on a selected code listing creates
+      `code-deyalla/learn/<book>/<nn-topic>/`, with `git init` at the book level.
+- [ ] `TASK.md`: book, chapter, the code listing, a goal, what "done" means.
+- [ ] `AGENTS.md` and `CLAUDE.md`: set up the environment, hints before answers, never
+      write the full solution until asked. T3 Code threads read them on their own.
+- [ ] Open the folder in T3 Code and copy a one-line start prompt ("Read TASK.md, set up
+      the project, and start").
+- [ ] **Spike first (5 minutes):** `open -a "T3 Code (Beta)" <folder>`. T3 Code registers
+      `t3code://` but only `pair` and `app` routes were found, so one-click open and start
+      is unproven. Fallback: open the app, copy the prompt, reveal the folder, add it as a
+      project once.
+- [ ] "Mark done" in the app plus an optional reflection note saved to the notes. It
+      counts as evidence for mastery (Phase 18). No hint counters.
+
+## Open: where the books come from
+
+To discuss before building. The roadmap names the books; getting them is a separate
+question. Current thinking: list the exact title, author and edition still needed, add
+legal lookup links (Open Library and Internet Archive lending, OpenStax, Project
+Gutenberg, publisher pages, the local library), and pick up whatever lands in the books
+folder. Not building any automated downloading from shadow libraries.
+
 ## Not building
 
+- **LangGraph, or an agent framework.** `anything` pulls five `@langchain/*` packages, a
+  vendor patch on `@langchain/core` and a `ChatDeepSeek` subclass that re-injects
+  `reasoning_content` — all to run one ReAct loop it could write in a hundred lines. This app
+  already has its own tutor loop; a framework here is more surface for less.
 - Decks: the book is the deck.
 - Knowledge graph, notes import, plugin system, worker batches: built for their lesson
   runtime, not a reader.
 - More tutor providers: three is enough.
-- Practice mode, stats, archive, card generation from files.
-- Confidence ratings, hint counters, calibration panels, per-book mode settings.
+- Archive, card generation from files, a practice mode apart from chapter quizzes.
+- Hint counters, calibration panels, per-book mode settings. (A confidence number itself is
+  in Phase 14; the dashboards around it are not.)
 - Other questioning modes (find the flaw, counter-examples, argument maps, chapter
   debriefs, cold opens). Revisit only if Phase 6 gets used.
 - Model-graded free-text review.

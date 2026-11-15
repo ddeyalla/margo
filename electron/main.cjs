@@ -261,7 +261,7 @@ const createWindow = () => {
     minWidth: 700,
     minHeight: 480,
     // The window colour in the theme macOS is using, so nothing flashes before the page paints.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#19191b" : "#ebebed",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#ebebed",
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
