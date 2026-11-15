@@ -97,6 +97,14 @@
   color-scheme: dark;
   --duration-fast: 120ms;
   --duration-base: 160ms;
+  /* Something the reader opened comes in at enter and leaves at exit: by then they have moved on. */
+  --duration-enter: 150ms;
+  --duration-exit: 100ms;
+  --duration-slide: 200ms;
+  --stagger-step: 30ms;
+  /* Read by the EPUB reader too, which plays the glow in foliate's shadow DOM where these classes can't reach. */
+  --glow-duration: 1200ms;
+  --glow-delay: 400ms;
   --elevation-float: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 32px -12px rgba(0, 0, 0, 0.7);
   --elevation-dialog: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 32px 96px -24px rgba(0, 0, 0, 0.8);
   --elevation-canvas: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -232,18 +240,24 @@
   }
 }
 
+/* Reduced motion keeps fades and colour changes, which help follow what changed, and drops movement and
+   scale. Each utility below that moves something carries its own reduced form. Spinners stop, as a turning
+   arc is movement for its own sake. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    transition-duration: 0ms !important;
-    animation-duration: 0ms !important;
+  .animate-spin {
+    animation: none;
   }
 }
 
 @utility press {
   &:active:not(:disabled) {
     scale: 0.97;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &:active:not(:disabled) {
+      scale: none;
+    }
   }
 }
 
@@ -256,6 +270,20 @@
 
 @utility animate-rise {
   animation: rise-in var(--duration-base) var(--ease-out) both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-name: fade-in;
+  }
+}
+
+/* The first rows of a list arriving together, one step apart. The row sets --stagger-index. */
+@utility animate-stagger {
+  animation: rise-in var(--duration-base) var(--ease-out) both;
+  animation-delay: calc(var(--stagger-index, 0) * var(--stagger-step));
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-name: fade-in;
+  }
 }
 
 @keyframes drawer-in {
@@ -267,6 +295,10 @@
 
 @utility animate-drawer {
   animation: drawer-in var(--duration-base) var(--ease-out) both;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation-name: fade-in;
+  }
 }
 
 @keyframes fade-in {
@@ -279,6 +311,17 @@
   animation: fade-in var(--duration-base) var(--ease-out) both;
 }
 
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Something on its way out after the reader dismissed it; quicker than it came in. */
+@utility animate-leave {
+  animation: fade-out var(--duration-fast) var(--ease-out) both;
+}
+
 /* A brief warm glow that fades, marking the item the reader just jumped to. */
 @keyframes glow-out {
   to {
@@ -287,7 +330,70 @@
 }
 
 @utility animate-glow {
-  animation: glow-out 1200ms var(--ease-out) 400ms both;
+  animation: glow-out var(--glow-duration) var(--ease-out) var(--glow-delay) both;
+}
+
+/* A popover or menu growing out of its trigger. The ui-sdk primitive sets the origin from where it landed and
+   keeps the content mounted until the exit finishes. */
+@utility pop {
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity var(--duration-enter) var(--ease-out),
+    scale var(--duration-enter) var(--ease-out);
+
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+    scale: 0.97;
+  }
+
+  &[data-ending-style] {
+    transition-duration: var(--duration-exit);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &[data-starting-style],
+    &[data-ending-style] {
+      scale: none;
+    }
+  }
+}
+
+/* The selected pill of a segmented control or tab bar, placed over the selected option by usePill. It slides
+   only for a choice made with the pointer (data-slide); a first placement, a keyboard choice or a resize lands
+   at once. Width moves with it because the options differ in width, and it is one small element. */
+@utility sliding-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--pill-width);
+  height: var(--pill-height);
+  transform: translate(var(--pill-x), var(--pill-y));
+  pointer-events: none;
+
+  &[data-slide] {
+    transition:
+      transform var(--duration-slide) var(--ease-in-out),
+      width var(--duration-slide) var(--ease-in-out);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &[data-slide] {
+      transition: none;
+    }
+  }
+}
+
+/* A streaming answer's blocks fade in when they arrive already finished. Blocks still being written carry
+   data-live, and keep their node when they settle, so text the reader has already seen never fades again. */
+.settle-fade > :not([data-live]) {
+  transition: opacity var(--duration-enter) var(--ease-out);
+}
+
+@starting-style {
+  .settle-fade > :not([data-live]) {
+    opacity: 0;
+  }
 }
 
 /* PDF pages: a canvas with pdf.js's selectable text layer on top. The text
@@ -362,6 +468,14 @@
   position: absolute;
   background: var(--color-highlight);
   border-radius: 2px;
+}
+
+/* A second coat of tint on a highlight the reader just made, which glows off to the normal tint. */
+.pdf-mark > .pdf-mark-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-highlight);
 }
 
 .pdf-page .textLayer {

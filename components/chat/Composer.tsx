@@ -149,8 +149,9 @@ export function Composer({
             disabled={!sending && !canSend}
             onClick={sending ? onStop : send}
             className={clsx(
-              "press grid size-7 shrink-0 place-items-center rounded-full transition-colors duration-[var(--duration-fast)]",
-              sending || canSend ? "bg-accent text-on-accent hover:bg-accent/90" : "bg-tint text-dim",
+              /* Growing to full size marks the moment there is something to send, beyond the change of colour. */
+              "press grid size-7 shrink-0 place-items-center rounded-full transition-[color,background-color,opacity,scale] duration-[var(--duration-fast)] ease-out",
+              sending || canSend ? "bg-accent text-on-accent hover:bg-accent/90" : "bg-tint text-dim opacity-60 motion-safe:scale-90",
             )}
           >
             {sending ? <Square size={10} fill="currentColor" aria-hidden /> : <ArrowUp size={15} strokeWidth={2.25} aria-hidden />}

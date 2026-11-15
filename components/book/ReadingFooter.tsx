@@ -83,7 +83,7 @@ export function ReadingFooter({ spot, onSeek }: { spot: PlaceStore; onSeek(fract
         onKeyDown={onKeyDown}
         className="group absolute inset-x-0 -top-1.5 z-20 h-3 cursor-pointer touch-none outline-none"
       >
-        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-page-dim/20 transition-[height] duration-[var(--duration-fast)] ease-out group-hover:h-1 group-focus-visible:h-1 group-data-[dragging]:h-1">
+        <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-page-dim/20 transition-[height] duration-[var(--duration-fast)] ease-out motion-reduce:transition-none group-hover:h-1 group-focus-visible:h-1 group-data-[dragging]:h-1">
           <div className="h-full bg-page-dim" style={{ width: `${shown * 100}%` }} />
         </div>
       </div>

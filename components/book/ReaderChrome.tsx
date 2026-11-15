@@ -20,7 +20,7 @@ export function PageTurn({ direction, onTurn }: { direction: 1 | -1; onTurn(dire
         direction === 1 ? "right-0" : "left-0",
       )}
     >
-      <Icon className="size-5 transition-transform duration-[var(--duration-fast)] group-active:scale-90" />
+      <Icon className="size-5 transition-transform duration-[var(--duration-fast)] motion-safe:group-active:scale-90" />
     </button>
   );
 }

@@ -1,16 +1,21 @@
-import { memo, type ElementType, type JSX } from "react";
+import { createContext, memo, useContext, type ElementType, type JSX } from "react";
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { settledLength } from "./settled";
+import { settledStarts } from "./settled";
 
 type Tag = keyof JSX.IntrinsicElements;
+
+/* Whether these blocks are the part of a streaming answer still being written. Marked in the DOM rather than by
+   a different set of components, so a block keeps its node when it settles and doesn't fade in a second time. */
+const Live = createContext(false);
 
 /** A Markdown element rendered as `tag` with fixed classes. The syntax-tree `node` prop never reaches the DOM. */
 const styled = <T extends Tag>(tag: T, className: string, extra?: JSX.IntrinsicElements[T]) =>
   function Styled({ node, ...props }: JSX.IntrinsicElements[T] & ExtraProps) {
     void node;
+    const live = useContext(Live);
     const Element = tag as ElementType;
-    return <Element {...extra} {...props} className={className} />;
+    return <Element {...extra} {...props} data-live={live ? "" : undefined} className={className} />;
   };
 
 /* Raw HTML in a reply stays text (no rehype-raw), and react-markdown drops unsafe link protocols. */
@@ -59,13 +64,23 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
   );
 });
 
-/** An answer still arriving. Its finished blocks are parsed once; only the block being written is parsed again per update. */
+/**
+ * An answer still arriving. Each finished block group is parsed once, keyed by where it starts; only the part
+ * being written is parsed again per update. The part being written is keyed by its own start, so when it
+ * settles it keeps its nodes, and only blocks that arrive already finished fade in.
+ */
 export function StreamingMarkdown({ text }: { text: string }) {
-  const split = settledLength(text);
+  const starts = [0, ...settledStarts(text)];
   return (
-    <div className={boxClass}>
-      {split > 0 ? <Blocks text={text.slice(0, split)} /> : null}
-      <Blocks text={text.slice(split)} />
+    <div className={`${boxClass} settle-fade`}>
+      {starts.map((start, i) => {
+        const tail = i === starts.length - 1;
+        return (
+          <Live key={start} value={tail}>
+            <Blocks text={text.slice(start, tail ? undefined : starts[i + 1])} />
+          </Live>
+        );
+      })}
     </div>
   );
 }

@@ -55,7 +55,7 @@ export function ReadingSettings({
         collisionPadding={12}
         initialFocus="[data-font-search]"
         aria-label="Reading settings"
-        className="z-[60] flex w-[300px] max-w-[calc(100vw-24px)] flex-col gap-3 rounded-lg bg-panel-raised p-3 shadow-float outline-none"
+        className="pop z-[60] flex w-[300px] max-w-[calc(100vw-24px)] flex-col gap-3 rounded-lg bg-panel-raised p-3 shadow-float outline-none"
       >
         <Setting label="Page">
           <Segmented label="Page colours" options={THEMES} value={theme} onChange={onTheme} />

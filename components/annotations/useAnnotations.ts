@@ -35,12 +35,16 @@ export function useAnnotations(bookId: BookId, initial: Annotations, reader: Ref
   const shown = useMemo(() => pending.reduce((state, p) => applyChange(state, p.change, p.at), saved), [saved, pending]);
 
   const drawn = useRef(new Set<string>());
+  /* Highlights the reader made in this window and that haven't been drawn yet; the book confirms each with a glow. */
+  const made = useRef(new Set<string>());
   useEffect(() => {
     const handle = reader.current;
     if (!handle) return;
     const next = new Set(shown.highlights.map((h) => h.id));
     for (const id of drawn.current) if (!next.has(id)) handle.removeHighlight(id);
-    for (const highlight of shown.highlights) if (!drawn.current.has(highlight.id)) handle.showHighlight(highlight);
+    for (const highlight of shown.highlights) {
+      if (!drawn.current.has(highlight.id)) handle.showHighlight(highlight, made.current.delete(highlight.id));
+    }
     drawn.current = next;
   }, [shown.highlights, reader]);
 
@@ -76,10 +80,21 @@ export function useAnnotations(bookId: BookId, initial: Annotations, reader: Ref
   );
 
   const dismissError = useCallback(() => setError(null), []);
-  const highlight = useCallback((selection: SelectionContext) => send({ op: "add-highlight", highlight: passageOf(selection) }), [send]);
+  const highlight = useCallback(
+    (selection: SelectionContext) => {
+      const passage = passageOf(selection);
+      made.current.add(passage.id);
+      send({ op: "add-highlight", highlight: passage });
+    },
+    [send],
+  );
   const removeHighlight = useCallback((id: string) => send({ op: "remove-highlight", id }), [send]);
   const addNote = useCallback(
-    (selection: SelectionContext, body: string) => send({ op: "add-note", note: { ...passageOf(selection), body }, highlightId: crypto.randomUUID() }),
+    (selection: SelectionContext, body: string) => {
+      const highlightId = crypto.randomUUID();
+      made.current.add(highlightId);
+      send({ op: "add-note", note: { ...passageOf(selection), body }, highlightId });
+    },
     [send],
   );
   const editNote = useCallback((id: string, body: string) => send({ op: "edit-note", id, body }), [send]);

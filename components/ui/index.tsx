@@ -72,39 +72,7 @@ export function IconButton({
   );
 }
 
-/** A row of mutually exclusive choices. An option with an icon shows only the icon, named by its label. `title` adds a tooltip. */
-export function Segmented<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: { value: T; label: string; icon?: ReactNode; title?: string }[];
-  value: T;
-  onChange(value: T): void;
-}) {
-  return (
-    <div role="group" aria-label={label} className="flex h-7 shrink-0 items-center gap-0.5 rounded-md bg-tint p-0.5">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          aria-pressed={value === option.value}
-          aria-label={option.icon ? option.label : undefined}
-          title={option.title ?? (option.icon ? option.label : undefined)}
-          onClick={() => option.value !== value && onChange(option.value)}
-          className={clsx(
-            "press flex h-6 items-center justify-center rounded-sm text-label font-medium text-dim outline-none transition-[color,background-color,box-shadow] duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent aria-pressed:bg-panel-raised aria-pressed:text-paper aria-pressed:shadow-chip [&>svg]:size-3.5",
-            option.icon ? "w-7" : "px-2.5",
-          )}
-        >
-          {option.icon ?? option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+export { Segmented } from "./pill";
 
 export function EmptyState({ icon, title, body, children }: { icon?: ReactNode; title: string; body?: string; children?: ReactNode }) {
   return (

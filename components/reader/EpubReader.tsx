@@ -60,7 +60,15 @@ interface OverlayerModule {
 /** foliate's call to draw one annotation in a section's overlay. */
 interface DrawDetail {
   draw(draw: (rects: Iterable<Box>) => SVGElement): void;
+  annotation: { value: string };
 }
+
+/** A CSS time token from the root, in milliseconds. The CSS build may rewrite 1200ms as 1.2s. */
+const tokenMs = (name: string) => {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const amount = parseFloat(value) || 0;
+  return value.endsWith("ms") ? amount : value.endsWith("s") ? amount * 1000 : amount;
+};
 
 interface RelocateDetail {
   cfi: string;
@@ -240,6 +248,8 @@ export function EpubReader({
   const openRef = useRef(false);
   /* Every highlight, drawn again into each section's overlay as foliate creates it. */
   const highlightsRef = useRef(new Map<string, Highlight>());
+  /* Highlights the reader has just made, by CFI, with when their glow started: NaN until foliate first draws one. */
+  const glowsRef = useRef(new Map<string, number>());
   const sectionRef = useRef<{ doc: Document; index: number } | null>(null);
   /* The book's table of contents, keyed by the foliate item each entry came from. */
   const tocRef = useRef(new Map<FoliateTocItem, TocEntry>());
@@ -297,8 +307,9 @@ export function EpubReader({
     seek(fraction) {
       if (openRef.current) void viewRef.current?.goToFraction(fraction);
     },
-    showHighlight(highlight) {
+    showHighlight(highlight, made) {
       highlightsRef.current.set(highlight.id, highlight);
+      if (made && highlight.anchor.kind === "epub") glowsRef.current.set(highlight.anchor.cfi, NaN);
       if (openRef.current && highlight.anchor.kind === "epub") {
         viewRef.current?.addAnnotation({ value: highlight.anchor.cfi }).catch(() => undefined);
       }
@@ -565,6 +576,32 @@ export function EpubReader({
         for (const rect of Array.from(group.children)) rect.setAttribute("rx", "2");
         return group;
       };
+      /* A new highlight gets a second coat that fades to the normal tint, the same glow the panel uses. The
+         overlay lives in foliate's shadow DOM, out of reach of the stylesheet's classes, so it plays through
+         the Web Animations API with the stylesheet's timing. foliate redraws a highlight whenever the page
+         lays out again, which happens right after one is made, so each redraw picks the glow up where it had
+         got to, and once it is over the highlight draws plain. */
+      const tintFor = (cfi: string) => (rects: Iterable<Box>) => {
+        const group = tint(rects);
+        const started = glowsRef.current.get(cfi);
+        if (started === undefined) return group;
+        const now = performance.now();
+        const delay = tokenMs("--glow-delay");
+        const duration = tokenMs("--glow-duration");
+        const elapsed = Number.isNaN(started) ? 0 : now - started;
+        if (Number.isNaN(started)) glowsRef.current.set(cfi, now);
+        if (elapsed >= delay + duration) {
+          glowsRef.current.delete(cfi);
+          return group;
+        }
+        const coat = tint(rects);
+        group.append(coat);
+        const easing = getComputedStyle(document.documentElement).getPropertyValue("--ease-out").trim() || "ease-out";
+        const glow = coat.animate([{ opacity: 1 }, { opacity: 0 }], { duration, delay, easing, fill: "both" });
+        glow.currentTime = elapsed;
+        glow.onfinish = () => coat.remove();
+        return group;
+      };
       const onShowAnnotation = (event: Event) => {
         const { value, range } = (event as CustomEvent<{ value: string; range: Range }>).detail;
         const doc = range.startContainer.ownerDocument;
@@ -580,7 +617,10 @@ export function EpubReader({
       view.addEventListener("load", onLoad);
       view.addEventListener("relocate", onRelocate);
       view.addEventListener("wheel", onWheel, { passive: true });
-      view.addEventListener("draw-annotation", (event) => (event as CustomEvent<DrawDetail>).detail.draw(tint));
+      view.addEventListener("draw-annotation", (event) => {
+        const detail = (event as CustomEvent<DrawDetail>).detail;
+        detail.draw(glowsRef.current.has(detail.annotation.value) ? tintFor(detail.annotation.value) : tint);
+      });
       view.addEventListener("create-overlay", drawHighlights);
       view.addEventListener("show-annotation", onShowAnnotation);
       host.append(view);

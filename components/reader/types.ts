@@ -61,8 +61,11 @@ export interface ReaderHandle {
   turnPage(direction: 1 | -1): void;
   /** Jumps to a share of the way through the book, from 0 at the start to 1 at the end. */
   seek(fraction: number): void;
-  /** Draws a highlight now if its passage is on screen, and again whenever its page or section renders. */
-  showHighlight(highlight: Highlight): void;
+  /**
+   * Draws a highlight now if its passage is on screen, and again whenever its page or section renders.
+   * `made` marks one the reader has just made, which glows once as it first appears.
+   */
+  showHighlight(highlight: Highlight, made?: boolean): void;
   removeHighlight(id: string): void;
   /** The text just before `position`, or null while the page is not ready or has no text there. */
   peek(position: Position): Glimpse | null;

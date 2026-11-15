@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, type AnimationEvent } from "react";
+import clsx from "clsx";
 import { Highlighter, NotebookPen, RotateCcw, X } from "lucide-react";
 import { Button, IconButton } from "@/components/ui";
 import type { Mark } from "@/lib/shared/resume";
@@ -20,6 +22,16 @@ export interface OpeningNotice {
   due: number;
 }
 
+/**
+ * Keeps the last notice on screen after it is dismissed, so it can fade out. The dismissal itself has already
+ * happened by then; the copy left behind is only a picture, inert, and goes once its exit animation ends.
+ */
+export function useNoticeExit(notice: OpeningNotice | null) {
+  const [last, setLast] = useState(notice);
+  if (notice !== null && notice !== last) setLast(notice);
+  return { shown: notice ?? last, leaving: notice === null && last !== null, done: () => setLast(null) };
+}
+
 const cardsDue = (count: number) => `${count} ${count === 1 ? "card" : "cards"} due`;
 
 /**
@@ -33,8 +45,13 @@ export function OpeningNotice({
   onRecap,
   onReview,
   onClose,
+  leaving,
+  onLeft,
 }: {
   notice: OpeningNotice;
+  /** Dismissed and fading out. */
+  leaving: boolean;
+  onLeft(): void;
   /** Whether the tutor can take a request now. */
   tutorReady: boolean;
   onRecap(): void;
@@ -42,6 +59,13 @@ export function OpeningNotice({
   onClose(): void;
 }) {
   const { resume, due } = notice;
+  const motion = leaving ? "animate-leave pointer-events-none" : "animate-rise";
+  const exit = {
+    inert: leaving,
+    onAnimationEnd: (event: AnimationEvent) => {
+      if (leaving && event.target === event.currentTarget) onLeft();
+    },
+  };
   const duePill = due > 0 ? (
     <button
       type="button"
@@ -56,7 +80,7 @@ export function OpeningNotice({
 
   if (!resume) {
     return (
-      <div className="animate-rise absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 items-center rounded-full bg-panel-raised py-0.5 pl-1.5 pr-0.5 shadow-float">
+      <div {...exit} className={clsx(motion, "absolute bottom-12 left-1/2 z-30 flex -translate-x-1/2 items-center rounded-full bg-panel-raised py-0.5 pl-1.5 pr-0.5 shadow-float")}>
         {duePill}
         <IconButton label="Dismiss" size="sm" onClick={onClose}>
           <X />
@@ -67,8 +91,9 @@ export function OpeningNotice({
 
   return (
     <section
+      {...exit}
       aria-label="Where you left off"
-      className="animate-rise absolute bottom-12 left-1/2 z-30 w-[min(520px,calc(100%-24px))] -translate-x-1/2 rounded-lg bg-panel-raised p-3 shadow-float"
+      className={clsx(motion, "absolute bottom-12 left-1/2 z-30 w-[min(520px,calc(100%-24px))] -translate-x-1/2 rounded-lg bg-panel-raised p-3 shadow-float")}
     >
       <div className="flex items-center gap-2">
         <h2 className="text-label font-medium text-paper">Where you left off</h2>

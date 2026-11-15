@@ -67,7 +67,7 @@ function BookCard({ book }: { book: ShelfBook }) {
   return (
     <Link
       href={`/book/${book.id}`}
-      className="press group flex min-w-0 flex-col gap-3 rounded-xl bg-panel p-2.5 pb-3 shadow-canvas outline-none transition-[translate,box-shadow,scale] duration-[var(--duration-base)] ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [@media(hover:hover)]:hover:-translate-y-0.5 [@media(hover:hover)]:hover:shadow-float"
+      className="press group flex min-w-0 flex-col gap-3 rounded-xl bg-panel p-2.5 pb-3 shadow-canvas outline-none transition-[translate,box-shadow,scale] duration-[var(--duration-base)] ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [@media(hover:hover)_and_(pointer:fine)]:hover:shadow-float motion-safe:[@media(hover:hover)_and_(pointer:fine)]:hover:-translate-y-0.5"
     >
       <Cover book={book} />
       <div className="flex min-w-0 flex-col gap-1 px-1">

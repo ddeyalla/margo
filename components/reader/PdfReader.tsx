@@ -119,9 +119,10 @@ const toneOf = (canvas: HTMLCanvasElement): "light" | "dark" => {
  * Draws a rendered page's highlights as tinted boxes between the canvas and
  * the text layer, by finding each one's characters in the text layer. Runs
  * again whenever the page renders, so highlights survive resizes and pages
- * that scroll out and back.
+ * that scroll out and back. A highlight in `made` glows the first time it is
+ * drawn and leaves the set, so a later repaint doesn't glow it again.
  */
-const paintPage = (slot: Slot | undefined, highlights: Map<string, Highlight>) => {
+const paintPage = (slot: Slot | undefined, highlights: Map<string, Highlight>, made: Set<string>) => {
   const layer = slot?.textReady ? slot.el.querySelector(":scope > .textLayer") : null;
   const marks = slot?.el.querySelector(":scope > .pdf-marks");
   if (!slot || !layer || !marks) return;
@@ -133,6 +134,7 @@ const paintPage = (slot: Slot | undefined, highlights: Map<string, Highlight>) =
     if (anchor.kind !== "pdf" || anchor.page !== slot.page) continue;
     pieces ??= textPieces(layer);
     const range = rangeInLayer(layer, anchor.start, anchor.end, pieces);
+    const glow = made.delete(highlight.id);
     for (const box of range ? mergeLineBoxes(range.getClientRects()) : []) {
       const mark = document.createElement("div");
       mark.className = "pdf-mark";
@@ -141,6 +143,11 @@ const paintPage = (slot: Slot | undefined, highlights: Map<string, Highlight>) =
       mark.style.top = percent(box.top - page.top, page.height);
       mark.style.width = percent(box.width, page.width);
       mark.style.height = percent(box.height, page.height);
+      if (glow) {
+        const coat = document.createElement("span");
+        coat.className = "pdf-mark-glow animate-glow";
+        mark.append(coat);
+      }
       drawn.push(mark);
     }
   }
@@ -164,6 +171,7 @@ export function PdfReader({
   const engineRef = useRef<Engine>(emptyEngine());
   /* Outlives page renders and document loads: pages read it each time they draw. */
   const highlightsRef = useRef(new Map<string, Highlight>());
+  const madeRef = useRef(new Set<string>());
   /* No sampled page has any text: the PDF is pictures of pages. */
   const [scanned, setScanned] = useState(false);
 
@@ -219,7 +227,7 @@ export function PdfReader({
     paintFrameRef.current = requestAnimationFrame(() => {
       paintFrameRef.current = 0;
       const { slots } = engineRef.current;
-      for (const dirty of dirtyPagesRef.current) paintPage(slots[dirty - 1], highlightsRef.current);
+      for (const dirty of dirtyPagesRef.current) paintPage(slots[dirty - 1], highlightsRef.current, madeRef.current);
       dirtyPagesRef.current.clear();
     });
   };
@@ -272,8 +280,9 @@ export function PdfReader({
       const top = fraction * (scroller.scrollHeight - scroller.clientHeight);
       scroller.scrollTop = engineRef.current.isPaged() ? slotAt(slots, top + scroller.clientHeight / 2).sheet.offsetTop : top;
     },
-    showHighlight(highlight) {
+    showHighlight(highlight, made) {
       highlightsRef.current.set(highlight.id, highlight);
+      if (made) madeRef.current.add(highlight.id);
       if (highlight.anchor.kind === "pdf") repaint(highlight.anchor.page);
     },
     peek(position) {
@@ -415,7 +424,7 @@ export function PdfReader({
         endOfContent.className = "endOfContent";
         layer.append(endOfContent);
         slot.textReady = true;
-        paintPage(slot, highlightsRef.current);
+        paintPage(slot, highlightsRef.current, madeRef.current);
       } catch (error) {
         if (generation === slot.generation && !isCancelled(error)) delete slot.el.dataset.rendered;
       }

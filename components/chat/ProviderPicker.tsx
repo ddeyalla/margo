@@ -52,7 +52,7 @@ export function ProviderPicker({
         align="end"
         sideOffset={6}
         collisionPadding={12}
-        className="z-[60] w-[280px] max-w-[calc(100vw-24px)] rounded-lg bg-panel-raised p-1 shadow-float outline-none"
+        className="pop z-[60] w-[280px] max-w-[calc(100vw-24px)] rounded-lg bg-panel-raised p-1 shadow-float outline-none"
       >
         <MenuRadioGroup value={current} onValueChange={(value) => value && onSelect(value as ProviderId)}>
           <MenuGroupLabel className="px-2 pb-1 pt-1.5 text-[11px] text-dim">Tutor</MenuGroupLabel>

@@ -3,16 +3,16 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const LIST_ITEM = /^(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
 
 /**
- * How much of a Markdown answer still being written is finished blocks that later text can't change:
- * everything before the last complete line that starts a new block after a blank line, outside a code fence.
- * The streaming bubble parses that part once and re-parses only the rest as tokens arrive.
+ * Where each finished block of a Markdown answer still being written starts, after the first: every complete line
+ * that starts a new block after a blank line, outside a code fence. Later text never moves or removes one, so the
+ * list only grows as tokens arrive.
  */
-export function settledLength(text: string): number {
+export function settledStarts(text: string): number[] {
   const lines = text.split("\n");
   let fence: { char: string; length: number } | null = null;
   let afterBlank = false;
   let offset = 0;
-  let settled = 0;
+  const starts: number[] = [];
   /* The last line may still be growing, so only lines that have ended count. */
   for (let i = 0; i < lines.length - 1; i++) {
     const line = lines[i];
@@ -23,11 +23,20 @@ export function settledLength(text: string): number {
     } else if (line.trim() === "") {
       afterBlank = true;
     } else {
-      if (afterBlank && !/^[ \t]/.test(line) && !LIST_ITEM.test(line)) settled = offset;
+      if (afterBlank && !/^[ \t]/.test(line) && !LIST_ITEM.test(line)) starts.push(offset);
       if (opener) fence = { char: opener[1][0], length: opener[1].length };
       afterBlank = false;
     }
     offset += line.length + 1;
   }
-  return settled;
+  return starts;
+}
+
+/**
+ * How much of a Markdown answer still being written is finished blocks that later text can't change:
+ * everything before the last block start in `settledStarts`.
+ * The streaming bubble parses that part once and re-parses only the rest as tokens arrive.
+ */
+export function settledLength(text: string): number {
+  return settledStarts(text).at(-1) ?? 0;
 }

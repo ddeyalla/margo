@@ -8,8 +8,13 @@ import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
 import { CardsTab } from "@/components/cards/CardsTab";
 import type { CardsApi } from "@/components/cards/useCards";
 import { ChatTab } from "@/components/chat/ChatTab";
+import { usePill } from "@/components/ui/pill";
 import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
 import type { Anchor, PanelTab } from "@/lib/shared/types";
+
+/* New content fades in after a pointer choice only; a keyboard switch, used far more often, is instant. */
+const panelClass =
+  "flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden group-data-[slide]/tabs:transition-opacity group-data-[slide]/tabs:duration-[var(--duration-fast)] group-data-[slide]/tabs:ease-out group-data-[slide]/tabs:data-[starting-style]:opacity-0";
 
 const TABS: { value: PanelTab; label: string }[] = [
   { value: "chat", label: "Chat" },
@@ -36,6 +41,7 @@ export const SidePanel = memo(function SidePanel({
   onOpenNote,
   cards,
   onReview,
+  panelOpen,
 }: {
   tab: PanelTab;
   onTabChange(tab: PanelTab): void;
@@ -53,26 +59,39 @@ export const SidePanel = memo(function SidePanel({
   onOpenNote(noteId: string): void;
   cards: CardsApi;
   onReview(): void;
+  /** The panel is expanded, so its tab can be seen. */
+  panelOpen: boolean;
 }) {
+  const { groupRef, pill, sliding, choose } = usePill(tab, "[data-selected]");
   return (
-    <Tabs value={tab} onValueChange={(value) => value && onTabChange(value as PanelTab)} className="flex h-full min-w-0 flex-col">
+    <Tabs
+      value={tab}
+      onValueChange={(value, details) => {
+        if (!value) return;
+        choose(value as PanelTab, details.source === "mouse" || details.source === "touch" || details.source === "pen");
+        onTabChange(value as PanelTab);
+      }}
+      data-slide={sliding || undefined}
+      className="group/tabs flex h-full min-w-0 flex-col"
+    >
       <div className="flex h-11 shrink-0 items-center gap-2 px-1.5">
-        <TabsList aria-label="Panel" className="flex h-8 flex-1 items-center gap-0.5 rounded-md bg-tint p-0.5">
+        <TabsList ref={groupRef} aria-label="Panel" className="group/pill relative flex h-8 flex-1 items-center gap-0.5 rounded-md bg-tint p-0.5">
+          {pill}
           {TABS.map(({ value, label }) => (
             <TabsTab
               key={value}
               value={value}
-              className="press h-7 flex-1 rounded-sm px-2.5 text-label font-medium text-dim outline-none transition-[color,background-color,box-shadow] duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[selected]:bg-panel-raised data-[selected]:text-paper data-[selected]:shadow-chip"
+              className="press relative h-7 flex-1 rounded-sm px-2.5 text-label font-medium text-dim outline-none transition-[color,scale] duration-[var(--duration-fast)] hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[selected]:bg-panel-raised data-[selected]:text-paper data-[selected]:shadow-chip group-data-[placed]/pill:data-[selected]:bg-transparent group-data-[placed]/pill:data-[selected]:shadow-none"
             >
               {label}
             </TabsTab>
           ))}
         </TabsList>
       </div>
-      <TabsPanel value="chat" className="flex min-h-0 flex-1 flex-col outline-none data-[selected]:flex [&:not([data-selected])]:hidden">
-        <ChatTab tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} />
+      <TabsPanel value="chat" className={panelClass}>
+        <ChatTab shown={panelOpen && tab === "chat"} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} />
       </TabsPanel>
-      <TabsPanel value="notes" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
+      <TabsPanel value="notes" className={panelClass}>
         <NotesTab
           notes={annotations.notes}
           draft={noteDraft}
@@ -91,7 +110,7 @@ export const SidePanel = memo(function SidePanel({
           onJump={onJump}
         />
       </TabsPanel>
-      <TabsPanel value="highlights" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
+      <TabsPanel value="highlights" className={panelClass}>
         <HighlightsTab
           highlights={annotations.highlights}
           notes={annotations.notes}
@@ -101,7 +120,7 @@ export const SidePanel = memo(function SidePanel({
           onOpenNote={onOpenNote}
         />
       </TabsPanel>
-      <TabsPanel value="cards" className="flex min-h-0 flex-1 flex-col outline-none [&:not([data-selected])]:hidden">
+      <TabsPanel value="cards" className={panelClass}>
         <CardsTab cards={cards} onReview={onReview} onJump={onJump} />
       </TabsPanel>
     </Tabs>

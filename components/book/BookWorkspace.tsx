@@ -23,7 +23,7 @@ import { hasUnsentText } from "@/lib/client/unsent";
 import type { Anchor, BookFormat, BookId, BookState, PanelTab, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { BookHeader, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
 import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
-import { OpeningNotice } from "./OpeningNotice";
+import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
 import type { PlaceStore, ReadingSpot } from "./place";
 import { OpenFailed, PageTurn, SpotlightExit } from "./ReaderChrome";
 import { ReadingFooter } from "./ReadingFooter";
@@ -94,6 +94,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
     highlights: annotations.highlights,
     notes: annotations.notes,
   });
+  const noticeExit = useNoticeExit(notice);
   const { on: spotlight, end: endSpotlight, toggle: toggleSpotlight } = useSpotlight(panel, book.format === "epub" && !error, dismissNotice);
   const [toast, setToast] = useToast();
 
@@ -276,7 +277,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
             {tocDocked && !error ? (
               <div
                 inert={!tocOpen || spotlight}
-                className="h-full shrink-0 overflow-hidden transition-[width] duration-[var(--duration-base)] ease-out"
+                className="h-full shrink-0 overflow-hidden"
                 style={{ width: tocOpen && !spotlight ? TOC_WIDTH : 0 }}
               >
                 <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked onSelect={openEntry} onClose={closeToc} />
@@ -306,13 +307,15 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
                 </>
               )}
               {spotlight ? <SpotlightExit shortcut={SPOTLIGHT_SHORTCUT} onExit={toggleSpotlight} /> : null}
-              {notice && !spotlight && !reviewing ? (
+              {noticeExit.shown && !spotlight && !reviewing ? (
                 <OpeningNotice
-                  notice={notice}
+                  notice={noticeExit.shown}
                   tutorReady={!!provider && !unavailable && !tutor.sending}
-                  onRecap={() => recap(notice.resume, dismissNotice)}
+                  onRecap={() => recap(noticeExit.shown?.resume, dismissNotice)}
                   onReview={startReview}
                   onClose={dismissNotice}
+                  leaving={noticeExit.leaving}
+                  onLeft={noticeExit.done}
                 />
               ) : null}
               {toast ? (
@@ -360,6 +363,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
             onOpenNote={openNote}
             cards={cards}
             onReview={startReview}
+            panelOpen={panel.open}
           />
         </ResizablePanel>
       </Resizable>
