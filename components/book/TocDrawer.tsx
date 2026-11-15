@@ -1,12 +1,33 @@
 "use client";
 
-import { memo, useEffect, useLayoutEffect, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import clsx from "clsx";
 import { TableOfContents, X } from "lucide-react";
 import type { TocEntry } from "@/components/reader/types";
 import { EmptyState, IconButton, Spinner } from "@/components/ui";
 import type { BookFormat } from "@/lib/shared/types";
 import { useChapter, type PlaceStore } from "./place";
+
+/** The chapters column's width. */
+export const TOC_WIDTH = 280;
+/** The narrowest the book may get beside the chapters column; below this the chapters slide over the book instead. */
+const READER_MIN_WIDTH = 480;
+
+/**
+ * Whether the reader pane has room for the chapters as a column beside the book. The pane's width holds
+ * still while the column opens, since the column lives inside it.
+ */
+export function useTocDocked(pane: RefObject<HTMLElement | null>) {
+  const [docked, setDocked] = useState(true);
+  useEffect(() => {
+    const element = pane.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setDocked(entry.contentRect.width - TOC_WIDTH >= READER_MIN_WIDTH));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [pane]);
+  return docked;
+}
 
 /**
  * The book's table of contents. Docked, it is a column beside the book that

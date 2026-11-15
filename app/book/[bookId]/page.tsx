@@ -37,14 +37,16 @@ async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
       key={revision}
       book={{ id: book.id, format: book.format, relPath: book.relPath, fileTitle: book.fileTitle }}
       initialState={state}
-      savedProvider={settings.provider}
-      savedPdfTheme={settings.pdfPage}
-      savedReadingMode={settings.readingMode}
-      savedEpubTheme={settings.epubPage}
-      savedBoldStarts={settings.boldStarts}
-      savedReadingFont={settings.readingFont}
-      savedChaptersOpen={settings.chaptersOpen}
-      savedPanelTab={settings.panelTab}
+      settings={{
+        provider: settings.provider,
+        pdfPage: settings.pdfPage,
+        readingMode: settings.readingMode,
+        epubPage: settings.epubPage,
+        boldStarts: settings.boldStarts,
+        readingFont: settings.readingFont,
+        chaptersOpen: settings.chaptersOpen,
+        panelTab: settings.panelTab,
+      }}
     />
   );
 }
