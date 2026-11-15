@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui";
 import { saveFolders } from "@/lib/client/api";
 
@@ -36,18 +36,26 @@ function FolderField({
   placeholder: string;
   onChange: (value: string) => void;
 }) {
+  const inputId = useId();
   const pick = async () => {
     const chosen = await window.riggApp?.pickFolder();
     if (chosen) onChange(chosen);
   };
+  /* Only a typed path is a form control; a set or picked path is just shown. */
+  const typed = !fromEnv && !hasPicker;
+  const labelClass = "text-label font-medium text-fog";
   return (
     <div className="flex flex-col gap-1.5 text-left">
-      <label className="text-label font-medium text-fog" htmlFor={`folder-${label}`}>
-        {label}
-      </label>
+      {typed ? (
+        <label className={labelClass} htmlFor={inputId}>
+          {label}
+        </label>
+      ) : (
+        <p className={labelClass}>{label}</p>
+      )}
       {fromEnv ? (
         <>
-          <p id={`folder-${label}`} className="break-all rounded-sm bg-panel px-2.5 py-1.5 text-label text-fog">
+          <p className="break-all rounded-sm bg-panel px-2.5 py-1.5 text-label text-fog">
             {value}
           </p>
           <p className="text-label text-dim">Set in .env.local</p>
@@ -56,12 +64,12 @@ function FolderField({
         <>
           <div className="flex gap-2">
             {hasPicker ? (
-              <p id={`folder-${label}`} className="min-w-0 flex-1 truncate rounded-sm bg-panel px-2.5 py-1.5 text-label text-fog">
+              <p className="min-w-0 flex-1 truncate rounded-sm bg-panel px-2.5 py-1.5 text-label text-fog">
                 {value || <span className="text-dim">{placeholder}</span>}
               </p>
             ) : (
               <input
-                id={`folder-${label}`}
+                id={inputId}
                 value={value}
                 onChange={(event) => onChange(event.target.value)}
                 placeholder={placeholder}

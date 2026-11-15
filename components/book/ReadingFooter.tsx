@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type KeyboardEvent, type PointerEvent } from "react";
-import type { ReaderPlace } from "@/components/reader/types";
+import { useStore } from "@/components/ui/store";
 import { minutesLeftLabel } from "@/lib/shared/reading-time";
+import type { PlaceStore } from "./place";
 import { pageLabel, pagesLeftLabel, percentLabel } from "./progress";
 
 /** How far each key moves the progress bar. */
@@ -29,10 +30,15 @@ const fractionAt = (event: PointerEvent<HTMLElement>) => {
  * of the chapter and how far through the book you are. Click or drag the bar
  * to jump; the jump happens when you let go.
  */
-export function ReadingFooter({ fraction, place, onSeek }: { fraction: number; place: ReaderPlace | null; onSeek(fraction: number): void }) {
+export function ReadingFooter({ spot, onSeek }: { spot: PlaceStore; onSeek(fraction: number): void }) {
+  const current = useStore(spot, (value) => value);
+  const fraction = current?.position.fraction ?? 0;
+  const place = current?.place ?? null;
   /* Where a drag on the bar would land, while it lasts. */
   const [dragAt, setDragAt] = useState<number | null>(null);
-  const shown = dragAt ?? fraction;
+  /* Where a drag let go, held until the book reports a new place so the bar doesn't jump back meanwhile. */
+  const [released, setReleased] = useState<{ value: number; from: number } | null>(null);
+  const shown = dragAt ?? (released && released.from === fraction ? released.value : fraction);
   const page = place?.page ? pageLabel(place.page) : null;
   const pagesLeft = place?.pagesLeftInChapter != null ? pagesLeftLabel(place.pagesLeftInChapter) : null;
   const minutes = place?.minutesLeftInChapter;
@@ -44,6 +50,7 @@ export function ReadingFooter({ fraction, place, onSeek }: { fraction: number; p
     const step = SEEK_KEYS[event.key];
     if (!step || event.metaKey || event.ctrlKey || event.altKey) return;
     event.preventDefault();
+    setReleased(null);
     onSeek(clamp(step(fraction)));
   };
 
@@ -67,7 +74,10 @@ export function ReadingFooter({ fraction, place, onSeek }: { fraction: number; p
           if (dragAt !== null) setDragAt(fractionAt(event));
         }}
         onPointerUp={(event) => {
-          if (dragAt !== null) onSeek(fractionAt(event));
+          if (dragAt === null) return;
+          const value = fractionAt(event);
+          setReleased({ value, from: fraction });
+          onSeek(value);
         }}
         onLostPointerCapture={() => setDragAt(null)}
         onKeyDown={onKeyDown}

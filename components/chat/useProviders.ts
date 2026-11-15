@@ -6,7 +6,7 @@ import type { ProviderId, ProviderInfo } from "@/lib/shared/types";
 
 /**
  * The tutor providers and the one in use: the saved choice while it's ready,
- * else the first ready one in the server's order (claude, codex, api).
+ * else the first ready one in the server's order.
  */
 export function useProviders(saved: ProviderId | null) {
   const [providers, setProviders] = useState<ProviderInfo[] | null>(null);

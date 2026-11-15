@@ -1,8 +1,7 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import clsx from "clsx";
 
-/* Small controlled pieces adapted from rigg-video's primitives. They use only
-   the tokens in globals.css and touch only colour, opacity and transform. */
+/* Small controlled pieces that use only the tokens in globals.css. */
 
 const focusRing =
   "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -24,13 +23,15 @@ const buttonVariants: Record<ButtonVariant, string> = {
   outline: "rounded-sm bg-panel-raised text-paper shadow-chip hover:bg-panel-hover",
 };
 
-export const Button = forwardRef<
-  HTMLButtonElement,
-  ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: "sm" | "md" }
->(function Button({ className, variant = "outline", size = "sm", type = "button", ...props }, ref) {
+export function Button({
+  className,
+  variant = "outline",
+  size = "sm",
+  type = "button",
+  ...props
+}: ComponentProps<"button"> & { variant?: ButtonVariant; size?: "sm" | "md" }) {
   return (
     <button
-      ref={ref}
       type={type}
       className={clsx(
         "press inline-flex select-none items-center justify-center font-medium transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out disabled:pointer-events-none disabled:opacity-40 [&>svg]:shrink-0",
@@ -42,15 +43,18 @@ export const Button = forwardRef<
       {...props}
     />
   );
-});
+}
 
-export const IconButton = forwardRef<
-  HTMLButtonElement,
-  ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean; size?: "sm" | "md" }
->(function IconButton({ className, label, active, size = "md", type = "button", ...props }, ref) {
+export function IconButton({
+  className,
+  label,
+  active,
+  size = "md",
+  type = "button",
+  ...props
+}: ComponentProps<"button"> & { label: string; active?: boolean; size?: "sm" | "md" }) {
   return (
     <button
-      ref={ref}
       type={type}
       title={label}
       aria-label={label}
@@ -65,7 +69,7 @@ export const IconButton = forwardRef<
       {...props}
     />
   );
-});
+}
 
 /** A row of mutually exclusive choices. An option with an icon shows only the icon, named by its label. `title` adds a tooltip. */
 export function Segmented<T extends string>({

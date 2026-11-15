@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createStore, useStableCallback, useStore, type Store } from "@/components/ui/store";
 import { patchBookState } from "@/lib/client/api";
 import { streamChat } from "@/lib/client/chat";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
@@ -23,6 +24,12 @@ export interface FailedTurn {
   request: ChatRequest | null;
 }
 
+/** The answer streaming in, and the thread it belongs to. */
+export type LiveAnswer = Store<{ threadId: string; text: string } | null>;
+
+/** The answer streaming into `threadId`, or null when that thread isn't the one answering. Only its subscriber re-renders per token. */
+export const useStreaming = (live: LiveAnswer, threadId: string) => useStore(live, (answer) => (answer && answer.threadId === threadId ? answer.text : null));
+
 const newestFirst = (a: Thread, b: Thread) => b.createdAt.localeCompare(a.createdAt);
 
 /** The reader's last message has no answer yet: the turn was stopped early or failed. */
@@ -37,14 +44,25 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
   const [threads, setThreads] = useState(initialThreads);
   const [activeId, setActiveIdState] = useState(initialActiveId);
   /* The open thread is remembered for the next visit to this book. */
-  const setActiveId = (id: string | null) => {
-    setActiveIdState(id);
-    void patchBookState(bookId, { activeThreadId: id });
-  };
-  const [live, setLive] = useState<{ threadId: string; text: string } | null>(null);
+  const setActiveId = useCallback(
+    (id: string | null) => {
+      setActiveIdState(id);
+      void patchBookState(bookId, { activeThreadId: id });
+    },
+    [bookId],
+  );
+  /* Outside React state so a streamed token re-renders the answer bubble, not the whole workspace. */
+  const [live] = useState<LiveAnswer>(() => createStore(null));
+  const frame = useRef(0);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<FailedTurn | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  /* Cleared only once the finished turn has committed, so the saved answer replaces the bubble with no blank frame between. */
+  useLayoutEffect(() => {
+    if (!sending) live.set(null);
+  }, [sending, live]);
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
   const upsert = (thread: Thread) =>
     setThreads((current) =>
@@ -68,20 +86,27 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     abortRef.current = controller;
     setFailure(null);
     setSending(true);
+    live.set(null);
     let thread: Thread | null = null;
     let text = "";
     let error: string | null = null;
     let finished = false;
+    /* Tokens arrive faster than frames; the bubble takes the text so far once per frame. */
+    const publish = () => {
+      frame.current = 0;
+      if (thread) live.set({ threadId: thread.id, text });
+    };
     try {
       for await (const event of streamChat(request, controller.signal)) {
         if (event.type === "thread") {
           thread = event.thread;
           upsert(thread);
           setActiveId(thread.id);
-          setLive({ threadId: thread.id, text });
+          cancelAnimationFrame(frame.current);
+          publish();
         } else if (event.type === "text") {
           text += event.delta;
-          if (thread) setLive({ threadId: thread.id, text });
+          if (thread && !frame.current) frame.current = requestAnimationFrame(publish);
         } else if (event.type === "error") {
           error = event.message;
         } else {
@@ -94,6 +119,8 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     } catch (cause) {
       if (!controller.signal.aborted) error = cause instanceof Error ? cause.message : "The tutor could not be reached.";
     }
+    cancelAnimationFrame(frame.current);
+    frame.current = 0;
 
     /* Stopped or cut off mid-answer: the server saves what was written so far, marked partial. */
     if (!finished && thread && text.trim()) {
@@ -102,10 +129,8 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
         messages: [...thread.messages, { role: "assistant", content: text, createdAt: new Date().toISOString(), partial: true }],
       });
     }
-    if (abortRef.current !== controller) return;
     abortRef.current = null;
     setSending(false);
-    setLive(null);
     /* The server may hold a thread this window never saw: a new question stopped before its first event, or a
        thread that is gone or has nothing to retry. Ask it, twice, since a stopped request may still be saving. */
     const aborted = controller.signal.aborted;
@@ -119,33 +144,33 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     }
   };
 
-  const start = (action: TutorAction, selection: SelectionContext, question: string | null, provider: ProviderId) => {
-    const { text, before, after, anchor, chapterTitle } = selection;
-    void run({ kind: "new", bookId, provider, action, question, selection: { text, before, after, anchor, chapterTitle } });
-  };
-
-  const active = threads.find((t) => t.id === activeId) ?? null;
+  const active = useMemo(() => threads.find((t) => t.id === activeId) ?? null, [threads, activeId]);
   const shownFailure = failure && (failure.threadId === null || failure.threadId === activeId) ? failure : null;
 
-  /** Starts a thread with no passage, placed where the reader is. */
-  const ask = (draft: MessageDraft, place: QuestionPlace | null, provider: ProviderId) => {
-    void run({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), place });
-  };
+  const start = useStableCallback((action: TutorAction, selection: SelectionContext, question: string | null, provider: ProviderId) => {
+    const { text, before, after, anchor, chapterTitle } = selection;
+    void run({ kind: "new", bookId, provider, action, question, selection: { text, before, after, anchor, chapterTitle } });
+  });
 
-  const reply = (draft: MessageDraft, provider: ProviderId) => {
+  /** Starts a thread with no passage, placed where the reader is. */
+  const ask = useStableCallback((draft: MessageDraft, place: QuestionPlace | null, provider: ProviderId) => {
+    void run({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), place });
+  });
+
+  const reply = useStableCallback((draft: MessageDraft, provider: ProviderId) => {
     if (activeId) void run({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft) });
-  };
+  });
 
   /** Asks again for the active thread's unanswered message, or resends a first turn the server never saved. */
-  const retry = (provider: ProviderId) => {
+  const retry = useStableCallback((provider: ProviderId) => {
     if (active && awaitsAnswer(active)) void run({ kind: "retry", bookId, provider, threadId: active.id });
     else if (shownFailure?.request) void run({ ...shownFailure.request, provider });
-  };
+  });
 
-  const stop = () => abortRef.current?.abort();
+  const stop = useCallback(() => abortRef.current?.abort(), []);
 
   /** Saves a question on a passage without asking it. Resolves to whether it was saved; the tutor is not called. */
-  const park = async (selection: SelectionContext, question: string, provider: ProviderId | null): Promise<boolean> => {
+  const park = useStableCallback(async (selection: SelectionContext, question: string, provider: ProviderId | null): Promise<boolean> => {
     const { text, before, after, anchor, chapterTitle } = selection;
     try {
       const response = await fetch(`/api/books/${bookId}/parked`, {
@@ -160,54 +185,64 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     } catch {
       return false;
     }
-  };
+  });
+
+  const open = useStableCallback((id: string | null) => {
+    setFailure((current) => (current && current.threadId === id ? current : null));
+    setActiveId(id);
+  });
 
   /** Sends a parked question to the tutor, as an Ask would. It becomes an ordinary thread. */
-  const unpark = (id: string, provider: ProviderId) => {
+  const unpark = useStableCallback((id: string, provider: ProviderId) => {
     const thread = threads.find((t) => t.id === id);
     if (!thread || !isParked(thread) || abortRef.current) return;
     /* Opened first, so a failure before the answer starts shows on the thread being asked. */
     open(id);
     void run({ kind: "retry", bookId, provider, threadId: id });
-  };
+  });
 
-  /** Deletes a parked question. */
-  const discard = (id: string) => {
+  /** Deletes a parked question. It goes from the list at once and comes back if the server didn't delete it. */
+  const discard = useStableCallback(async (id: string) => {
     const thread = threads.find((t) => t.id === id);
     if (!thread || !isParked(thread)) return;
     setThreads((current) => current.filter((t) => t.id !== id));
-    void fetch(`/api/books/${bookId}/parked`, {
+    const deleted = await fetch(`/api/books/${bookId}/parked`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
-    }).catch(() => undefined);
-  };
+    }).then(
+      (response) => response.ok,
+      () => false,
+    );
+    if (!deleted) setThreads((current) => (current.some((t) => t.id === id) ? current : [...current, thread]));
+  });
 
-  const open = (id: string | null) => {
-    setFailure((current) => (current && current.threadId === id ? current : null));
-    setActiveId(id);
-  };
+  const listed = useMemo(() => threads.filter((t) => !isParked(t)).sort(newestFirst), [threads]);
+  const parked = useMemo(() => parkedFirst(threads), [threads]);
 
-  return {
-    bookId,
-    threads: threads.filter((t) => !isParked(t)).sort(newestFirst),
-    /** Questions saved on a passage and not yet sent, newest first. */
-    parked: parkedFirst(threads),
-    active,
-    /** The answer streaming into the active thread, or null when it isn't the one answering. */
-    streaming: live && live.threadId === activeId ? live.text : null,
-    sending,
-    failure: shownFailure,
-    start,
-    park,
-    unpark,
-    discard,
-    ask,
-    reply,
-    retry,
-    stop,
-    open,
-  };
+  return useMemo(
+    () => ({
+      bookId,
+      threads: listed,
+      /** Questions saved on a passage and not yet sent, newest first. */
+      parked,
+      active,
+      /** The answer streaming in; read it with useStreaming. */
+      live,
+      sending,
+      failure: shownFailure,
+      start,
+      park,
+      unpark,
+      discard,
+      ask,
+      reply,
+      retry,
+      stop,
+      open,
+    }),
+    [bookId, listed, parked, active, live, sending, shownFailure, start, park, unpark, discard, ask, reply, retry, stop, open],
+  );
 }
 
 export type Tutor = ReturnType<typeof useTutor>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, CircleAlert, CornerDownRight, ImageIcon, MessageSquareText, Send, Trash2 } from "lucide-react";
 import { Button, EmptyState, IconButton, Spinner } from "@/components/ui";
 import { JUST_TELL_ME, MAX_HINTS, workState } from "@/lib/shared/work";
@@ -10,10 +10,9 @@ import type { ParkedThread } from "@/lib/shared/parked";
 import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread } from "@/lib/shared/types";
 import { Composer } from "./Composer";
 import { DropArea, Lightbox, MessageImages } from "./Images";
-import { Markdown } from "./Markdown";
+import { Markdown, StreamingMarkdown } from "./Markdown";
 import { useImageDraft } from "./useImageDraft";
-import { awaitsAnswer, type FailedTurn, type MessageDraft, type Tutor } from "./useTutor";
-
+import { awaitsAnswer, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type Tutor } from "./useTutor";
 
 const when = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -47,7 +46,7 @@ export function ChatTab({
         key={active.id}
         bookId={tutor.bookId}
         thread={active}
-        streaming={tutor.streaming}
+        live={tutor.live}
         sending={tutor.sending}
         failure={failure}
         unavailable={unavailable}
@@ -237,7 +236,7 @@ function ThreadList({
 function ThreadView({
   bookId,
   thread,
-  streaming,
+  live,
   sending,
   failure,
   unavailable,
@@ -249,7 +248,7 @@ function ThreadView({
 }: {
   bookId: BookId;
   thread: Thread;
-  streaming: string | null;
+  live: LiveAnswer;
   /** Any request is in flight, for this thread or another. */
   sending: boolean;
   failure: FailedTurn | null;
@@ -265,10 +264,11 @@ function ThreadView({
   const images = useImageDraft(bookId);
   const [viewing, setViewing] = useState<ImageAttachment | null>(null);
 
-  useLayoutEffect(() => {
+  const follow = useCallback(() => {
     const scroller = scrollRef.current;
     if (scroller && pinned.current) scroller.scrollTop = scroller.scrollHeight;
-  }, [thread.messages.length, streaming, failure]);
+  }, []);
+  useLayoutEffect(() => follow(), [follow, thread.messages.length, failure]);
 
   /* The reader's last message went unanswered: stopped before the first word, or failed. */
   const unanswered = !sending && awaitsAnswer(thread);
@@ -328,16 +328,7 @@ function ThreadView({
               </div>
             ),
           )}
-          {streaming === "" ? (
-            <p role="status" className="flex items-center gap-2 text-label text-dim">
-              <Spinner />
-              Thinking…
-            </p>
-          ) : streaming !== null ? (
-            <div aria-live="polite" aria-busy="true">
-              <Markdown text={streaming} />
-            </div>
-          ) : null}
+          <StreamingAnswer live={live} threadId={thread.id} onGrow={follow} />
           {failure ? (
             <FailureNote failure={failure} onRetry={unanswered ? onRetry : null} />
           ) : unanswered ? (
@@ -378,6 +369,26 @@ function ThreadView({
       />
       {viewing ? <Lightbox bookId={bookId} image={viewing} onClose={() => setViewing(null)} /> : null}
     </DropArea>
+  );
+}
+
+/** The answer arriving in this thread. The only part of the chat that renders per streamed token. */
+function StreamingAnswer({ live, threadId, onGrow }: { live: LiveAnswer; threadId: string; onGrow(): void }) {
+  const streaming = useStreaming(live, threadId);
+  useLayoutEffect(() => onGrow(), [onGrow, streaming]);
+  if (streaming === null) return null;
+  if (streaming === "") {
+    return (
+      <p role="status" className="flex items-center gap-2 text-label text-dim">
+        <Spinner />
+        Thinking…
+      </p>
+    );
+  }
+  return (
+    <div aria-live="polite" aria-busy="true">
+      <StreamingMarkdown text={streaming} />
+    </div>
   );
 }
 
