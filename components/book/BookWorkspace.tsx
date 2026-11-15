@@ -70,7 +70,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
   /* A font shown on the page while the reader looks through the list, before choosing one. */
   const [previewFont, setPreviewFont] = useState<ReadingFont | undefined>(undefined);
   const title = meta.title || book.fileTitle;
-  const { save: savePosition, flush: flushPosition } = usePositionSaver(book.id);
+  const { save: savePosition, flush: flushPosition } = usePositionSaver(book.id, initialState.position);
   const readRevision = useCallback(async () => {
     const response = await fetch(`/api/books/${book.id}/revision`, { cache: "no-store" });
     return response.ok ? ((await response.json()) as { revision: string }).revision : null;
