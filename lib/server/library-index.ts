@@ -215,12 +215,17 @@ const seed = <F extends FileStat>(files: readonly F[]): Reconciled<F> => {
  * With no index entries the files are seeded. A scan with no files changes nothing, because an empty or
  * unmounted books folder must not be read as every book being gone.
  */
+export interface ReconcileOptions {
+  newId?: () => BookId;
+  /** When an entry first went missing, for entries no file is bound to. */
+  now?: number;
+  hashes?: ScanHashes;
+}
+
 export const reconcile = <F extends FileStat>(
   current: LibraryIndex | null,
   files: readonly F[],
-  newId: () => BookId = randomBookId,
-  now: number = Date.now(),
-  hashes: ScanHashes = new Map(),
+  { newId = randomBookId, now = Date.now(), hashes = new Map() }: ReconcileOptions = {},
 ): Reconciled<F> => {
   const before = current ?? {};
   const entries = Object.entries(before) as Entry[];

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { appendFile, copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, chmod, copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,19 @@ vi.mock("node:fs", async (importOriginal) => {
     return fs.createReadStream(...args);
   }) as typeof fs.createReadStream;
   return { ...fs, default: { ...fs, createReadStream }, createReadStream };
+});
+
+/* Every file the library writes atomically, so a test can count index writes. */
+const writes = vi.hoisted(() => [] as string[]);
+vi.mock("@/lib/server/store", async (importOriginal) => {
+  const store = await importOriginal<typeof import("@/lib/server/store")>();
+  return {
+    ...store,
+    writeFileAtomic: (file: string, content: string | Uint8Array) => {
+      writes.push(file);
+      return store.writeFileAtomic(file, content);
+    },
+  };
 });
 
 const tempDir = () => mkdtemp(path.join(tmpdir(), "rigg-learn-hashes-"));
@@ -130,6 +143,49 @@ describe("background hashing", () => {
     await Promise.all(Array.from({ length: 6 }, () => scanLibrary(books, data)));
     await backfillHashes(books, data);
     expect(readsIn(books)).toEqual(["a.epub"]);
+  });
+
+  it("saves the hashes of a large library in a few index writes", async () => {
+    const books = await tempDir();
+    const data = await tempDir();
+    const count = 60;
+    for (let n = 0; n < count; n++) await writeFile(path.join(books, `book ${n}.epub`), `bytes of book ${n}`);
+    writes.length = 0;
+    await scanLibrary(books, data);
+    await backfillHashes(books, data);
+    const index = await storedBooks(data);
+    expect(Object.values(index).filter((entry) => entry.sha256 !== null)).toHaveLength(count);
+    expect(readsIn(books)).toHaveLength(count);
+    const indexWrites = writes.filter((file) => file === indexPath(data)).length;
+    expect(indexWrites).toBeLessThanOrEqual(Math.ceil(count / 25) + 2);
+  });
+
+  it("tries a file that cannot be read once per version, and logs it once", async () => {
+    const books = await tempDir();
+    const data = await tempDir();
+    const locked = path.join(books, "locked.epub");
+    await writeFile(locked, "alpha");
+    await writeFile(path.join(books, "open.epub"), "bravo");
+    await chmod(locked, 0o000);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      for (let scan = 0; scan < 2; scan++) {
+        await scanLibrary(books, data);
+        await backfillHashes(books, data);
+      }
+      expect(readsIn(books).filter((file) => file === "locked.epub")).toHaveLength(1);
+      expect(warn).toHaveBeenCalledOnce();
+      expect((await storedBooks(data))[bookIdOf("open.epub")].sha256).toBe(sha256("bravo"));
+
+      await utimes(locked, new Date(), new Date(Date.now() + 60_000));
+      await scanLibrary(books, data);
+      await backfillHashes(books, data);
+      expect(readsIn(books).filter((file) => file === "locked.epub")).toHaveLength(2);
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+      await chmod(locked, 0o644);
+    }
   });
 });
 

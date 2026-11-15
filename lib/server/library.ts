@@ -134,35 +134,100 @@ const hashCandidates = async (root: string, files: readonly FileStat[]): Promise
   return hashes;
 };
 
-/**
- * Lists the books folder and gives each file its id from library.json. The listing happens inside the
- * index's queue too, so a scan that listed the folder earlier can never write after one that listed it later.
- */
-const identify = (root: string, dataDir: string): Promise<LibraryBook[]> => {
-  const file = indexFile(dataDir);
-  return serialized(file, async () => {
-    const current = await readIndex(file);
-    const files = await walkLibrary(root);
-    const first = reconcile(current, files);
-    const { index, books, skipped, changed } =
-      first.wantsHash.length > 0 ? reconcile(current, files, undefined, undefined, await hashCandidates(root, first.wantsHash)) : first;
-    reportSkipped(file, skipped);
-    if (changed) await writeIndex(file, index);
-    if (books.some(({ id }) => index[id].sha256 === null)) void backfillHashes(root, dataDir);
-    return books.map(({ id, file }) => toBook(id, file));
-  });
-};
+/* Every cover, saved position and chat turn looks its book up, so a scan is reused for a few seconds.
+   The cache lives on globalThis because dev bundles each route separately. */
+const SCAN_TTL_MS = 5000;
+interface Scan {
+  at: number;
+  books: Promise<LibraryBook[]>;
+}
+const scans = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-scans")] ??= new Map()) as Map<string, Scan>;
 
 const backfills = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-backfills")] ??= new Map()) as Map<
   string,
   Promise<void>
 >;
 
+/* Per library, every file version that could not be hashed, so a file that never reads is not reopened and
+   logged again after every scan. The key changes when the file's size or mtime does, which retries it. */
+const unhashable = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-unhashable")] ??= new Map()) as Map<
+  string,
+  Set<string>
+>;
+const unhashableIn = (key: string): Set<string> => {
+  let failed = unhashable.get(key);
+  if (!failed) unhashable.set(key, (failed = new Set()));
+  return failed;
+};
+const versionKey = (id: BookId, entry: IndexEntry) => `${id}:${entry.size}:${entry.mtimeMs}`;
+
+/** Whether the background run should hash this entry: a present book with no hash that has not already failed as it is. */
+const needsHash = (id: BookId, entry: IndexEntry, failed: ReadonlySet<string>) =>
+  entry.missingSince === null && entry.sha256 === null && !failed.has(versionKey(id, entry));
+
+const hashWork = (index: LibraryIndex | null, failed: ReadonlySet<string>): [BookId, IndexEntry][] =>
+  (Object.entries(index ?? {}) as [BookId, IndexEntry][]).filter(([id, entry]) => needsHash(id, entry, failed));
+
+/** What a change to library.json gives back: the index to keep, whether it differs from the one read, and the caller's result. */
+interface IndexChange<T> {
+  index: LibraryIndex;
+  changed: boolean;
+  value: T;
+  /** Drops the cached scan, for a change that gives a file a different id than that scan did. */
+  forgetScan?: boolean;
+}
+
 /**
- * Hashes every present book that has no hash yet, one file at a time, and saves each hash to library.json,
- * so a later move to another volume can be matched by content. Scans start it without waiting for it, and
- * only one runs per library; calling it while one runs returns that run. A hash is saved only if neither
- * the file nor its entry changed while it was read. Errors are logged and never reach a scan.
+ * The one way library.json is changed: read strictly, changed and written inside the index's queue, so no two
+ * changes lose each other's work. Afterwards it starts the background hashing if any book still needs it,
+ * whether or not this change wrote, because a restart leaves an unchanged index with unhashed books.
+ */
+const updateIndex = <T>(
+  root: string,
+  dataDir: string,
+  change: (current: LibraryIndex | null) => IndexChange<T> | Promise<IndexChange<T>>,
+): Promise<T> => {
+  const file = indexFile(dataDir);
+  const key = scanKey(root, dataDir);
+  return serialized(file, async () => {
+    const { index, changed, value, forgetScan } = await change(await readIndex(file));
+    if (changed) await writeIndex(file, index);
+    /* Not awaited: the run queues on this same file, so waiting for it here would wait on this task. */
+    if (hashWork(index, unhashableIn(key)).length > 0) void backfillHashes(root, dataDir);
+    if (forgetScan) scans.delete(key);
+    return value;
+  });
+};
+
+/**
+ * Lists the books folder and gives each file its id from library.json. The listing happens inside the
+ * index's queue too, so a scan that listed the folder earlier can never write after one that listed it later.
+ */
+const identify = (root: string, dataDir: string): Promise<LibraryBook[]> =>
+  updateIndex(root, dataDir, async (current) => {
+    const files = await walkLibrary(root);
+    const first = reconcile(current, files);
+    const result = first.wantsHash.length ? reconcile(current, files, { hashes: await hashCandidates(root, first.wantsHash) }) : first;
+    reportSkipped(indexFile(dataDir), result.skipped);
+    return { index: result.index, changed: result.changed, value: result.books.map(({ id, file }) => toBook(id, file)) };
+  });
+
+/* A batch is saved after this many hashes or this long, whichever comes first, so a fresh library costs a
+   handful of index writes rather than one per book, and a slow disk still saves its progress. */
+const SAVE_EVERY = 25;
+const SAVE_AFTER_MS = 1000;
+
+interface Hashed {
+  id: BookId;
+  entry: IndexEntry;
+  sha256: string;
+}
+
+/**
+ * Hashes every present book that has no hash yet, one file at a time, and saves the hashes to library.json
+ * in batches, so a later move to another volume can be matched by content. Scans start it without waiting
+ * for it, and only one runs per library; calling it while one runs returns that run. A hash is saved only
+ * if neither the file nor its entry changed while it was read. Errors are logged and never reach a scan.
  */
 export const backfillHashes = (
   root: string = getConfig().booksDir,
@@ -173,35 +238,62 @@ export const backfillHashes = (
   const running = backfills.get(key);
   if (running) return running;
   const file = indexFile(dataDir);
+  const failed = unhashableIn(key);
   const finish = () => {
     if (backfills.get(key) === run) backfills.delete(key);
   };
-  const tried = new Set<string>();
-  const attempt = (id: BookId, entry: IndexEntry) => `${id}:${entry.size}:${entry.mtimeMs}`;
+  /* The run ends inside the queue, so a scan that adds an unhashed book after this look starts a new run. */
+  const look = () =>
+    serialized(file, async () => {
+      const work = hashWork(await readIndex(file), failed);
+      if (work.length === 0) finish();
+      return work;
+    });
+  const save = (batch: readonly Hashed[]) =>
+    updateIndex(root, dataDir, (current) => {
+      const index: LibraryIndex = { ...current };
+      let changed = false;
+      for (const { id, entry: hashed, sha256 } of batch) {
+        const entry = index[id];
+        if (!entry || entry.sha256 !== null || entry.relPath !== hashed.relPath || !sameFile(entry, hashed)) continue;
+        index[id] = { ...entry, sha256 };
+        changed = true;
+      }
+      return { index, changed, value: undefined };
+    });
   const run = (async () => {
     try {
-      for (;;) {
-        /* The run ends inside the queue, so a scan that adds an unhashed book after this look starts a new run. */
-        const next = await serialized(file, async () => {
-          const index = (await readIndex(file)) ?? {};
-          const found = (Object.entries(index) as [BookId, IndexEntry][]).find(
-            ([id, entry]) => entry.missingSince === null && entry.sha256 === null && !tried.has(attempt(id, entry)),
-          );
-          if (!found) finish();
-          return found;
-        });
-        if (!next) return;
-        const [id, hashed] = next;
-        tried.add(attempt(id, hashed));
-        const sha256 = await hashIfUnchanged(root, hashed, hash).catch(quietIfGone(hashed.relPath));
-        if (!sha256) continue;
-        await serialized(file, async () => {
-          const index = await readIndex(file);
-          const entry = index?.[id];
-          if (!index || !entry || entry.sha256 !== null || entry.relPath !== hashed.relPath || !sameFile(entry, hashed)) return;
-          index[id] = { ...entry, sha256 };
-          await writeIndex(file, index);
-        });
+      for (let work = await look(); work.length > 0; work = await look()) {
+        /* A file that vanished or changed under the read needs a scan to resync its entry first. Looking again
+           before that would pick the same entry forever, so the run stops and that scan starts the next one. */
+        let stale = false;
+        let batch: Hashed[] = [];
+        let savedAt = Date.now();
+        for (const [id, entry] of work) {
+          let sha256: string | null;
+          try {
+            sha256 = await hashIfUnchanged(root, entry, hash);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") stale = true;
+            else if (!failed.has(versionKey(id, entry))) {
+              failed.add(versionKey(id, entry));
+              console.warn(`Could not hash ${entry.relPath}:`, error);
+            }
+            continue;
+          }
+          if (!sha256) {
+            stale = true;
+            continue;
+          }
+          batch.push({ id, entry, sha256 });
+          if (batch.length >= SAVE_EVERY || Date.now() - savedAt >= SAVE_AFTER_MS) {
+            await save(batch);
+            batch = [];
+            savedAt = Date.now();
+          }
+        }
+        if (batch.length > 0) await save(batch);
+        if (stale) return await serialized(file, async () => finish());
       }
     } catch (error) {
       console.warn("Stopped hashing library books:", error);
@@ -212,15 +304,6 @@ export const backfillHashes = (
   backfills.set(key, run);
   return run;
 };
-
-/* Every cover, saved position and chat turn looks its book up, so a scan is reused for a few seconds.
-   The cache lives on globalThis because dev bundles each route separately. */
-const SCAN_TTL_MS = 5000;
-interface Scan {
-  at: number;
-  books: Promise<LibraryBook[]>;
-}
-const scans = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-scans")] ??= new Map()) as Map<string, Scan>;
 
 const freshScan = (root: string, dataDir: string): Scan | null => {
   const scan = scans.get(scanKey(root, dataDir));

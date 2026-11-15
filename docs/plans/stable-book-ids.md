@@ -35,10 +35,10 @@ files and without changing any existing book's id.
 
 ### Reconcile after the whole scan, never per file
 
-`reconcile` is pure: it takes the index, the scan and a clock, and returns the new index with the books, the
-skipped paths, the orphans (entries no file was bound to) and the minted ids. It runs a list of matchers in
-order; each binds only keys shared by exactly one still-unbound file and exactly one still-unbound entry
-(`bindOneToOne`), so anything ambiguous falls through and nothing is guessed.
+`reconcile` is pure: it takes the index, the scan and `{ newId, now, hashes }` (all optional), and returns the
+new index with the books, the skipped paths, the orphans (entries no file was bound to) and the minted ids. It
+runs a list of matchers in order; each binds only keys shared by exactly one still-unbound file and exactly one
+still-unbound entry (`bindOneToOne`), so anything ambiguous falls through and nothing is guessed.
 
 1. **Same inode:** `dev:ino:size:mtimeMs`. Renames, moves on one volume (Finder, `mv`) and two files swapping
    names keep their ids, and a moved book keeps its id even when a new file lands at its old path. mtime is in
@@ -66,14 +66,31 @@ inode or hash, or relinked by hand, never by path: a new file at a dead book's o
   a save as a new file at a new path binds on the scan that finds it, as long as the orphan was hashed
   earlier.
 - A hash taken during a scan is stored on the file's entry, bound or minted, so it is not taken again.
-- **In the background, after a scan** whose books include one without a hash (new, or with a changed
-  size/mtime), `backfillHashes` streams each such present book's sha256, one file at a time, off the request
-  path. One run per library at a time, tracked on globalThis like the scan cache; the run ends inside the
-  index queue when it finds no more work, so a scan that adds an unhashed book after that look starts a new
-  one. Each hash is written by re-reading the index inside the queue and setting that one entry, and only
-  if the file's stat is the same before and after reading it **and** the entry still has the relPath, size,
-  mtime, inode and device that were hashed and no hash. Anything else drops the result; errors are logged
-  and never reach a scan. A scan that finds no books starts no run.
+- **In the background, after any index change** that leaves a present book without a hash (new, or with a
+  changed size/mtime), `backfillHashes` hashes those books off the request path. One run per library at a
+  time, tracked on globalThis like the scan cache.
+  - **Batched.** The run reads the index once inside the queue and takes every entry that needs a hash. It
+    hashes them one at a time outside the queue, each only if the file's stat is the same before and after
+    reading it, and saves them every 25 hashes or about a second, whichever comes first: one queued read,
+    each hash set only if its entry still has the relPath, size, mtime, inode and device that were hashed and
+    no hash, one write. A fresh library of N books costs about N/25 index writes, not N. When the list is
+    done the run looks again inside the queue and ends inside that same empty look, so a scan that adds an
+    unhashed book after it starts a new run.
+  - **Stale files end the run.** A file that vanished or changed while it was read is left for the next
+    scan to resync; looking again before that would pick the same entry forever. The run finishes the list,
+    saves what it has and stops; the next scan starts a fresh one.
+  - **Failure record.** A present file that cannot be read (permissions, I/O errors) is recorded for the
+    process's lifetime on globalThis, per library, as `id:size:mtimeMs`. It is not tried again or logged
+    again until its size or mtime changes. A vanished file is not recorded, because a remounted drive brings
+    it back with the same size and mtime. One `needsHash` rule decides both whether a change starts a run
+    and what a run picks.
+  - Errors never reach a scan.
+- **One mutation path.** `updateIndex(root, dataDir, change)` is the only code that writes `library.json`:
+  inside `serialized(library.json)` it strict-reads the index, applies `change`, writes only if it reports a
+  change, starts the background run if `needsHash` finds work (written or not, because a restart leaves an
+  unchanged index with unhashed books), and clears the library's cached scan when the change asks. The scan
+  (with its folder walk inside the same task) and each batch save go through it, and slice 3's `rebind` will
+  too.
 - A moved book whose orphan had no hash yet becomes a new book and its orphan is relinked by hand in slice 3.
 
 ### Never lose data on a bad scan
@@ -85,6 +102,15 @@ inode or hash, or relinked by hand, never by path: a new file at a dead book's o
 - The index never forgets a book on its own. An orphan keeps its data until the reader relinks or forgets it.
 - If `library.json` is lost, re-seeding gives every file at its original path its original id back; anything that
   had moved shows in the missing-books list (its state file has no index entry) and can be relinked by hand.
+
+### Known limit
+
+If, between two scans, a book is moved to another device inside the books folder **and** a different file
+lands at its old path, the path matcher gives the old id to the new file: the entry was present last scan and
+the inode no longer matches, so path is the strongest signal left. A move on the same device is fine, because
+the inode matcher binds the moved book first. A possible fix, not implemented: offer path-only bindings whose
+size or mtime changed to the hash pass as well, so the moved book's bytes can claim its id before the path
+does.
 
 ### Missing books
 
