@@ -5,8 +5,8 @@ import { withBook } from "@/lib/server/with-book";
 const noCover = () => new Response(null, { status: 404 });
 
 /** The cover URL carries the book's modified time, so a changed book gets a new URL and this one can be kept. */
-export const GET = withBook(async (found) => {
-  const cover = await bookCover(found);
+export const GET = withBook(async ({ book, absPath }) => {
+  const cover = await bookCover({ book, absPath });
   if (!cover) return noCover();
   return new Response(new Uint8Array(cover), {
     headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" },
