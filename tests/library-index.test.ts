@@ -206,7 +206,7 @@ describe("reconcile", () => {
   it("leaves the index alone when the scan finds no books", () => {
     const index = seeded([file("a.epub"), file("b.pdf")]);
     const result = reconcile(index, [], counter());
-    expect(result).toEqual({ index, books: [], skipped: [], orphans: [], minted: [], changed: false });
+    expect(result).toEqual({ index, books: [], skipped: [], orphans: [], minted: [], wantsHash: [], changed: false });
   });
 
   it("does not seed from an empty scan, so books found later still get their old ids", () => {
@@ -243,5 +243,119 @@ describe("reconcile", () => {
     expect(b).toMatch(/^[0-9a-f]{40}$/);
     expect(b).not.toBe(c);
     expect(b).not.toBe(bookIdOf("b.epub"));
+  });
+});
+
+describe("reconcile by content hash", () => {
+  const SHA = "a".repeat(64);
+  const OTHER = "b".repeat(64);
+
+  /** An index of `files` in which each named path's entry already has the given hash. */
+  const hashedIndex = (files: FileStat[], shas: Record<string, string>): LibraryIndex => {
+    const index = { ...seeded(files) };
+    for (const [relPath, sha256] of Object.entries(shas)) index[bookIdOf(relPath)] = { ...index[bookIdOf(relPath)], sha256 };
+    return index;
+  };
+
+  /** Reconciles as a scan does: once, then again with the hashes of whatever that first pass asked for. */
+  const twoPass = (index: LibraryIndex, files: FileStat[], shas: Record<string, string>, now = 7) => {
+    const first = reconcile(index, files, counter(), now);
+    const hashes = new Map(first.wantsHash.map(({ relPath }) => [relPath, shas[relPath]]));
+    return { first, result: reconcile(index, files, counter(), now, hashes) };
+  };
+
+  it("keeps the id of a book moved to another volume (new device and inode, same bytes)", () => {
+    const a = file("a.epub");
+    const b = file("b.pdf", { size: 2000 });
+    const index = hashedIndex([a, b], { "a.epub": SHA });
+    const elsewhere = file("Other Drive/a.epub", { dev: "9", mtimeMs: a.mtimeMs + 5 });
+    const { first, result } = twoPass(index, [elsewhere, b], { "Other Drive/a.epub": SHA });
+    expect(first.wantsHash).toEqual([elsewhere]);
+    expect(idsOf(result)).toEqual({ "Other Drive/a.epub": bookIdOf("a.epub"), "b.pdf": bookIdOf("b.pdf") });
+    expect(result.index[bookIdOf("a.epub")]).toEqual({ ...elsewhere, sha256: SHA, missingSince: null });
+    expect(result.minted).toEqual([]);
+    expect(result.orphans).toEqual([]);
+  });
+
+  it("keeps the id of a book saved as a new file at a new path", () => {
+    const a = file("a.epub");
+    const index = hashedIndex([a], { "a.epub": SHA });
+    const saved = file("Shelf/a (saved).epub", { mtimeMs: a.mtimeMs + 60_000 });
+    const { result } = twoPass(index, [saved], { "Shelf/a (saved).epub": SHA });
+    expect(idsOf(result)).toEqual({ "Shelf/a (saved).epub": bookIdOf("a.epub") });
+  });
+
+  it("finds a book missing for several scans again by its hash", () => {
+    const a = file("a.epub");
+    const b = file("b.pdf", { size: 2000 });
+    const gone = reconcile(hashedIndex([a, b], { "a.epub": SHA }), [b], counter(), 5).index;
+    expect(gone[bookIdOf("a.epub")].missingSince).toBe(5);
+    const { result } = twoPass(gone, [b, file("back.epub")], { "back.epub": SHA });
+    expect(idsOf(result)).toEqual({ "b.pdf": bookIdOf("b.pdf"), "back.epub": bookIdOf("a.epub") });
+    expect(result.index[bookIdOf("a.epub")].missingSince).toBeNull();
+  });
+
+  it("binds nothing when two identical files match one orphan", () => {
+    const index = hashedIndex([file("a.epub")], { "a.epub": SHA });
+    const one = file("one.epub");
+    const two = file("two.epub");
+    const { first, result } = twoPass(index, [one, two], { "one.epub": SHA, "two.epub": SHA });
+    expect(first.wantsHash).toEqual([one, two]);
+    const ids = counter();
+    expect(idsOf(result)).toEqual({ "one.epub": ids(), "two.epub": ids() });
+    expect(result.orphans).toEqual([bookIdOf("a.epub")]);
+    expect(result.index[bookIdOf("a.epub")]).toEqual({ ...index[bookIdOf("a.epub")], missingSince: 7 });
+  });
+
+  it("binds nothing when one file matches two orphans with the same bytes", () => {
+    const index = hashedIndex([file("a.epub"), file("b.epub")], { "a.epub": SHA, "b.epub": SHA });
+    const { result } = twoPass(index, [file("moved.epub")], { "moved.epub": SHA });
+    expect(idsOf(result)).toEqual({ "moved.epub": counter()() });
+    expect(result.orphans.sort()).toEqual([bookIdOf("a.epub"), bookIdOf("b.epub")].sort());
+  });
+
+  it("leaves a book moved and edited to the same size orphaned and gives the file a new id", () => {
+    const index = hashedIndex([file("a.epub")], { "a.epub": SHA });
+    const edited = file("Shelf/a.epub");
+    const { first, result } = twoPass(index, [edited], { "Shelf/a.epub": OTHER });
+    expect(first.wantsHash).toEqual([edited]);
+    const expected = counter()();
+    expect(idsOf(result)).toEqual({ "Shelf/a.epub": expected });
+    expect(result.index[expected].sha256).toBe(OTHER);
+    expect(result.orphans).toEqual([bookIdOf("a.epub")]);
+  });
+
+  it("asks for no hash of a file whose size no hashed orphan has", () => {
+    const a = file("a.epub");
+    const result = reconcile(hashedIndex([a], { "a.epub": SHA }), [file("Shelf/a.epub", { size: a.size + 1 })], counter());
+    expect(result.wantsHash).toEqual([]);
+    expect(result.orphans).toEqual([bookIdOf("a.epub")]);
+  });
+
+  it("asks for no hash of a file that only an orphan without a hash shares a size with", () => {
+    const result = reconcile(seeded([file("a.epub")]), [file("Shelf/a.epub")], counter());
+    expect(result.wantsHash).toEqual([]);
+  });
+
+  it("asks for no hash when every file is matched by inode or path", () => {
+    const a = file("a.epub");
+    const b = file("b.epub");
+    const result = reconcile(hashedIndex([a, b], { "a.epub": SHA, "b.epub": SHA }), [moved(a, "c.epub"), b], counter());
+    expect(result.wantsHash).toEqual([]);
+    expect(result.changed).toBe(true);
+  });
+
+  it("asks for no hash of a second path to a file it already matched", () => {
+    const a = file("a.epub");
+    const result = reconcile(hashedIndex([a, file("b.epub")], { "b.epub": SHA }), [a, moved(a, "link.epub")], counter());
+    expect(result.skipped.map(({ relPath }) => relPath)).toEqual(["link.epub"]);
+    expect(result.wantsHash).toEqual([]);
+  });
+
+  it("never offers an entry that inode or path already bound to the hash matcher", () => {
+    const a = file("a.epub");
+    const { first, result } = twoPass(hashedIndex([a], { "a.epub": SHA }), [a, file("copy.epub")], { "copy.epub": SHA });
+    expect(first.wantsHash).toEqual([]);
+    expect(idsOf(result)).toEqual({ "a.epub": bookIdOf("a.epub"), "copy.epub": counter()() });
   });
 });

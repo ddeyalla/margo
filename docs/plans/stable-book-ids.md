@@ -46,7 +46,7 @@ order; each binds only keys shared by exactly one still-unbound file and exactly
    take that book's data.
 2. **Same path, for entries the previous scan found** (`missingSince === null` before this scan): editors that
    save by writing a new file, and a volume remounted with new device numbers.
-3. **Same hash** (slice 2): see below.
+3. **Same hash:** a file's sha256 taken this scan against any unbound entry's, present or missing. See below.
 4. Anything left is minted a random id, except **another path to a file already bound this scan** (a hard link,
    or a book seen at both ends of a move made during the scan). That path is skipped and logged once with a
    warning, because an id minted for it would share the book's inode and strand the book's data next scan.
@@ -55,14 +55,25 @@ order; each binds only keys shared by exactly one still-unbound file and exactly
 its first timestamp otherwise; a bound entry gets null. A book that was already missing is matched only by
 inode or hash, or relinked by hand, never by path: a new file at a dead book's old path is a new book.
 
-### Hashes (slice 2)
+### Hashes
 
-- A book's `sha256` is streamed in a background task after a scan finds it without one (or with a changed
-  size/mtime), one file at a time, and written to the index.
-- During a scan, an unknown-path file whose size equals some orphan's size is hashed synchronously before
-  anything is minted, and the hash is the third matcher in the list. So a move to another volume (new inode,
-  same bytes) binds on the scan that finds it, as long as the orphan was hashed earlier. Sizes filter this, so
-  it costs nothing when nothing moved.
+- **During a scan, two pure passes.** `reconcile` takes an optional `hashes` map (relPath to sha256) and
+  returns `wantsHash`: the files about to be minted that are the size of a still-unbound entry with a known
+  hash. The scan reconciles once with no hashes; if `wantsHash` is not empty it streams SHA-256 for exactly
+  those files and reconciles the same index again with them. The rule for which files are worth hashing
+  lives next to the matchers, so the I/O layer never re-derives what would be minted. Sizes filter this, so
+  a scan in which nothing moved reads no book bytes. So a move to another volume (new inode, same bytes) or
+  a save as a new file at a new path binds on the scan that finds it, as long as the orphan was hashed
+  earlier.
+- A hash taken during a scan is stored on the file's entry, bound or minted, so it is not taken again.
+- **In the background, after a scan** whose books include one without a hash (new, or with a changed
+  size/mtime), `backfillHashes` streams each such present book's sha256, one file at a time, off the request
+  path. One run per library at a time, tracked on globalThis like the scan cache; the run ends inside the
+  index queue when it finds no more work, so a scan that adds an unhashed book after that look starts a new
+  one. Each hash is written by re-reading the index inside the queue and setting that one entry, and only
+  if the file's stat is the same before and after reading it **and** the entry still has the relPath, size,
+  mtime, inode and device that were hashed and no hash. Anything else drops the result; errors are logged
+  and never reach a scan. A scan that finds no books starts no run.
 - A moved book whose orphan had no hash yet becomes a new book and its orphan is relinked by hand in slice 3.
 
 ### Never lose data on a bad scan
@@ -108,5 +119,5 @@ a thermo-nuclear code-quality review before the next starts.
 ## Status
 
 - [x] Slice 1
-- [ ] Slice 2
+- [x] Slice 2
 - [ ] Slice 3

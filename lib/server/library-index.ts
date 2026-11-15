@@ -91,33 +91,37 @@ export const readIndex = async (file: string): Promise<LibraryIndex | null> => {
 };
 
 type Entry = [BookId, IndexEntry];
-type Key = (stat: FileStat) => string;
+
+/** Content hashes of scanned files, by relPath, taken during this scan. */
+export type ScanHashes = ReadonlyMap<string, string>;
 
 /* mtime is part of the key because exFAT and ext4 reuse inode numbers: a new file that lands on a dead
    book's inode almost never has its size and mtime as well. */
-const inodeKey: Key = (stat) => `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
-const fileKey: Key = (stat) => `${stat.dev}:${stat.ino}`;
-const pathKey: Key = (stat) => stat.relPath;
+const inodeKey = (stat: FileStat) => `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+const fileKey = (stat: FileStat) => `${stat.dev}:${stat.ino}`;
 
+/** A key of null takes no part in this matcher. */
 interface Matcher {
-  key: Key;
-  /** Which unbound entries this matcher may bind. */
-  eligible: (entry: IndexEntry) => boolean;
+  file: (file: FileStat, hashes: ScanHashes) => string | null;
+  entry: (entry: IndexEntry) => string | null;
 }
 
 /**
  * Strongest signal first. A path is only evidence for a book the last scan saw there: a book that was
- * already gone must not be handed to whatever file later lands at its old path.
+ * already gone must not be handed to whatever file later lands at its old path. A hash can match any
+ * entry, present or missing, because equal bytes are evidence wherever the file now lives.
  */
 const MATCHERS: readonly Matcher[] = [
-  { key: inodeKey, eligible: () => true },
-  { key: pathKey, eligible: (entry) => entry.missingSince === null },
+  { file: inodeKey, entry: inodeKey },
+  { file: (file) => file.relPath, entry: (entry) => (entry.missingSince === null ? entry.relPath : null) },
+  { file: (file, hashes) => hashes.get(file.relPath) ?? null, entry: (entry) => entry.sha256 },
 ];
 
-const groupBy = <T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T[]> => {
+const groupBy = <T, K>(items: Iterable<T>, key: (item: T) => K | null): Map<K, T[]> => {
   const groups = new Map<K, T[]>();
   for (const item of items) {
     const k = key(item);
+    if (k === null) continue;
     const group = groups.get(k);
     if (group) group.push(item);
     else groups.set(k, [item]);
@@ -126,10 +130,15 @@ const groupBy = <T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T[]> => 
 };
 
 /** Binds every key shared by exactly one of `files` and exactly one of `entries`; anything ambiguous stays unbound. */
-export const bindOneToOne = <F extends FileStat>(files: readonly F[], entries: readonly Entry[], key: Key): Map<F, BookId> => {
-  const entriesByKey = groupBy(entries, ([, entry]) => key(entry));
+export const bindOneToOne = <F extends FileStat>(
+  files: readonly F[],
+  entries: readonly Entry[],
+  keyOfFile: (file: F) => string | null,
+  keyOfEntry: (entry: IndexEntry) => string | null,
+): Map<F, BookId> => {
+  const entriesByKey = groupBy(entries, ([, entry]) => keyOfEntry(entry));
   const bound = new Map<F, BookId>();
-  for (const [k, group] of groupBy(files, key)) {
+  for (const [k, group] of groupBy(files, keyOfFile)) {
     const matches = entriesByKey.get(k);
     if (group.length === 1 && matches?.length === 1) bound.set(group[0], matches[0][0]);
   }
@@ -145,14 +154,15 @@ const sameEntry = (a: IndexEntry, b: IndexEntry) =>
   a.sha256 === b.sha256 &&
   a.missingSince === b.missingSince;
 
-/* A changed size or mtime means the bytes may differ, so the old hash no longer describes them. */
-const refreshed = (entry: IndexEntry | undefined, file: FileStat): IndexEntry => ({
+/* A changed size or mtime means the bytes may differ, so the old hash no longer describes them. A hash
+   taken this scan describes them exactly. */
+const refreshed = (entry: IndexEntry | undefined, file: FileStat, hash: string | undefined): IndexEntry => ({
   relPath: file.relPath,
   size: file.size,
   mtimeMs: file.mtimeMs,
   ino: file.ino,
   dev: file.dev,
-  sha256: entry && entry.size === file.size && entry.mtimeMs === file.mtimeMs ? entry.sha256 : null,
+  sha256: hash ?? (entry && entry.size === file.size && entry.mtimeMs === file.mtimeMs ? entry.sha256 : null),
   missingSince: null,
 });
 
@@ -166,6 +176,11 @@ export interface Reconciled<F extends FileStat> {
   orphans: BookId[];
   /** Ids created this scan. */
   minted: BookId[];
+  /**
+   * Files about to be minted that are the size of an unbound entry with a known hash and are not in
+   * `hashes` yet. Reconciling again with their hashes may bind them to that entry instead.
+   */
+  wantsHash: F[];
   /** False when the index is entry for entry what it was, so a steady-state scan writes nothing. */
   changed: boolean;
 }
@@ -175,10 +190,10 @@ const seed = <F extends FileStat>(files: readonly F[]): Reconciled<F> => {
   const index: LibraryIndex = {};
   const books = files.map((file) => {
     const id = bookIdOf(file.relPath);
-    index[id] = refreshed(undefined, file);
+    index[id] = refreshed(undefined, file, undefined);
     return { id, file };
   });
-  return { index, books, skipped: [], orphans: [], minted: books.map(({ id }) => id), changed: true };
+  return { index, books, skipped: [], orphans: [], minted: books.map(({ id }) => id), wantsHash: [], changed: true };
 };
 
 /**
@@ -189,6 +204,9 @@ const seed = <F extends FileStat>(files: readonly F[]): Reconciled<F> => {
  *    keeps its id even when a new file lands at its old path.
  * 2. Same path, for books the previous scan found: editors that save by replacing the file, and a volume
  *    remounted with new device numbers.
+ * 3. Same content hash, from `hashes`: a move to another volume, or a save as a new file at a new path.
+ *    Only the files in `wantsHash` can bind this way, so the caller reconciles once without hashes,
+ *    hashes those, and reconciles the same index again with them.
  *
  * A file still unbound is another path to a file already bound (a hard link, or a book seen at both ends
  * of a move made during the scan) and is skipped, because an id minted for it would share the book's inode
@@ -202,18 +220,19 @@ export const reconcile = <F extends FileStat>(
   files: readonly F[],
   newId: () => BookId = randomBookId,
   now: number = Date.now(),
+  hashes: ScanHashes = new Map(),
 ): Reconciled<F> => {
   const before = current ?? {};
   const entries = Object.entries(before) as Entry[];
-  if (files.length === 0) return { index: before, books: [], skipped: [], orphans: [], minted: [], changed: false };
+  if (files.length === 0) return { index: before, books: [], skipped: [], orphans: [], minted: [], wantsHash: [], changed: false };
   if (entries.length === 0) return seed(files);
 
   const ids = new Map<F, BookId>();
   const boundIds = new Set<BookId>();
-  for (const { key, eligible } of MATCHERS) {
+  const unboundEntries = () => entries.filter(([id]) => !boundIds.has(id));
+  for (const matcher of MATCHERS) {
     const unboundFiles = files.filter((file) => !ids.has(file));
-    const unboundEntries = entries.filter(([id, entry]) => !boundIds.has(id) && eligible(entry));
-    for (const [file, id] of bindOneToOne(unboundFiles, unboundEntries, key)) {
+    for (const [file, id] of bindOneToOne(unboundFiles, unboundEntries(), (file) => matcher.file(file, hashes), matcher.entry)) {
       ids.set(file, id);
       boundIds.add(id);
     }
@@ -222,6 +241,8 @@ export const reconcile = <F extends FileStat>(
   const boundFiles = new Set([...ids.keys()].map(fileKey));
   const skipped = files.filter((file) => !ids.has(file) && boundFiles.has(fileKey(file)));
   const skip = new Set(skipped);
+  const hashedSizes = new Set(unboundEntries().flatMap(([, entry]) => (entry.sha256 === null ? [] : [entry.size])));
+  const wantsHash = files.filter((file) => !ids.has(file) && !skip.has(file) && !hashes.has(file.relPath) && hashedSizes.has(file.size));
   const minted = new Set<BookId>();
   for (const file of files) {
     if (ids.has(file) || skip.has(file)) continue;
@@ -235,7 +256,7 @@ export const reconcile = <F extends FileStat>(
   const books = files.flatMap((file) => {
     const id = ids.get(file);
     if (!id) return [];
-    index[id] = refreshed(before[id], file);
+    index[id] = refreshed(before[id], file, hashes.get(file.relPath));
     return [{ id, file }];
   });
   const orphans = entries.filter(([id]) => !boundIds.has(id)).map(([id]) => id);
@@ -243,5 +264,5 @@ export const reconcile = <F extends FileStat>(
     if (before[id].missingSince === null) index[id] = { ...before[id], missingSince: now };
   }
   const changed = minted.size > 0 || entries.some(([id, entry]) => !sameEntry(entry, index[id]));
-  return { index, books, skipped, orphans, minted: [...minted], changed };
+  return { index, books, skipped, orphans, minted: [...minted], wantsHash, changed };
 };

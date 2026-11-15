@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { parseFileName } from "@/lib/server/filename";
-import { bookIdOf, findBook, libraryProblem, scanLibrary } from "@/lib/server/library";
+import { backfillHashes, bookIdOf, findBook, libraryProblem, scanLibrary } from "@/lib/server/library";
 import { LibraryIndexError, readIndex, type LibraryIndex } from "@/lib/server/library-index";
 import type { BookId } from "@/lib/shared/types";
 
@@ -162,6 +162,7 @@ describe("library lookup", () => {
     const shelfData = await tempDir();
     await writeFile(path.join(shelf, "Dune.epub"), "epub");
     expect(await findBook(bookIdOf("Dune.epub"), shelf, shelfData)).not.toBeNull();
+    await backfillHashes(shelf, shelfData);
     /* An entry already waiting at the new file's path, so its id is known before the file exists. */
     const known = "e".repeat(40) as BookId;
     /* Written without missingSince, which an index may lack and reads as present. */
@@ -236,9 +237,11 @@ describe("library index on disk", () => {
   it("does not rewrite the index when nothing changed", async () => {
     const { books, data } = await shelfWith(["a.epub"]);
     await scanLibrary(books, data);
+    await backfillHashes(books, data);
     const before = await stat(indexPath(data));
     await new Promise((resolve) => setTimeout(resolve, 20));
     await scanLibrary(books, data);
+    await backfillHashes(books, data);
     const after = await stat(indexPath(data));
     expect([after.ino, after.mtimeMs]).toEqual([before.ino, before.mtimeMs]);
   });
@@ -246,6 +249,7 @@ describe("library index on disk", () => {
   it("leaves the index alone when the books folder turns up empty", async () => {
     const { books, data } = await shelfWith(["a.epub"]);
     await scanLibrary(books, data);
+    await backfillHashes(books, data);
     const text = await readFile(indexPath(data), "utf8");
     expect(await scanLibrary(await tempDir(), data)).toEqual([]);
     expect(await readFile(indexPath(data), "utf8")).toBe(text);
