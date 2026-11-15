@@ -6,7 +6,7 @@ import { openTurn, parseTurnRequest } from "@/lib/server/turns";
 import { CODEX_DEFAULT_MODEL } from "@/lib/server/tutor/codex";
 import { buildTurn } from "@/lib/server/tutor/prompt";
 import { PROVIDERS, isProviderId } from "@/lib/server/tutor/providers";
-import { isObject } from "@/lib/server/validate";
+import { bookNotFound, readObject } from "@/lib/server/with-book";
 import type { ChatStreamEvent, ProviderId } from "@/lib/shared/types";
 
 const DEFAULT_MODELS: Partial<Record<ProviderId, string>> = { codex: CODEX_DEFAULT_MODEL };
@@ -20,12 +20,13 @@ const badRequest = (error: string) => Response.json({ error }, { status: 400 });
  * the reader stopped it or left mid-answer.
  */
 export async function POST(request: Request) {
-  const body: unknown = await request.json().catch(() => null);
-  if (!isObject(body)) return badRequest("Expected a JSON object.");
+  const body = await readObject(request);
+  if (!body) return badRequest("Expected a JSON object.");
   if (!isProviderId(body.provider)) return badRequest("Unknown provider.");
   const providerId = body.provider;
+  /* The book id is in the body rather than the path, so withBook does not fit; the 404 is the same. */
   const found = await findBook(body.bookId);
-  if (!found) return Response.json({ error: "Book not found." }, { status: 404 });
+  if (!found) return bookNotFound();
 
   const parsed = await parseTurnRequest(body, found.book, providerId);
   if (typeof parsed === "string") return badRequest(parsed);

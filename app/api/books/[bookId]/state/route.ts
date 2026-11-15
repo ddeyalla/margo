@@ -1,24 +1,14 @@
-import { findBook } from "@/lib/server/library";
-import { readBookState, updateBookState } from "@/lib/server/store";
+import { readBookState, saveBookPosition, updateBookState } from "@/lib/server/store";
 import { isObject, parsePosition, shortText } from "@/lib/server/validate";
+import { readObject, withBook } from "@/lib/server/with-book";
 import type { BookMeta, Position } from "@/lib/shared/types";
 
-const notFound = () => Response.json({ error: "Book not found." }, { status: 404 });
-
-export async function GET(_request: Request, ctx: RouteContext<"/api/books/[bookId]/state">) {
-  const found = await findBook((await ctx.params).bookId);
-  if (!found) return notFound();
-  return Response.json(await readBookState(found.book.id));
-}
+export const GET = withBook(async ({ book }) => Response.json(await readBookState(book.id)));
 
 /** Saves the reading position, the open tutor thread and, on first open, the book's real title and author. */
-export async function PATCH(request: Request, ctx: RouteContext<"/api/books/[bookId]/state">) {
-  const found = await findBook((await ctx.params).bookId);
-  if (!found) return notFound();
-  const { book } = found;
-
-  const body: unknown = await request.json().catch(() => null);
-  if (!isObject(body)) return Response.json({ error: "Expected a JSON object." }, { status: 400 });
+export const PATCH = withBook(async ({ book, request }) => {
+  const body = await readObject(request);
+  if (!body) return Response.json({ error: "Expected a JSON object." }, { status: 400 });
 
   let position: Position | undefined;
   if ("position" in body) {
@@ -46,15 +36,16 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/books/[boo
     activeThreadId = body.activeThreadId;
   }
 
-  await updateBookState(book.id, (state) => ({
-    ...state,
-    position: position ?? state.position,
-    /* Moving through the book is what "last read" means; a title or open-thread write is not. */
-    lastReadAt: position ? new Date().toISOString() : state.lastReadAt,
-    meta: meta ?? state.meta,
-    /* Only a thread the book has; anything else falls back to the list. */
-    activeThreadId:
-      activeThreadId === undefined ? state.activeThreadId : state.threads.some((t) => t.id === activeThreadId) ? activeThreadId : null,
-  }));
+  /* Moving through the book is what "last read" means; a title or open-thread write is not. The position has its own small file, so a scroll stop leaves the threads alone. */
+  if (position) await saveBookPosition(book.id, position);
+  if (meta || activeThreadId !== undefined) {
+    await updateBookState(book.id, (state) => ({
+      ...state,
+      meta: meta ?? state.meta,
+      /* Only a thread the book has; anything else falls back to the list. */
+      activeThreadId:
+        activeThreadId === undefined ? state.activeThreadId : state.threads.some((t) => t.id === activeThreadId) ? activeThreadId : null,
+    }));
+  }
   return new Response(null, { status: 204 });
-}
+});
