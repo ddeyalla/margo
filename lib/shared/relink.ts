@@ -40,18 +40,18 @@ export const nameSimilarity = (a: string, b: string): number => {
 };
 
 /**
- * The candidates with the likeliest file for this missing book first: the same format, then the most alike
- * file name, then the same size. What the missing book does not record takes no part in the order.
+ * The candidates that could be this missing book's file, likeliest first. Only its format qualifies when that
+ * is known, because the server refuses any other. Then the most alike file name, then the same size. What the
+ * missing book does not record takes no part.
  */
 export const rankCandidates = (missing: Pick<MissingBook, "format" | "relPath" | "sizeBytes">, candidates: readonly RelinkCandidate[]) => {
-  const scored = candidates.map((candidate) => ({
-    candidate,
-    format: missing.format !== null && candidate.format === missing.format ? 1 : 0,
-    name: missing.relPath ? nameSimilarity(missing.relPath, candidate.relPath) : 0,
-    size: missing.sizeBytes !== null && candidate.sizeBytes === missing.sizeBytes ? 1 : 0,
-  }));
-  scored.sort(
-    (a, b) => b.format - a.format || b.name - a.name || b.size - a.size || a.candidate.title.localeCompare(b.candidate.title),
-  );
+  const scored = candidates
+    .filter((candidate) => missing.format === null || candidate.format === missing.format)
+    .map((candidate) => ({
+      candidate,
+      name: missing.relPath ? nameSimilarity(missing.relPath, candidate.relPath) : 0,
+      size: missing.sizeBytes !== null && candidate.sizeBytes === missing.sizeBytes ? 1 : 0,
+    }));
+  scored.sort((a, b) => b.name - a.name || b.size - a.size || a.candidate.title.localeCompare(b.candidate.title));
   return scored.map(({ candidate }) => candidate);
 };

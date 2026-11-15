@@ -15,12 +15,13 @@ export function Spinner({ className }: { className?: string }) {
   );
 }
 
-type ButtonVariant = "primary" | "ghost" | "outline";
+type ButtonVariant = "primary" | "ghost" | "outline" | "danger";
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary: "rounded-full bg-accent font-semibold text-on-accent hover:bg-accent/90",
   ghost: "rounded-sm text-fog hover:bg-tint hover:text-paper active:bg-tint-strong",
   outline: "rounded-sm bg-panel-raised text-paper shadow-chip hover:bg-panel-hover",
+  danger: "rounded-sm bg-danger/15 font-semibold text-danger hover:bg-danger/25",
 };
 
 export function Button({

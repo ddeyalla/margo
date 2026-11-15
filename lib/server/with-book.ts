@@ -1,4 +1,5 @@
 import { findBook, type FoundBook } from "./library";
+import { BookClosedError } from "./store";
 import { isObject } from "./validate";
 
 export const bookNotFound = () => Response.json({ error: "Book not found." }, { status: 404 });
@@ -21,7 +22,8 @@ type BookContext = { params: Promise<{ bookId: string }> };
 /**
  * A route handler for /api/books/[bookId]/..., called only once the book is
  * found. An unknown or invalid id answers `notFound`, by default the JSON 404
- * every book route shares.
+ * every book route shares, and so does a write refused because the book was
+ * relinked away or forgotten after it was found.
  */
 export const withBook =
   <R extends Request = Request>(
@@ -31,5 +33,10 @@ export const withBook =
   async (request: R, ctx: BookContext): Promise<Response> => {
     const found = await findBook((await ctx.params).bookId);
     if (!found) return notFound();
-    return handler({ ...found, request });
+    try {
+      return await handler({ ...found, request });
+    } catch (error) {
+      if (error instanceof BookClosedError) return notFound();
+      throw error;
+    }
   };

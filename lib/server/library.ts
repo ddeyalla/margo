@@ -15,11 +15,12 @@ import {
   type LibraryIndex,
   type StoredIndex,
 } from "./library-index";
-import { prettyJson, serialized, writeFileAtomic } from "./store";
+import { holdSaved, prettyJson, savedBookIds, serialized, writeFileAtomic } from "./store";
 
 export { bookIdOf, isBookId } from "./library-index";
 
-const FORMATS: Record<string, BookFormat> = { ".epub": "epub", ".pdf": "pdf" };
+/** The book formats the library reads, by lowercase file extension. */
+export const FORMATS: Readonly<Record<string, BookFormat>> = { ".epub": "epub", ".pdf": "pdf" };
 
 const toPosix = (relPath: string) => relPath.split(path.sep).join("/");
 
@@ -139,7 +140,7 @@ const hashCandidates = async (root: string, files: readonly FileStat[]): Promise
 const SCAN_TTL_MS = 5000;
 interface Scan {
   at: number;
-  books: Promise<LibraryBook[]>;
+  library: Promise<ScannedLibrary>;
 }
 const scans = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-scans")] ??= new Map()) as Map<string, Scan>;
 
@@ -173,8 +174,10 @@ interface IndexChange<T> {
   index: LibraryIndex;
   changed: boolean;
   value: T;
-  /** Drops the cached scan, for a change that gives a file a different id than that scan did. */
-  forgetScan?: boolean;
+  /** Drops the cached scan, so the next lookup sees this change. */
+  rescan?: boolean;
+  /** Runs once the index is written (`committed`) or failed to be, still inside the queue. */
+  settle?: (committed: boolean) => void;
 }
 
 /**
@@ -190,19 +193,27 @@ const updateIndex = <T>(
   const file = indexFile(dataDir);
   const key = scanKey(root, dataDir);
   return serialized(file, async () => {
-    const { index, changed, value, forgetScan } = await change(await readIndex(file));
-    if (changed) await writeIndex(file, index);
+    const { index, changed, value, rescan, settle } = await change(await readIndex(file));
+    let committed = false;
+    try {
+      if (changed) await writeIndex(file, index);
+      committed = true;
+    } finally {
+      if (rescan) scans.delete(key);
+      settle?.(committed);
+    }
     /* Not awaited: the run queues on this same file, so waiting for it here would wait on this task. */
     if (hashWork(index, unhashableIn(key)).length > 0) void backfillHashes(root, dataDir);
-    if (forgetScan) scans.delete(key);
     return value;
   });
 };
 
-/** The books folder read now against the index as it is in the queue: the reconciled index and the books it names. */
+/** The books folder read now against the index as it is in the queue: the reconciled index, the books it names and the saved ids. */
 export interface ScannedLibrary {
   index: LibraryIndex;
   books: LibraryBook[];
+  /** Every id with a state or position file in the data folder, read after the books folder. */
+  saved: ReadonlySet<BookId>;
 }
 
 /* Runs only inside the index's queue, so a listing taken earlier can never be applied after one taken later. */
@@ -214,34 +225,50 @@ const scanAgainst = async (root: string, dataDir: string, current: LibraryIndex 
   return { index: result.index, changed: result.changed, books: result.books.map(({ id, file }) => toBook(id, file)) };
 };
 
-/** Lists the books folder and gives each file its id from library.json. */
-const identify = (root: string, dataDir: string): Promise<LibraryBook[]> =>
-  updateIndex(root, dataDir, async (current) => {
-    const { index, changed, books } = await scanAgainst(root, dataDir, current);
-    return { index, changed, value: books };
-  });
-
 /** What a hand change makes of a fresh scan: the index to keep instead, if any, and the caller's result. */
 export interface HandChange<T> {
   index?: LibraryIndex;
   value: T;
+  /** Set by a change that gives a file a different id or drops one, so no lookup trusts the cached scan. */
+  rescan?: boolean;
 }
 
 /**
  * Scans, then lets `change` read or change the result, all in one task of the index's queue, so what it
  * judges present or missing is what the folder holds as it acts. A throw from `change` writes nothing.
- * A changed index drops the cached scan, because a hand change can give a file a different id.
+ *
+ * The state and position queues of the books in `hold` stay held from before the saved ids are read until
+ * the index is written, so no write can land between what `change` checks and what it commits. A held book
+ * the written index no longer names takes no more writes: one already past `findBook` would leave data no
+ * book opens.
  */
 export const changeLibrary = <T>(
   root: string,
   dataDir: string,
   change: (scan: ScannedLibrary) => HandChange<T> | Promise<HandChange<T>>,
+  hold: readonly BookId[] = [],
 ): Promise<T> =>
   updateIndex(root, dataDir, async (current) => {
     const scan = await scanAgainst(root, dataDir, current);
-    const { index, value } = await change({ index: scan.index, books: scan.books });
-    return { index: index ?? scan.index, changed: scan.changed || index !== undefined, value, forgetScan: index !== undefined };
+    const release = hold.length ? await holdSaved(hold, dataDir) : null;
+    try {
+      const { index, value, rescan } = await change({ index: scan.index, books: scan.books, saved: await savedBookIds(dataDir) });
+      const kept = index ?? scan.index;
+      return {
+        index: kept,
+        changed: scan.changed || index !== undefined,
+        value,
+        rescan,
+        settle: release ? (committed) => release(committed ? hold.filter((id) => !(id in kept)) : []) : undefined,
+      };
+    } catch (error) {
+      release?.([]);
+      throw error;
+    }
   });
+
+/** Lists the books folder, gives each file its id from library.json and notes which ids have saved data. */
+const identify = (root: string, dataDir: string): Promise<ScannedLibrary> => changeLibrary(root, dataDir, (scan) => ({ value: scan }));
 
 /* A batch is saved after this many hashes or this long, whichever comes first, so a fresh library costs a
    handful of index writes rather than one per book, and a slow disk still saves its progress. */
@@ -341,19 +368,23 @@ const freshScan = (root: string, dataDir: string): Scan | null => {
   return scan && Date.now() - scan.at < SCAN_TTL_MS ? scan : null;
 };
 
-const rescan = (root: string, dataDir: string): Promise<LibraryBook[]> => {
+/**
+ * The library read from disk now: every EPUB and PDF under `root` with the ids library.json in `dataDir`
+ * gives them, and the ids with saved data. Hidden files and folders are skipped. Lookups reuse it briefly.
+ */
+export const readLibrary = (root: string = getConfig().booksDir, dataDir: string = getConfig().dataDir): Promise<ScannedLibrary> => {
   const key = scanKey(root, dataDir);
-  const scan: Scan = { at: Date.now(), books: identify(root, dataDir) };
+  const scan: Scan = { at: Date.now(), library: identify(root, dataDir) };
   scans.set(key, scan);
-  scan.books.catch(() => {
+  scan.library.catch(() => {
     if (scans.get(key) === scan) scans.delete(key);
   });
-  return scan.books;
+  return scan.library;
 };
 
-/** Every EPUB and PDF under `root`, read from disk now, with the ids library.json in `dataDir` gives them. Hidden files and folders are skipped. */
+/** Every EPUB and PDF under `root`, read from disk now, with the ids library.json in `dataDir` gives them. */
 export const scanLibrary = async (root: string = getConfig().booksDir, dataDir: string = getConfig().dataDir): Promise<LibraryBook[]> => [
-  ...(await rescan(root, dataDir)),
+  ...(await readLibrary(root, dataDir)).books,
 ];
 
 export interface FoundBook {
@@ -374,7 +405,7 @@ export const findBook = async (
   const cached = freshScan(root, dataDir);
   const byId = (books: LibraryBook[]) => books.find((candidate) => candidate.id === id);
   /* A book added since the cached scan is found by looking again once. */
-  const book = (cached && byId(await cached.books)) || byId(await rescan(root, dataDir));
+  const book = (cached && byId((await cached.library).books)) || byId((await readLibrary(root, dataDir)).books);
   if (!book) return null;
   const absPath = path.resolve(/*turbopackIgnore: true*/ root, book.relPath);
   const inside = path.relative(path.resolve(root), absPath);

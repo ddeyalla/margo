@@ -139,10 +139,15 @@ export const bookCover = (found: FoundBook, dir = path.join(/*turbopackIgnore: t
   });
 };
 
+/** A book's cover and its no-cover marker, in the data folder. The first is the key of the queue both are written in. */
+export const coverFiles = (id: BookId, dataDir: string): [jpg: string, none: string] => {
+  const dir = path.join(/*turbopackIgnore: true*/ dataDir, "covers");
+  return [path.join(/*turbopackIgnore: true*/ dir, `${id}.jpg`), path.join(/*turbopackIgnore: true*/ dir, `${id}.none`)];
+};
+
 /** Deletes a book's cover or no-cover marker, in the queue `bookCover` uses, so the next visit draws it again. */
-export const dropCover = (id: BookId, dir = path.join(/*turbopackIgnore: true*/ getConfig().dataDir, "covers")): Promise<void> => {
-  const jpg = path.join(/*turbopackIgnore: true*/ dir, `${id}.jpg`);
-  const none = path.join(/*turbopackIgnore: true*/ dir, `${id}.none`);
+export const dropCover = (id: BookId, dataDir = getConfig().dataDir): Promise<void> => {
+  const [jpg, none] = coverFiles(id, dataDir);
   return serialized(jpg, async () => {
     await Promise.all([rm(jpg, { force: true }), rm(none, { force: true })]);
   });

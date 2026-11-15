@@ -1,13 +1,13 @@
 import { connection } from "next/server";
-import { isBookId } from "@/lib/server/library";
+import { isBookId, readLibrary } from "@/lib/server/library";
 import { listMissing, missingBookResponse, rebind } from "@/lib/server/missing-books";
 import { readObject } from "@/lib/server/with-book";
 
-/** The books that have saved data but no file in the books folder. */
+/** The books that have saved data but no file in the books folder, and the books that could take their place. */
 export async function GET() {
   await connection();
   try {
-    return Response.json({ books: await listMissing() });
+    return Response.json(await listMissing(await readLibrary()));
   } catch (error) {
     return missingBookResponse(error);
   }

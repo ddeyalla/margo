@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import path from "node:path";
 import { emptyBookState, type BookId, type BookState, type PassageThread, type Position, type Thread } from "@/lib/shared/types";
 import { getConfig } from "./config";
+import { BOOK_ID_PATTERN } from "./library-index";
 
 /**
  * Writers queue per file. The map lives on globalThis because the dev server
@@ -81,6 +82,44 @@ const stateFile = (id: BookId, dataDir: string) => path.join(/*turbopackIgnore: 
  */
 const positionFile = (id: BookId, dataDir: string) => path.join(/*turbopackIgnore: true*/ dataDir, `${id}.position.json`);
 
+/** The book's state and position files: every file in the data folder that counts as saved data for it. */
+export const savedFiles = (id: BookId, dataDir: string): [state: string, position: string] => [stateFile(id, dataDir), positionFile(id, dataDir)];
+
+/**
+ * Files whose book no longer has this id: a relink gave its file another id, or the book was forgotten. A
+ * write that found the book before that is refused rather than leave data no book opens. On globalThis for
+ * the same reason as the queues.
+ */
+const CLOSED: unique symbol = Symbol.for("rigg-learn.store.closed");
+type GlobalWithClosed = typeof globalThis & { [CLOSED]?: Set<string> };
+const closed = ((globalThis as GlobalWithClosed)[CLOSED] ??= new Set());
+
+/** A write for a book whose id was relinked away or forgotten while the write waited. */
+export class BookClosedError extends Error {
+  override name = "BookClosedError";
+  constructor(readonly id: BookId) {
+    super("That book is no longer in the library.");
+  }
+}
+
+const refuseClosed = (id: BookId, file: string) => {
+  if (closed.has(file)) throw new BookClosedError(id);
+};
+
+/**
+ * Holds the state and position queues of every book in `ids`, so nothing is written for them until the
+ * returned release. Writes already queued finish first. Release with the ids that must take no more writes.
+ * The order (each book's state, then its position) is the one `updateBookState` nests in.
+ */
+export const holdSaved = async (ids: readonly BookId[], dataDir: string): Promise<(close: readonly BookId[]) => void> => {
+  const releases: (() => void)[] = [];
+  for (const file of ids.flatMap((id) => savedFiles(id, dataDir))) releases.push(await hold(file));
+  return (close) => {
+    for (const file of close.flatMap((id) => savedFiles(id, dataDir))) closed.add(file);
+    for (const release of releases) release();
+  };
+};
+
 type SavedPosition = Pick<BookState, "position" | "lastReadAt">;
 
 /** Threads saved before questions without a passage existed have no kind; every one of them is about a passage. */
@@ -109,7 +148,10 @@ export const readBookState = async (id: BookId, dataDir = getConfig().dataDir): 
 export const saveBookPosition = (id: BookId, position: Position, dataDir = getConfig().dataDir, at = new Date()): Promise<void> => {
   const file = positionFile(id, dataDir);
   const saved: SavedPosition = { position, lastReadAt: at.toISOString() };
-  return serialized(file, () => writeFileAtomic(file, compact(saved)));
+  return serialized(file, async () => {
+    refuseClosed(id, file);
+    await writeFileAtomic(file, compact(saved));
+  });
 };
 
 /**
@@ -125,6 +167,7 @@ export const updateBookState = (
 ): Promise<BookState> => {
   const file = stateFile(id, dataDir);
   return serialized(file, async () => {
+    refuseClosed(id, file);
     const saved = await readPosition(id, dataDir);
     const current = withPosition(normalize(await readJson<Partial<StoredState>>(file)), saved);
     const next = change(current);
@@ -156,12 +199,8 @@ export const bookStateUpdatedAt = async (id: BookId, dataDir = getConfig().dataD
   return times.length ? new Date(Math.max(...times)) : null;
 };
 
-/** Whether anything is saved for the book: a state file or a position file. */
-export const hasSavedData = async (id: BookId, dataDir = getConfig().dataDir): Promise<boolean> =>
-  (await bookStateUpdatedAt(id, dataDir)) !== null;
-
 /* Only finished files: an atomic write's temp file is `<id>.json.<pid>.<hex>.tmp`, which is not saved data. */
-const SAVED_FILE = /^([0-9a-f]{40})(?:\.position)?\.json$/;
+const SAVED_FILE = new RegExp(`^(${BOOK_ID_PATTERN})(?:\\.position)?\\.json$`);
 
 /** Every book id with a state or position file in the data folder. */
 export const savedBookIds = async (dataDir = getConfig().dataDir): Promise<Set<BookId>> => {
@@ -173,9 +212,4 @@ export const savedBookIds = async (dataDir = getConfig().dataDir): Promise<Set<B
     throw error;
   }
   return new Set(names.flatMap((name) => SAVED_FILE.exec(name)?.[1] ?? []) as BookId[]);
-};
-
-/** Deletes the book's state and position files, each inside its own queue so no queued write lands after it. */
-export const deleteBookState = async (id: BookId, dataDir = getConfig().dataDir): Promise<void> => {
-  await Promise.all([stateFile(id, dataDir), positionFile(id, dataDir)].map((file) => serialized(file, () => rm(file, { force: true }))));
 };

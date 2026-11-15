@@ -29,7 +29,11 @@ export interface StoredIndex {
   books: LibraryIndex;
 }
 
-export const isBookId = (value: unknown): value is BookId => typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
+/** A book id's characters, for patterns that match it inside a longer name. */
+export const BOOK_ID_PATTERN = "[0-9a-f]{40}";
+const BOOK_ID = new RegExp(`^${BOOK_ID_PATTERN}$`);
+
+export const isBookId = (value: unknown): value is BookId => typeof value === "string" && BOOK_ID.test(value);
 
 /** The id every book had before ids were stored, so a library seeded from it keeps its saved data. */
 export const bookIdOf = (relPath: string): BookId => createHash("sha1").update(relPath).digest("hex") as BookId;

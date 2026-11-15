@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Image from "next/image";
 import clsx from "clsx";
 import { CircleAlert, X } from "lucide-react";
 import { Spinner } from "@/components/ui";
+import { ModalDialog } from "@/components/ui/dialog";
 import { attachmentUrl } from "@/lib/shared/attachments";
 import type { BookId, ImageAttachment } from "@/lib/shared/types";
 import { useFileDrop, type DraftImage } from "./useImageDraft";
@@ -83,22 +84,10 @@ export function MessageImages({
 
 /** An image at full size over everything. Esc, the close button or a click outside the image closes it. */
 export function Lightbox({ bookId, image, onClose }: { bookId: BookId; image: ImageAttachment; onClose(): void }) {
-  const ref = useRef<HTMLDialogElement>(null);
-
-  /* No close() on cleanup: its close event would call onClose after a remount. Unmounting takes the dialog off the top layer anyway. */
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  }, []);
-
   return (
-    <dialog
-      ref={ref}
+    <ModalDialog
       aria-label="Image"
       onClose={onClose}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
       className="m-auto max-h-none max-w-none overflow-visible bg-transparent p-0 outline-none backdrop:bg-black/80"
     >
       <Image
@@ -119,7 +108,7 @@ export function Lightbox({ bookId, image, onClose }: { bookId: BookId; image: Im
       >
         <X className="size-4" aria-hidden />
       </button>
-    </dialog>
+    </ModalDialog>
   );
 }
 

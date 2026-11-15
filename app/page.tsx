@@ -9,10 +9,9 @@ import { RefreshOnReturn } from "@/components/library/RefreshOnReturn";
 import { EmptyState } from "@/components/ui";
 import { ThemeControl } from "@/components/ui/theme";
 import { BooksFolderMissing, getFolders } from "@/lib/server/config";
-import { libraryProblem, scanLibrary } from "@/lib/server/library";
-import { listMissing } from "@/lib/server/missing-books";
+import { libraryProblem, readLibrary, type ScannedLibrary } from "@/lib/server/library";
+import { listMissing, type MissingBooks as Missing } from "@/lib/server/missing-books";
 import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
-import type { RelinkCandidate } from "@/lib/shared/relink";
 
 const RECENT_LIMIT = 4;
 
@@ -20,9 +19,9 @@ const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ?
 
 async function Library() {
   await connection();
-  let books;
+  let library: ScannedLibrary;
   try {
-    books = await scanLibrary();
+    library = await readLibrary();
   } catch (error) {
     if (error instanceof BooksFolderMissing) return <FolderSetup />;
     return (
@@ -32,6 +31,7 @@ async function Library() {
       </>
     );
   }
+  const { books } = library;
   if (!books.length) {
     return (
       <>
@@ -61,17 +61,14 @@ async function Library() {
         progress: state?.position?.fraction ?? null,
         cover: `/api/books/${book.id}/cover?v=${Date.parse(book.modifiedAt)}`,
       };
-      return { book, folder: book.folder, shelfBook, saved: updatedAt !== null, readAt: state?.position ? updatedAt : null };
+      return { folder: book.folder, shelfBook, readAt: state?.position ? updatedAt : null };
     }),
   );
   /* The list of missing books is a way back to lost data, never a reason the library fails to show. */
-  const missing = await listMissing().catch((error: unknown) => {
+  const { missing, candidates } = await listMissing(library).catch((error: unknown): Missing => {
     console.warn("Could not list missing books:", error);
-    return [];
+    return { missing: [], candidates: [] };
   });
-  const candidates: RelinkCandidate[] = entries
-    .filter((entry) => !entry.saved)
-    .map(({ book, shelfBook }) => ({ id: book.id, title: shelfBook.title, relPath: book.relPath, format: book.format, sizeBytes: book.sizeBytes }));
 
   const shelves = new Map<string, ShelfBook[]>();
   for (const { folder, shelfBook } of entries) {

@@ -114,35 +114,55 @@ does.
 
 ### Missing books
 
-`lib/server/missing-books.ts` holds the three hand operations. Each runs through `changeLibrary` in
-`library.ts`: one task of the index's queue that scans the books folder, then reads or changes the fresh result,
-so what it calls present or missing is what the folder holds as it acts. A refusal throws `MissingBookError`
-and writes nothing.
+`lib/server/missing-books.ts` holds the hand operations. Relink and forget each run through `changeLibrary` in
+`library.ts`: one task of the index's queue that scans the books folder, reads which ids have saved data, then
+reads or changes the fresh result, so what it calls present or missing is what the folder holds as it acts. A
+refusal throws `MissingBookError` and writes nothing.
 
-- **`listMissing`:** every id with a state or position file in DATA_DIR (`<id>.json`, `<id>.position.json`)
-  that no scanned file is bound to: index entries with `missingSince` set, plus files with no index entry (left
-  by a lost `library.json`). An orphan with nothing saved is not listed. Each item has its title (the state's
-  title, else the last path's file name, else "Unknown book"), format, last path, size and `missingSince` when
-  known, and counts of highlights, notes, card sets and chats and whether a place is saved. A scan that finds no
-  books lists nothing, so an empty or unmounted books folder never offers every book to Forget.
-- **`rebind(oldId, newId)`:** `newId` is the id the scan gave the chosen file. It must be a present book with no
-  state or position file of its own (otherwise 409: its data would be stranded), and `oldId` must be missing.
-  `newId`'s entry (path, stat, hash) moves onto `oldId` with `missingSince` null, `newId` is deleted, and the
-  cached scan is dropped so `findBook(oldId)` resolves at once. Both ids' covers are dropped so the file's cover
-  is drawn again under `oldId`.
-- **`forget(id)`:** only for a missing book. It deletes the index entry, the state and position files, the
-  cover and `attachments/<id>/`, each file inside the queue its writers use, all within the index task so no
-  relink can land on the id mid-delete. Vault notes are the reader's files and stay.
+- **One scan per library load:** `readLibrary` is one queue task that returns the books, the reconciled index
+  and the ids with a state or position file in DATA_DIR (`<id>.json`, `<id>.position.json`). It is the scan
+  `findBook` caches for a few seconds. Pure functions compute what the page needs from it: `missingIds` (saved
+  ids no scanned file is bound to: index entries with `missingSince` set, plus files with no index entry, left
+  by a lost `library.json`) and `relinkCandidates` (present books with nothing saved). `listMissing` takes that
+  result and reads the missing books' state files to describe them after the queue task has finished, outside
+  the lock, since describing is only for show. The library page walks the books folder once and holds no
+  saved-data rule of its own.
+- **Listing:** each missing book has its title (the state's title, else the last path's file name, else
+  "Unknown book"), format (the state's, else the last path's extension), last path, size and `missingSince`
+  when known, and counts of highlights, notes, card sets and chats and whether a place is saved. An orphan
+  with nothing saved is not listed. A scan that finds no books lists nothing, so an empty or unmounted books
+  folder never offers every book to Forget.
+- **`rebind(oldId, newId)`:** `newId` is the id the scan gave the chosen file. It must be a present book;
+  `oldId` must be missing; when the missing book's format is known (worked out as for the listing) the file
+  must be the same format (otherwise 409 `format_mismatch`); and it must have no state or position file of its
+  own (otherwise 409: its data would be stranded). `newId`'s entry (path, stat, hash) moves onto `oldId` with
+  `missingSince` null, `newId` is deleted, and the cached scan is dropped so `findBook(oldId)` resolves at
+  once. Both ids' covers are dropped so the file's cover is drawn again under `oldId`.
+- **`forget(id)`:** only for a missing book. It moves the cover, then `attachments/<id>/`, then the position
+  file, then the state file into a new `forgotten/<id>-<time>/` in DATA_DIR, laid out as in DATA_DIR, so it can
+  be put back by hand; nothing is deleted. Then the index entry is dropped. The state file goes last, so a
+  failure part-way leaves it and the book stays listed; the route answers 500 `not_moved`, and a retry moves
+  what is left into a folder of its own, never onto a file an earlier attempt moved. Vault notes are the
+  reader's files and stay.
+- **Held queues:** writes to a book's state and position files run in per-file queues. `changeLibrary` holds
+  those queues for the ids a hand change names (`oldId` and `newId` for a relink, `id` for forget) from
+  before it reads the saved ids until the index is written and the cached scan dropped, so no write lands
+  between the check and the commit. A held id the written index no longer names (`newId`, or the forgotten
+  id) is closed: a save that found the book before the change and runs after it is refused with
+  `BookClosedError`, which book routes answer as 404, rather than leave a file no book opens. Chat images are
+  not closed this way; a late image upload can recreate `attachments/<id>/`.
 
-Routes: `GET /api/library/missing` lists; `POST /api/library/missing` `{ id, targetId }` relinks (204);
-`DELETE /api/library/missing/<id>` forgets (204). A malformed body or id is 400, an id that is not missing or a
-target that is not in the books folder is 404, a target with saved data is 409, and a library or index problem
-is 500 with the same words the library page uses.
+Routes: `GET /api/library/missing` returns `{ missing, candidates }`; `POST /api/library/missing`
+`{ id, targetId }` relinks (204); `DELETE /api/library/missing/<id>` forgets (204). A malformed body or id is 400,
+an id that is not missing or a target that is not in the books folder is 404, a target with saved data or in
+another format is 409, a forget whose files could not all be moved is 500, and a library or index problem is 500
+with the same words the library page uses.
 
 The library page shows a quiet **Missing books (N)** section below the shelves. Each row has what is saved and two
-actions. **Find file…** opens a dialog listing present books with nothing saved, likeliest first (same format,
-then file-name similarity, then same size), with a filter; picking one relinks it. **Forget** asks first and
-says what is deleted and that notes in the notes folder stay.
+actions. **Find file…** opens a dialog listing present books with nothing saved, in the missing book's format
+when that is known, likeliest first (file-name similarity, then same size), with a filter; a choice the filter
+hides is not kept. **Forget** asks first and says the data moves to the "forgotten" folder inside the data
+folder, where it can be restored by hand, and that notes in the notes folder stay.
 
 ### Security is unchanged
 
@@ -164,8 +184,9 @@ a thermo-nuclear code-quality review before the next starts.
    volume (new inode, same bytes); save-as-new-file; two identical files (ambiguous, nothing binds); moved and
    edited (no match, stays orphaned).
 3. **Missing books.** Listing, relink (through one `rebind(oldId, newId)`) and forget routes, and the library UI. Tests: relink moves the data to the
-   chosen file; relinking to a file whose current id already has saved data is refused (its new, empty id is simply dropped otherwise); forget removes every per-id file and
-   nothing else.
+   chosen file; relinking to a file whose current id already has saved data, or to a file in another format, is refused (its new, empty id is simply dropped otherwise);
+   a save racing a relink lands before it or is refused, never stranded; forget moves every per-id file to the forgotten folder and nothing else, and a forget that
+   fails part-way keeps the book listed and finishes on retry.
 
 ## Status
 

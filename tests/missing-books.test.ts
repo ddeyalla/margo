@@ -4,14 +4,29 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE } from "@/app/api/library/missing/[id]/route";
 import { GET, POST } from "@/app/api/library/missing/route";
-import { bookIdOf, findBook, scanLibrary } from "@/lib/server/library";
+import { bookIdOf, findBook, readLibrary, scanLibrary } from "@/lib/server/library";
 import { readIndex } from "@/lib/server/library-index";
 import { forget, listMissing, MissingBookError, rebind } from "@/lib/server/missing-books";
+import { BookClosedError, saveBookPosition } from "@/lib/server/store";
 import { rankCandidates, type RelinkCandidate } from "@/lib/shared/relink";
 import type { BookId } from "@/lib/shared/types";
 
 /* Outside a request there is no render to mark dynamic. */
 vi.mock("next/server", async (original) => ({ ...(await original<typeof import("next/server")>()), connection: async () => undefined }));
+
+/* A rename the test picks fails once, so a move part-way through can be checked. Every other call is the real one. */
+const fsHook = vi.hoisted(() => ({ failRename: null as ((from: string, to: string) => boolean) | null }));
+vi.mock("node:fs/promises", async (original) => {
+  const actual = await original<typeof import("node:fs/promises")>();
+  const rename: typeof actual.rename = async (from, to) => {
+    if (fsHook.failRename?.(String(from), String(to))) {
+      fsHook.failRename = null;
+      throw Object.assign(new Error("Simulated I/O error"), { code: "EIO" });
+    }
+    return actual.rename(from, to);
+  };
+  return { ...actual, rename, default: { ...actual, rename } };
+});
 
 let root: string;
 let dataDir: string;
@@ -59,7 +74,28 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  fsHook.failRename = null;
 });
+
+const missingNow = async () => (await listMissing(await readLibrary(root, dataDir), dataDir)).missing;
+
+const indexNow = async () => (await readIndex(path.join(dataDir, "library.json"))) ?? {};
+
+/** Every file under `dir` but the index, which background hashing may be rewriting, by its path relative to `dir`, with its contents. */
+const filesUnder = async (dir: string): Promise<Record<string, string>> => {
+  const entries = await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => []);
+  const files = entries.filter((entry) => entry.isFile() && !entry.name.startsWith("library.json"));
+  return Object.fromEntries(
+    await Promise.all(
+      files.map(async (entry) => {
+        const file = path.join(entry.parentPath, entry.name);
+        return [path.relative(dir, file), await readFile(file, "utf8")] as const;
+      }),
+    ),
+  );
+};
+
+const position = { kind: "pdf", page: 3, offset: 0, fraction: 0.1 } as const;
 
 /** Two books seeded at known ids; the first has saved data. */
 const seedTwo = async () => {
@@ -80,7 +116,7 @@ describe("listMissing", () => {
     const stray = "fedcba9876543210fedcba9876543210fedcba98";
     await writeFile(path.join(dataDir, `${stray}.json`), stateOf(stray, 0));
 
-    const missing = await listMissing(root, dataDir);
+    const missing = await missingNow();
     expect(missing.map((book) => book.id).sort()).toEqual([first, stray].sort());
     const lost = missing.find((book) => book.id === first);
     expect(lost).toMatchObject({
@@ -92,6 +128,9 @@ describe("listMissing", () => {
     });
     expect(lost?.missingSince).toEqual(expect.any(Number));
     expect(missing.find((book) => book.id === stray)).toMatchObject({ relPath: "old/place.pdf", missingSince: null, sizeBytes: null });
+
+    const { candidates } = await listMissing(await readLibrary(root, dataDir), dataDir);
+    expect(candidates.map((book) => book.relPath)).toEqual(["c/renamed.pdf"]);
   });
 
   it("names a book with no title from its last path, and leaves out a lost book with nothing saved", async () => {
@@ -104,7 +143,7 @@ describe("listMissing", () => {
     await rm(path.join(root, "b/second.pdf"));
     await write(root, "c/third.pdf", "a different book");
 
-    const missing = await listMissing(root, dataDir);
+    const missing = await missingNow();
     expect(missing).toHaveLength(1);
     expect(missing[0]).toMatchObject({ id: first, title: "first.pdf", format: "pdf" });
   });
@@ -113,7 +152,7 @@ describe("listMissing", () => {
     const { first } = await seedTwo();
     await rm(path.join(root, "a"), { recursive: true });
     await rm(path.join(root, "b"), { recursive: true });
-    expect(await listMissing(root, dataDir)).toEqual([]);
+    expect(await missingNow()).toEqual([]);
     await expect(forget(first, root, dataDir)).rejects.toMatchObject({ problem: "not_missing" });
   });
 });
@@ -137,26 +176,98 @@ describe("rebind", () => {
     expect(index[first]).toMatchObject({ relPath: "c/renamed.pdf", missingSince: null });
     expect(await exists(path.join(dataDir, "covers", `${target}.jpg`))).toBe(false);
     expect(await exists(path.join(dataDir, "covers", `${first}.none`))).toBe(false);
-    expect(await listMissing(root, dataDir)).toEqual([]);
+    expect(await missingNow()).toEqual([]);
     /* The next scan keeps the binding. */
     expect((await scanLibrary(root, dataDir)).find((book) => book.relPath === "c/renamed.pdf")?.id).toBe(first);
   });
 
-  it("refuses a file that has saved data of its own, a book that is not missing, and a file that is not there", async () => {
+  it("refuses a file in another format, a file with saved data of its own, a book that is not missing, and a file that is not there", async () => {
     const { first, second } = await seedTwo();
-    await writeFile(path.join(dataDir, `${second}.json`), stateOf(second));
     await expect(rebind(first, second, root, dataDir)).rejects.toMatchObject({ problem: "not_missing" });
 
     await loseBook("a/first.pdf", "c/renamed.pdf", "edited first book bytes");
-    await expect(rebind(first, second, root, dataDir)).rejects.toMatchObject({ problem: "target_has_data" });
+    await expect(rebind(first, second, root, dataDir)).rejects.toMatchObject({ problem: "format_mismatch" });
+    const renamed = (await scanLibrary(root, dataDir)).find((book) => book.relPath === "c/renamed.pdf")!.id;
+    await writeFile(path.join(dataDir, `${renamed}.json`), stateOf(renamed));
+    await expect(rebind(first, renamed, root, dataDir)).rejects.toMatchObject({ problem: "target_has_data" });
     await expect(rebind(first, unknownId, root, dataDir)).rejects.toMatchObject({ problem: "target_not_found" });
     await expect(rebind(first, first, root, dataDir)).rejects.toBeInstanceOf(MissingBookError);
     expect((await findBook(second, root, dataDir))?.book.relPath).toBe("b/second.epub");
+    expect((await indexNow())[first]?.missingSince).toEqual(expect.any(Number));
+  });
+
+  it("takes the format from the last path when nothing saved records it, and relinks across formats when neither does", async () => {
+    await write(root, "a/first.pdf", "first book bytes");
+    await write(root, "b/second.epub", "second book bytes, longer");
+    await scanLibrary(root, dataDir);
+    const first = bookIdOf("a/first.pdf");
+    const second = bookIdOf("b/second.epub");
+    await writeFile(path.join(dataDir, `${first}.position.json`), JSON.stringify({ position, lastReadAt: null }));
+    const stray = "fedcba9876543210fedcba9876543210fedcba98" as BookId;
+    await writeFile(path.join(dataDir, `${stray}.position.json`), JSON.stringify({ position, lastReadAt: null }));
+    await loseBook("a/first.pdf", "c/renamed.pdf", "edited first book bytes");
+
+    await expect(rebind(first, second, root, dataDir)).rejects.toMatchObject({ problem: "format_mismatch" });
+    await rebind(stray, second, root, dataDir);
+    expect((await findBook(stray, root, dataDir))?.book.relPath).toBe("b/second.epub");
+  });
+});
+
+describe("rebind racing a save", () => {
+  const lostWithTarget = async () => {
+    const { first } = await seedTwo();
+    await loseBook("a/first.pdf", "c/renamed.pdf", "edited first book bytes");
+    const target = (await scanLibrary(root, dataDir)).find((book) => book.relPath === "c/renamed.pdf")!.id;
+    return { first, target, positionFile: path.join(dataDir, `${target}.position.json`) };
+  };
+
+  it("refuses the relink when a save for the target was queued first, and keeps both", async () => {
+    const { first, target, positionFile } = await lostWithTarget();
+    const saving = saveBookPosition(target, position, dataDir);
+    await expect(rebind(first, target, root, dataDir)).rejects.toMatchObject({ problem: "target_has_data" });
+    await saving;
+    expect(await exists(positionFile)).toBe(true);
+    expect((await indexNow())[target]).toBeDefined();
+  });
+
+  it("refuses a save that found the target before the relink and lands after it", async () => {
+    const { first, target, positionFile } = await lostWithTarget();
+    await rebind(first, target, root, dataDir);
+    await expect(saveBookPosition(target, position, dataDir)).rejects.toBeInstanceOf(BookClosedError);
+    expect(await exists(positionFile)).toBe(false);
+    /* The book keeps taking saves under the id it was given. */
+    await saveBookPosition(first, position, dataDir);
+  });
+
+  it("never leaves a target's saved file without an index entry, whichever lands first", async () => {
+    /* The save starts a little later each time, so some land before the relink's check and some while it holds the queues. */
+    for (let ticks = 0; ticks <= 40; ticks += 2) {
+      const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-race-"));
+      root = path.join(base, "books");
+      dataDir = path.join(base, "data");
+      await Promise.all([mkdir(root), mkdir(dataDir)]);
+      const { first, target, positionFile } = await lostWithTarget();
+      const relinking = rebind(first, target, root, dataDir).then(
+        () => "relinked",
+        (error: MissingBookError) => error.problem,
+      );
+      for (let tick = 0; tick < ticks; tick += 1) await new Promise((resolve) => setImmediate(resolve));
+      const saving = saveBookPosition(target, position, dataDir).then(
+        () => "saved",
+        (error: Error) => error.name,
+      );
+      const outcome = [await relinking, await saving];
+      expect([
+        ["relinked", "BookClosedError"],
+        ["target_has_data", "saved"],
+      ]).toContainEqual(outcome);
+      if (await exists(positionFile)) expect((await indexNow())[target]).toBeDefined();
+    }
   });
 });
 
 describe("forget", () => {
-  it("deletes exactly the missing book's files and its index entry", async () => {
+  it("moves exactly the missing book's files to its forgotten folder and drops its index entry", async () => {
     const { first, second } = await seedTwo();
     await writeFile(path.join(dataDir, `${first}.position.json`), JSON.stringify({ position: null, lastReadAt: null }));
     await writeFile(path.join(dataDir, `${second}.json`), stateOf(second));
@@ -164,23 +275,56 @@ describe("forget", () => {
     await mkdir(path.join(dataDir, "attachments", first), { recursive: true });
     await mkdir(path.join(dataDir, "attachments", second), { recursive: true });
     for (const id of [first, second]) {
-      await writeFile(path.join(dataDir, "covers", `${id}.jpg`), "cover");
-      await writeFile(path.join(dataDir, "attachments", id, "0123456789abcdef0123456789abcdef.png"), "image");
+      await writeFile(path.join(dataDir, "covers", `${id}.jpg`), `cover of ${id}`);
+      await writeFile(path.join(dataDir, "attachments", id, "0123456789abcdef0123456789abcdef.png"), `image of ${id}`);
     }
     await write(notesDir, "First book.md", `---\nbookId: ${first}\n---\n`);
     await loseBook("a/first.pdf", "c/renamed.pdf", "edited first book bytes");
+    const before = await filesUnder(dataDir);
+    const kept = (file: string) => file.includes(first);
 
     await forget(first, root, dataDir);
 
-    expect(await exists(path.join(dataDir, `${first}.json`))).toBe(false);
-    expect(await exists(path.join(dataDir, `${first}.position.json`))).toBe(false);
-    expect(await exists(path.join(dataDir, "covers", `${first}.jpg`))).toBe(false);
-    expect(await readdir(path.join(dataDir, "attachments"))).toEqual([second]);
-    expect((await readIndex(path.join(dataDir, "library.json")))![first]).toBeUndefined();
-    expect(await exists(path.join(dataDir, `${second}.json`))).toBe(true);
-    expect(await exists(path.join(dataDir, "covers", `${second}.jpg`))).toBe(true);
+    const folders = await readdir(path.join(dataDir, "forgotten"));
+    expect(folders).toHaveLength(1);
+    expect(folders[0]).toMatch(new RegExp(`^${first}-\\d+$`));
+    const trashed = await filesUnder(path.join(dataDir, "forgotten", folders[0]));
+    expect(trashed).toEqual(Object.fromEntries(Object.entries(before).filter(([file]) => kept(file))));
+    const after = await filesUnder(dataDir);
+    expect(Object.keys(after).filter((file) => kept(file) && !file.startsWith("forgotten"))).toEqual([]);
+    for (const [file, content] of Object.entries(before)) {
+      if (!kept(file)) expect(after[file]).toBe(content);
+    }
+    expect((await indexNow())[first]).toBeUndefined();
     expect(await readFile(path.join(notesDir, "First book.md"), "utf8")).toContain(first);
-    expect(await listMissing(root, dataDir)).toEqual([]);
+    expect(await missingNow()).toEqual([]);
+  });
+
+  it("keeps a book listed when a move fails part-way, and a retry finishes without losing a file", async () => {
+    const { first } = await seedTwo();
+    await writeFile(path.join(dataDir, `${first}.position.json`), JSON.stringify({ position, lastReadAt: null }));
+    await mkdir(path.join(dataDir, "covers"), { recursive: true });
+    await writeFile(path.join(dataDir, "covers", `${first}.jpg`), "cover");
+    await mkdir(path.join(dataDir, "attachments", first), { recursive: true });
+    await writeFile(path.join(dataDir, "attachments", first, "0123456789abcdef0123456789abcdef.png"), "image");
+    await loseBook("a/first.pdf", "c/renamed.pdf", "edited first book bytes");
+    const before = Object.fromEntries(Object.entries(await filesUnder(dataDir)).filter(([file]) => file.includes(first)));
+    fsHook.failRename = (from, to) => to.includes("forgotten") && from.endsWith(".position.json");
+
+    await expect(forget(first, root, dataDir)).rejects.toMatchObject({ problem: "not_moved" });
+    expect(await exists(path.join(dataDir, `${first}.json`))).toBe(true);
+    expect((await missingNow()).map((book) => book.id)).toEqual([first]);
+    expect((await indexNow())[first]).toBeDefined();
+
+    await forget(first, root, dataDir);
+    const trash = path.join(dataDir, "forgotten");
+    const folders = await readdir(trash);
+    expect(folders).toHaveLength(2);
+    const moved = Object.assign({}, ...(await Promise.all(folders.map((folder) => filesUnder(path.join(trash, folder))))));
+    expect(moved).toEqual(before);
+    expect(Object.keys(await filesUnder(dataDir)).filter((file) => file.includes(first) && !file.startsWith("forgotten"))).toEqual([]);
+    expect((await indexNow())[first]).toBeUndefined();
+    await expect(saveBookPosition(first, position, dataDir)).rejects.toBeInstanceOf(BookClosedError);
   });
 
   it("refuses a book whose file is present", async () => {
@@ -201,13 +345,14 @@ describe("missing-books routes", () => {
     await loseBook("a/first.pdf", "c/renamed.pdf", "edited first book bytes");
     const listed = await GET();
     expect(listed.status).toBe(200);
-    expect(((await listed.json()) as { books: { id: string }[] }).books.map((book) => book.id)).toEqual([first]);
+    const body = (await listed.json()) as { missing: { id: string }[]; candidates: { id: string }[] };
+    expect(body.missing.map((book) => book.id)).toEqual([first]);
+    expect(body.candidates).toHaveLength(2);
 
     expect((await post({ id: first })).status).toBe(400);
     expect((await post({ id: "nope", targetId: second })).status).toBe(400);
     expect((await post({ id: unknownId, targetId: second })).status).toBe(404);
     expect((await post({ id: first, targetId: unknownId })).status).toBe(404);
-    await writeFile(path.join(dataDir, `${second}.json`), stateOf(second));
     expect((await post({ id: first, targetId: second })).status).toBe(409);
 
     const target = (await scanLibrary(root, dataDir)).find((book) => book.relPath === "c/renamed.pdf")!.id;
@@ -215,6 +360,7 @@ describe("missing-books routes", () => {
     expect((await findBook(first, root, dataDir))?.book.relPath).toBe("c/renamed.pdf");
 
     expect((await del("nope")).status).toBe(400);
+    await writeFile(path.join(dataDir, `${second}.json`), stateOf(second));
     expect((await del(second)).status).toBe(404);
     await loseBook("b/second.epub", "d/other.epub", "edited second book bytes");
     expect((await del(second)).status).toBe(204);
@@ -230,14 +376,19 @@ describe("rankCandidates", () => {
     format,
     sizeBytes,
   });
+  const books = [
+    candidate("1", "x/Field Guide to Moss.epub", "epub", 100),
+    candidate("2", "x/Unrelated Volume.pdf", "pdf", 100),
+    candidate("3", "x/field_guide_to_moss (2).pdf", "pdf", 999),
+    candidate("4", "y/Unrelated Volume.pdf", "pdf", 5),
+  ];
+  const ids = (ranked: RelinkCandidate[]) => ranked.map((book) => book.id.replace(/^0+/, ""));
 
-  it("puts the same format first, then the most alike name, then the same size", () => {
-    const ranked = rankCandidates({ format: "pdf", relPath: "old/Field Guide to Moss.pdf", sizeBytes: 100 }, [
-      candidate("1", "x/Field Guide to Moss.epub", "epub", 100),
-      candidate("2", "x/Unrelated Volume.pdf", "pdf", 100),
-      candidate("3", "x/field_guide_to_moss (2).pdf", "pdf", 999),
-      candidate("4", "y/Unrelated Volume.pdf", "pdf", 5),
-    ]);
-    expect(ranked.map((book) => book.id.replace(/^0+/, ""))).toEqual(["3", "2", "4", "1"]);
+  it("keeps only the missing book's format, then puts the most alike name first, then the same size", () => {
+    expect(ids(rankCandidates({ format: "pdf", relPath: "old/Field Guide to Moss.pdf", sizeBytes: 100 }, books))).toEqual(["3", "2", "4"]);
+  });
+
+  it("keeps every format when the missing book's is not known", () => {
+    expect(ids(rankCandidates({ format: null, relPath: "old/Field Guide to Moss", sizeBytes: null }, books))).toEqual(["1", "3", "2", "4"]);
   });
 });

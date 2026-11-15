@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui";
+import { ModalDialog } from "@/components/ui/dialog";
 import { forgetBook, relinkBook } from "@/lib/client/api";
 import { rankCandidates, type RelinkCandidate } from "@/lib/shared/relink";
 import type { MissingBook, SavedSummary } from "@/lib/shared/types";
@@ -27,25 +28,13 @@ const savedLine = (saved: SavedSummary | null) => {
 const formatSize = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
-/** A centred modal on the top layer. The browser traps focus in it and closes it on Escape. */
+/** A centred, titled modal. */
 function Modal({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-
-  /* No close() on cleanup: its close event would call onClose after a remount. Unmounting takes the dialog off the top layer anyway. */
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  }, []);
-
   return (
-    <dialog
-      ref={ref}
+    <ModalDialog
       aria-labelledby={titleId}
       onClose={onClose}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
       className="m-auto w-[min(520px,calc(100vw-32px))] rounded-xl bg-panel-raised p-0 text-paper shadow-dialog outline-none backdrop:bg-black/40"
     >
       <div className="flex flex-col gap-4 p-5">
@@ -54,7 +43,7 @@ function Modal({ title, onClose, children }: { title: string; onClose(): void; c
         </h2>
         {children}
       </div>
-    </dialog>
+    </ModalDialog>
   );
 }
 
@@ -95,14 +84,19 @@ function RelinkDialog({ book, candidates, onClose }: { book: MissingBook; candid
   const shown = needle
     ? ranked.filter((candidate) => `${candidate.title} ${candidate.relPath}`.toLowerCase().includes(needle))
     : ranked;
+  /* A choice the filter hides is no choice, so Relink can only send a book the reader can see. */
+  const picked = shown.some((candidate) => candidate.id === chosen) ? chosen : null;
+  const kind = book.format === "epub" ? "EPUB" : book.format === "pdf" ? "PDF" : null;
 
   return (
     <Modal title={`Find the file for “${book.title}”`} onClose={onClose}>
       {ranked.length === 0 ? (
         <>
           <p className="text-body text-fog">
-            Every book in the books folder already has saved data of its own, so none can take this one’s place. Put the file back in the
-            books folder, then reload.
+            {kind
+              ? `Every ${kind} in the books folder already has saved data of its own, so none can take this one’s place.`
+              : "Every book in the books folder already has saved data of its own, so none can take this one’s place."}{" "}
+            Put the file back in the books folder, then reload.
           </p>
           <div className="flex justify-end">
             <Button variant="ghost" onClick={onClose} autoFocus>
@@ -115,11 +109,11 @@ function RelinkDialog({ book, candidates, onClose }: { book: MissingBook; candid
           className="flex flex-col gap-3"
           onSubmit={(event) => {
             event.preventDefault();
-            if (chosen) void run(() => relinkBook(book.id, chosen));
+            if (picked) void run(() => relinkBook(book.id, picked));
           }}
         >
           <p className="text-label text-dim">
-            Only books with nothing saved of their own are listed. Likely matches come first.
+            {kind ? `Only ${kind}s` : "Only books"} with nothing saved of their own are listed. Likely matches come first.
             {book.relPath ? ` It was last at ${book.relPath}.` : ""}
           </p>
           <label htmlFor={filterId} className="sr-only">
@@ -147,7 +141,7 @@ function RelinkDialog({ book, candidates, onClose }: { book: MissingBook; candid
                   type="radio"
                   name={name}
                   value={candidate.id}
-                  checked={chosen === candidate.id}
+                  checked={picked === candidate.id}
                   onChange={() => setChosen(candidate.id)}
                   className="mt-0.5 accent-[var(--color-paper)] outline-none"
                 />
@@ -165,7 +159,7 @@ function RelinkDialog({ book, candidates, onClose }: { book: MissingBook; candid
             <Button variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" disabled={!chosen || busy}>
+            <Button type="submit" variant="primary" disabled={!picked || busy}>
               {busy ? "Relinking…" : "Relink"}
             </Button>
           </div>
@@ -177,7 +171,7 @@ function RelinkDialog({ book, candidates, onClose }: { book: MissingBook; candid
 
 function ForgetDialog({ book, onClose }: { book: MissingBook; onClose(): void }) {
   const { busy, error, run } = useChange(onClose);
-  const deleted = [
+  const moved = [
     ...(book.saved ? savedParts(book.saved) : ["its saved highlights, notes, cards and chats"]),
     ...(book.saved?.hasPosition ? ["the reading place"] : []),
     "its title and other saved details",
@@ -186,27 +180,25 @@ function ForgetDialog({ book, onClose }: { book: MissingBook; onClose(): void })
   return (
     <Modal title={`Forget “${book.title}”?`} onClose={onClose}>
       <div className="flex flex-col gap-2 text-body text-fog">
-        <p>This deletes what the app keeps for this book in its data folder:</p>
+        <p>This takes the book off the list and moves what the app keeps for it out of the way:</p>
         <ul className="list-disc pl-5">
-          {deleted.map((part) => (
+          {moved.map((part) => (
             <li key={part}>{part}</li>
           ))}
         </ul>
-        <p>Notes already written to your notes folder stay where they are. This can’t be undone.</p>
+        <p>
+          It all goes to the “forgotten” folder inside the data folder, where you can move it back by hand. Notes already written to your
+          notes folder stay where they are.
+        </p>
       </div>
       <ErrorLine error={error} />
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} autoFocus>
           Cancel
         </Button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void run(() => forgetBook(book.id))}
-          className="press inline-flex h-7 select-none items-center justify-center rounded-sm bg-danger/15 px-2.5 text-label font-semibold text-danger transition-[background-color,scale,opacity] duration-[var(--duration-fast)] ease-out hover:bg-danger/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40"
-        >
+        <Button variant="danger" disabled={busy} onClick={() => void run(() => forgetBook(book.id))}>
           {busy ? "Forgetting…" : "Forget"}
-        </button>
+        </Button>
       </div>
     </Modal>
   );

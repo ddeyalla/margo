@@ -52,5 +52,5 @@ export const saveFolders = (change: Pick<SettingsChange, "booksDir" | "notesDir"
 /** Gives a missing book's saved data to the file the library now calls `targetId`. Returns the server's message when it refuses, otherwise null. */
 export const relinkBook = (id: BookId, targetId: BookId) => send("/api/library/missing", "POST", { id, targetId }, "Relinking");
 
-/** Deletes what the data folder keeps for a missing book. Returns the server's message when it refuses, otherwise null. */
+/** Moves what the data folder keeps for a missing book to its forgotten folder. Returns the server's message when it refuses, otherwise null. */
 export const forgetBook = (id: BookId) => send(`/api/library/missing/${id}`, "DELETE", undefined, "Forgetting");
