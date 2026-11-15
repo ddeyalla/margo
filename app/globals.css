@@ -286,21 +286,6 @@
   }
 }
 
-@keyframes drawer-in {
-  from {
-    opacity: 0;
-    transform: translateX(-12px);
-  }
-}
-
-@utility animate-drawer {
-  animation: drawer-in var(--duration-base) var(--ease-out) both;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation-name: fade-in;
-  }
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;

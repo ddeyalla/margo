@@ -271,7 +271,8 @@ export function PdfReader({
       const { slots } = engineRef.current;
       if (!scroller || !slots.length) return;
       const next = slots[slotAt(slots, scroller.scrollTop + scroller.clientHeight / 2).page - 1 + direction];
-      if (next) scroller.scrollTo({ top: next.sheet.offsetTop, behavior: "smooth" });
+      /* A page turn lands at once, as a book page does; gliding there would slow every turn. */
+      if (next) scroller.scrollTo({ top: next.sheet.offsetTop, behavior: "instant" });
     },
     seek(fraction) {
       const scroller = scrollRef.current;

@@ -105,11 +105,13 @@ export const TocDrawer = memo(function TocDrawer({
           onClose();
         }
       }}
+      /* The floating drawer appears at once: it is opened by ⌘⇧L far more than by its button, and a reader
+         reaching for chapters wants them now. */
       className={clsx(
         "flex flex-col outline-none",
         docked
           ? "h-full w-[var(--toc-width)] pr-2"
-          : "animate-drawer absolute inset-y-0 left-0 z-30 w-[min(var(--toc-width),calc(100%-48px))] rounded-r-xl bg-panel shadow-dialog",
+          : "absolute inset-y-0 left-0 z-30 w-[min(var(--toc-width),calc(100%-48px))] rounded-r-xl bg-panel shadow-dialog",
       )}
     >
       <div className="flex h-11 shrink-0 items-center gap-2 pl-3 pr-1">
@@ -171,7 +173,7 @@ export const TocDrawer = memo(function TocDrawer({
   if (!open) return null;
   return (
     <>
-      <div aria-hidden className="animate-fade absolute inset-0 z-30 bg-black/30" />
+      <div aria-hidden className="absolute inset-0 z-30 bg-black/30" />
       {nav}
     </>
   );
