@@ -4,12 +4,15 @@ import { BookOpen, FolderX, Library as LibraryIcon } from "lucide-react";
 import { BookList, GRID, type Shelf, type ShelfBook } from "@/components/library/BookList";
 import { FolderForm } from "@/components/library/FolderForm";
 import { FoldersControl } from "@/components/library/FoldersControl";
+import { MissingBooks } from "@/components/library/MissingBooks";
 import { RefreshOnReturn } from "@/components/library/RefreshOnReturn";
 import { EmptyState } from "@/components/ui";
 import { ThemeControl } from "@/components/ui/theme";
 import { BooksFolderMissing, getFolders } from "@/lib/server/config";
 import { libraryProblem, scanLibrary } from "@/lib/server/library";
+import { listMissing } from "@/lib/server/missing-books";
 import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
+import type { RelinkCandidate } from "@/lib/shared/relink";
 
 const RECENT_LIMIT = 4;
 
@@ -58,9 +61,17 @@ async function Library() {
         progress: state?.position?.fraction ?? null,
         cover: `/api/books/${book.id}/cover?v=${Date.parse(book.modifiedAt)}`,
       };
-      return { folder: book.folder, shelfBook, readAt: state?.position ? updatedAt : null };
+      return { book, folder: book.folder, shelfBook, saved: updatedAt !== null, readAt: state?.position ? updatedAt : null };
     }),
   );
+  /* The list of missing books is a way back to lost data, never a reason the library fails to show. */
+  const missing = await listMissing().catch((error: unknown) => {
+    console.warn("Could not list missing books:", error);
+    return [];
+  });
+  const candidates: RelinkCandidate[] = entries
+    .filter((entry) => !entry.saved)
+    .map(({ book, shelfBook }) => ({ id: book.id, title: shelfBook.title, relPath: book.relPath, format: book.format, sizeBytes: book.sizeBytes }));
 
   const shelves = new Map<string, ShelfBook[]>();
   for (const { folder, shelfBook } of entries) {
@@ -83,6 +94,11 @@ async function Library() {
         {plural(books.length, "book")} in {plural(shelves.size, "folder")}
       </Heading>
       <BookList shelves={sorted} recent={recent} />
+      {missing.length ? (
+        <div className="mt-12">
+          <MissingBooks books={missing} candidates={candidates} />
+        </div>
+      ) : null}
     </>
   );
 }

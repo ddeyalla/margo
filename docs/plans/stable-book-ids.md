@@ -114,15 +114,40 @@ does.
 
 ### Missing books
 
-The library lists books that have saved data but no file: index orphans, plus state files with no index entry.
-Each has **Find file…** (pick a book in the books folder; it takes the old id through `rebind(oldId, file)`,
-defined once in slice 3 and used for every hand relink) and **Forget** (deletes its state,
-position, cover and attachments after confirming; vault notes are the reader's files and stay).
+`lib/server/missing-books.ts` holds the three hand operations. Each runs through `changeLibrary` in
+`library.ts`: one task of the index's queue that scans the books folder, then reads or changes the fresh result,
+so what it calls present or missing is what the folder holds as it acts. A refusal throws `MissingBookError`
+and writes nothing.
+
+- **`listMissing`:** every id with a state or position file in DATA_DIR (`<id>.json`, `<id>.position.json`)
+  that no scanned file is bound to: index entries with `missingSince` set, plus files with no index entry (left
+  by a lost `library.json`). An orphan with nothing saved is not listed. Each item has its title (the state's
+  title, else the last path's file name, else "Unknown book"), format, last path, size and `missingSince` when
+  known, and counts of highlights, notes, card sets and chats and whether a place is saved. A scan that finds no
+  books lists nothing, so an empty or unmounted books folder never offers every book to Forget.
+- **`rebind(oldId, newId)`:** `newId` is the id the scan gave the chosen file. It must be a present book with no
+  state or position file of its own (otherwise 409: its data would be stranded), and `oldId` must be missing.
+  `newId`'s entry (path, stat, hash) moves onto `oldId` with `missingSince` null, `newId` is deleted, and the
+  cached scan is dropped so `findBook(oldId)` resolves at once. Both ids' covers are dropped so the file's cover
+  is drawn again under `oldId`.
+- **`forget(id)`:** only for a missing book. It deletes the index entry, the state and position files, the
+  cover and `attachments/<id>/`, each file inside the queue its writers use, all within the index task so no
+  relink can land on the id mid-delete. Vault notes are the reader's files and stay.
+
+Routes: `GET /api/library/missing` lists; `POST /api/library/missing` `{ id, targetId }` relinks (204);
+`DELETE /api/library/missing/<id>` forgets (204). A malformed body or id is 400, an id that is not missing or a
+target that is not in the books folder is 404, a target with saved data is 409, and a library or index problem
+is 500 with the same words the library page uses.
+
+The library page shows a quiet **Missing books (N)** section below the shelves. Each row has what is saved and two
+actions. **Find file…** opens a dialog listing present books with nothing saved, likeliest first (same format,
+then file-name similarity, then same size), with a filter; picking one relinks it. **Forget** asks first and
+says what is deleted and that notes in the notes folder stay.
 
 ### Security is unchanged
 
-`findBook` still resolves only ids the scan produced to paths inside the books folder. Relink accepts only a path
-the scan found.
+`findBook` still resolves only ids the scan produced to paths inside the books folder. Relink takes the target as
+an id from the same queue task's scan, never as a path, so it can only bind a file the scan found.
 
 ## Slices
 
@@ -138,7 +163,7 @@ a thermo-nuclear code-quality review before the next starts.
    third matcher. Tests: move to another
    volume (new inode, same bytes); save-as-new-file; two identical files (ambiguous, nothing binds); moved and
    edited (no match, stays orphaned).
-3. **Missing books.** Listing, relink (through one `rebind(oldId, file)`) and forget routes, and the library UI. Tests: relink moves the data to the
+3. **Missing books.** Listing, relink (through one `rebind(oldId, newId)`) and forget routes, and the library UI. Tests: relink moves the data to the
    chosen file; relinking to a file whose current id already has saved data is refused (its new, empty id is simply dropped otherwise); forget removes every per-id file and
    nothing else.
 
@@ -146,4 +171,4 @@ a thermo-nuclear code-quality review before the next starts.
 
 - [x] Slice 1
 - [x] Slice 2
-- [ ] Slice 3
+- [x] Slice 3

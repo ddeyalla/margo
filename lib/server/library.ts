@@ -199,17 +199,48 @@ const updateIndex = <T>(
   });
 };
 
-/**
- * Lists the books folder and gives each file its id from library.json. The listing happens inside the
- * index's queue too, so a scan that listed the folder earlier can never write after one that listed it later.
- */
+/** The books folder read now against the index as it is in the queue: the reconciled index and the books it names. */
+export interface ScannedLibrary {
+  index: LibraryIndex;
+  books: LibraryBook[];
+}
+
+/* Runs only inside the index's queue, so a listing taken earlier can never be applied after one taken later. */
+const scanAgainst = async (root: string, dataDir: string, current: LibraryIndex | null) => {
+  const files = await walkLibrary(root);
+  const first = reconcile(current, files);
+  const result = first.wantsHash.length ? reconcile(current, files, { hashes: await hashCandidates(root, first.wantsHash) }) : first;
+  reportSkipped(indexFile(dataDir), result.skipped);
+  return { index: result.index, changed: result.changed, books: result.books.map(({ id, file }) => toBook(id, file)) };
+};
+
+/** Lists the books folder and gives each file its id from library.json. */
 const identify = (root: string, dataDir: string): Promise<LibraryBook[]> =>
   updateIndex(root, dataDir, async (current) => {
-    const files = await walkLibrary(root);
-    const first = reconcile(current, files);
-    const result = first.wantsHash.length ? reconcile(current, files, { hashes: await hashCandidates(root, first.wantsHash) }) : first;
-    reportSkipped(indexFile(dataDir), result.skipped);
-    return { index: result.index, changed: result.changed, value: result.books.map(({ id, file }) => toBook(id, file)) };
+    const { index, changed, books } = await scanAgainst(root, dataDir, current);
+    return { index, changed, value: books };
+  });
+
+/** What a hand change makes of a fresh scan: the index to keep instead, if any, and the caller's result. */
+export interface HandChange<T> {
+  index?: LibraryIndex;
+  value: T;
+}
+
+/**
+ * Scans, then lets `change` read or change the result, all in one task of the index's queue, so what it
+ * judges present or missing is what the folder holds as it acts. A throw from `change` writes nothing.
+ * A changed index drops the cached scan, because a hand change can give a file a different id.
+ */
+export const changeLibrary = <T>(
+  root: string,
+  dataDir: string,
+  change: (scan: ScannedLibrary) => HandChange<T> | Promise<HandChange<T>>,
+): Promise<T> =>
+  updateIndex(root, dataDir, async (current) => {
+    const scan = await scanAgainst(root, dataDir, current);
+    const { index, value } = await change({ index: scan.index, books: scan.books });
+    return { index: index ?? scan.index, changed: scan.changed || index !== undefined, value, forgetScan: index !== undefined };
   });
 
 /* A batch is saved after this many hashes or this long, whichever comes first, so a fresh library costs a

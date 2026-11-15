@@ -3,6 +3,7 @@ import path from "node:path";
 import { createCanvas, loadImage, type Canvas } from "@napi-rs/canvas";
 import { unzipSync } from "fflate";
 import { getConfig } from "./config";
+import type { BookId } from "@/lib/shared/types";
 import type { FoundBook } from "./library";
 import { serialized, writeFileAtomic } from "./store";
 
@@ -135,5 +136,14 @@ export const bookCover = (found: FoundBook, dir = path.join(/*turbopackIgnore: t
     await writeFileAtomic(file, cover ?? "");
     await utimes(file, new Date(), new Date(time));
     return cover;
+  });
+};
+
+/** Deletes a book's cover or no-cover marker, in the queue `bookCover` uses, so the next visit draws it again. */
+export const dropCover = (id: BookId, dir = path.join(/*turbopackIgnore: true*/ getConfig().dataDir, "covers")): Promise<void> => {
+  const jpg = path.join(/*turbopackIgnore: true*/ dir, `${id}.jpg`);
+  const none = path.join(/*turbopackIgnore: true*/ dir, `${id}.none`);
+  return serialized(jpg, async () => {
+    await Promise.all([rm(jpg, { force: true }), rm(none, { force: true })]);
   });
 };

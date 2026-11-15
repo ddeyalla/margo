@@ -31,18 +31,26 @@ export const patchSettings = (change: SettingsChange) =>
     body: JSON.stringify(change),
   }).catch(() => undefined);
 
-/** Saves the folders chosen in the app. Returns the server's message when it refuses one, otherwise null. */
-export const saveFolders = async (change: Pick<SettingsChange, "booksDir" | "notesDir">): Promise<string | null> => {
+/** Sends a change the server may refuse. Returns its message when it does, otherwise null. */
+const send = async (url: string, method: string, body: unknown, doing: string): Promise<string | null> => {
   try {
-    const response = await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(change),
+    const response = await fetch(url, {
+      method,
+      ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     });
     if (response.ok) return null;
     const { error } = (await response.json().catch(() => ({}))) as { error?: string };
-    return error ?? `Saving failed with ${response.status}.`;
+    return error ?? `${doing} failed with ${response.status}.`;
   } catch {
     return "Could not reach the app. Try again.";
   }
 };
+
+/** Saves the folders chosen in the app. Returns the server's message when it refuses one, otherwise null. */
+export const saveFolders = (change: Pick<SettingsChange, "booksDir" | "notesDir">) => send("/api/settings", "PATCH", change, "Saving");
+
+/** Gives a missing book's saved data to the file the library now calls `targetId`. Returns the server's message when it refuses, otherwise null. */
+export const relinkBook = (id: BookId, targetId: BookId) => send("/api/library/missing", "POST", { id, targetId }, "Relinking");
+
+/** Deletes what the data folder keeps for a missing book. Returns the server's message when it refuses, otherwise null. */
+export const forgetBook = (id: BookId) => send(`/api/library/missing/${id}`, "DELETE", undefined, "Forgetting");

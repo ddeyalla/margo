@@ -15,6 +15,29 @@ export interface LibraryBook {
   modifiedAt: string;
 }
 
+/** What is saved for a book, counted for the reader before they relink or forget it. */
+export interface SavedSummary {
+  highlights: number;
+  notes: number;
+  cardSets: number;
+  threads: number;
+  hasPosition: boolean;
+}
+
+/** A book with saved data whose file no scan finds any more. Fields are null when nothing records them. */
+export interface MissingBook {
+  id: BookId;
+  title: string;
+  format: BookFormat | null;
+  /** Where the file was last seen, relative to the books folder. */
+  relPath: string | null;
+  sizeBytes: number | null;
+  /** When a scan first failed to find it, in ms since the epoch. */
+  missingSince: number | null;
+  /** Null when the state file is there but can't be read. */
+  saved: SavedSummary | null;
+}
+
 export type Anchor =
   | { kind: "epub"; cfi: string }
   | { kind: "pdf"; page: number; start: number; end: number };

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { emptyBookState, type BookId, type BookState, type PassageThread, type Position, type Thread } from "@/lib/shared/types";
 import { getConfig } from "./config";
@@ -154,4 +154,28 @@ const mtime = async (file: string): Promise<number | null> => {
 export const bookStateUpdatedAt = async (id: BookId, dataDir = getConfig().dataDir): Promise<Date | null> => {
   const times = (await Promise.all([mtime(stateFile(id, dataDir)), mtime(positionFile(id, dataDir))])).filter((t) => t !== null);
   return times.length ? new Date(Math.max(...times)) : null;
+};
+
+/** Whether anything is saved for the book: a state file or a position file. */
+export const hasSavedData = async (id: BookId, dataDir = getConfig().dataDir): Promise<boolean> =>
+  (await bookStateUpdatedAt(id, dataDir)) !== null;
+
+/* Only finished files: an atomic write's temp file is `<id>.json.<pid>.<hex>.tmp`, which is not saved data. */
+const SAVED_FILE = /^([0-9a-f]{40})(?:\.position)?\.json$/;
+
+/** Every book id with a state or position file in the data folder. */
+export const savedBookIds = async (dataDir = getConfig().dataDir): Promise<Set<BookId>> => {
+  let names: string[];
+  try {
+    names = await readdir(dataDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Set();
+    throw error;
+  }
+  return new Set(names.flatMap((name) => SAVED_FILE.exec(name)?.[1] ?? []) as BookId[]);
+};
+
+/** Deletes the book's state and position files, each inside its own queue so no queued write lands after it. */
+export const deleteBookState = async (id: BookId, dataDir = getConfig().dataDir): Promise<void> => {
+  await Promise.all([stateFile(id, dataDir), positionFile(id, dataDir)].map((file) => serialized(file, () => rm(file, { force: true }))));
 };

@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { IMAGE_EXTENSIONS, IMAGE_TYPES, MAX_IMAGE_BYTES } from "@/lib/shared/attachments";
 import type { BookId, ChatMessage, ImageAttachment, ImageMediaType } from "@/lib/shared/types";
 import { getConfig } from "./config";
 import { writeFileAtomic } from "./store";
+import { isBookId } from "./library-index";
 import { isAttachmentId } from "./validate";
 
 export const TOO_LARGE = "This image is over 5 MB, even after resizing.";
@@ -122,4 +123,10 @@ export const readMessageImages = async (
   const ids = new Set(messages.flatMap((message) => message.attachments ?? []).map((attachment) => attachment.id));
   const found = await Promise.all([...ids].map((id) => readAttachment(bookId, id, dataDir)));
   return new Map(found.flatMap((image) => (image ? [[image.attachment.id, image.bytes] as const] : [])));
+};
+
+/** Deletes every image kept for the book. The id is checked here as well, because it names a folder removed with everything in it. */
+export const deleteAttachments = async (bookId: BookId, dataDir = getConfig().dataDir): Promise<void> => {
+  if (!isBookId(bookId)) throw new Error(`Not a book id: ${JSON.stringify(bookId)}`);
+  await rm(path.join(/*turbopackIgnore: true*/ dataDir, "attachments", bookId), { recursive: true, force: true });
 };
