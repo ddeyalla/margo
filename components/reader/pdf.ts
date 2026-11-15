@@ -50,9 +50,16 @@ export const textPieces = (layer: Element): { node: Node; length: number }[] => 
   return pieces;
 };
 
-/** The DOM range over characters [start, end) of a rendered text layer, or null if the layer doesn't reach them. */
-export const rangeInLayer = (layer: Element, start: number, end: number): Range | null => {
-  const pieces = textPieces(layer);
+/**
+ * The DOM range over characters [start, end) of a rendered text layer, or null if the layer doesn't reach them.
+ * Pass the layer's textPieces when resolving several ranges in one layer, so it is walked once.
+ */
+export const rangeInLayer = (
+  layer: Element,
+  start: number,
+  end: number,
+  pieces: { node: Node; length: number }[] = textPieces(layer),
+): Range | null => {
   const lengths = pieces.map((piece) => piece.length);
   const from = locateOffset(lengths, start, "start");
   const to = locateOffset(lengths, end, "end");
@@ -131,9 +138,7 @@ export const readOutline = async (doc: PDFDocumentProxy): Promise<OutlineEntry[]
           const top = viewport && y !== null ? viewport.convertToViewportPoint(0, y)[1] / viewport.height : 0;
           entries.push({ label, depth, target: { kind: "pdf", page: index + 1, top: Math.min(1, Math.max(0, top)) } });
         }
-      } catch {
-        /* An outline entry with a broken destination is skipped. */
-      }
+      } catch {}
       if (item.items?.length) await visit(item.items, depth + 1);
     }
   };
