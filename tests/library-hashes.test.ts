@@ -157,10 +157,12 @@ describe("background hashing", () => {
     expect(Object.values(index).filter((entry) => entry.sha256 !== null)).toHaveLength(count);
     expect(readsIn(books)).toHaveLength(count);
     const indexWrites = writes.filter((file) => file === indexPath(data)).length;
+    expect(indexWrites).toBeGreaterThanOrEqual(2);
     expect(indexWrites).toBeLessThanOrEqual(Math.ceil(count / 25) + 2);
   });
 
-  it("tries a file that cannot be read once per version, and logs it once", async () => {
+  /* Root reads a file whatever its mode, so the file would never fail. */
+  it.skipIf(process.getuid?.() === 0)("tries a file that cannot be read once per version, and logs it once", async () => {
     const books = await tempDir();
     const data = await tempDir();
     const locked = path.join(books, "locked.epub");
