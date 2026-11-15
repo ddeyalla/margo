@@ -86,6 +86,6 @@ a thermo-nuclear code-quality review before the next starts.
 
 ## Status
 
-- [ ] Slice 1
+- [x] Slice 1
 - [ ] Slice 2
 - [ ] Slice 3

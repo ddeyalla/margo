@@ -1,9 +1,17 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { parseFileName } from "@/lib/server/filename";
 import { bookIdOf, findBook, libraryProblem, scanLibrary } from "@/lib/server/library";
+import type { LibraryIndex } from "@/lib/server/library-index";
+import type { BookId } from "@/lib/shared/types";
+
+const tempDir = () => mkdtemp(path.join(tmpdir(), "rigg-learn-library-"));
+const indexPath = (dataDir: string) => path.join(dataDir, "library.json");
+const readIndex = async (dataDir: string): Promise<LibraryIndex> =>
+  (JSON.parse(await readFile(indexPath(dataDir), "utf8")) as { books: LibraryIndex }).books;
+
 
 describe("parseFileName", () => {
   it("moves a trailing author parenthetical into the author line", () => {
@@ -127,10 +135,12 @@ describe("parseFileName", () => {
 describe("library lookup", () => {
   let root: string;
   let outside: string;
+  let data: string;
 
   beforeAll(async () => {
-    const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-library-"));
+    const base = await tempDir();
     root = path.join(base, "books");
+    data = path.join(base, "data");
     outside = path.join(base, "secret.pdf");
     await mkdir(path.join(root, "Fiction"), { recursive: true });
     await writeFile(path.join(root, "Fiction", "Dune.epub"), "epub");
@@ -139,37 +149,138 @@ describe("library lookup", () => {
   });
 
   it("finds a scanned book by its id", async () => {
-    const found = await findBook(bookIdOf("Fiction/Dune.epub"), root);
+    const found = await findBook(bookIdOf("Fiction/Dune.epub"), root, data);
     expect(found?.book.fileTitle).toBe("Dune");
     expect(found?.absPath).toBe(path.join(root, "Fiction", "Dune.epub"));
   });
 
   it("rejects an unknown id", async () => {
-    expect(await findBook(bookIdOf("Fiction/Missing.epub"), root)).toBeNull();
+    expect(await findBook(bookIdOf("Fiction/Missing.epub"), root, data)).toBeNull();
   });
 
   it("finds a book added after the last scan", async () => {
-    const shelf = await mkdtemp(path.join(tmpdir(), "rigg-learn-library-"));
+    const shelf = await tempDir();
+    const shelfData = await tempDir();
     await writeFile(path.join(shelf, "Dune.epub"), "epub");
-    expect(await findBook(bookIdOf("Dune.epub"), shelf)).not.toBeNull();
+    expect(await findBook(bookIdOf("Dune.epub"), shelf, shelfData)).not.toBeNull();
+    /* An entry already waiting at the new file's path, so its id is known before the file exists. */
+    const known = "e".repeat(40) as BookId;
+    const index = await readIndex(shelfData);
+    index[known] = { relPath: "Emma.epub", size: 0, mtimeMs: 0, ino: "0", dev: "0", sha256: null };
+    await writeFile(indexPath(shelfData), JSON.stringify({ version: 1, books: index }));
     await writeFile(path.join(shelf, "Emma.epub"), "epub");
-    expect((await findBook(bookIdOf("Emma.epub"), shelf))?.book.fileTitle).toBe("Emma");
+    expect((await findBook(known, shelf, shelfData))?.book.fileTitle).toBe("Emma");
   });
 
   it("rejects a path or a malformed id", async () => {
-    expect(await findBook("../secret.pdf", root)).toBeNull();
-    expect(await findBook(outside, root)).toBeNull();
-    expect(await findBook(bookIdOf("../secret.pdf"), root)).toBeNull();
+    expect(await findBook("../secret.pdf", root, data)).toBeNull();
+    expect(await findBook(outside, root, data)).toBeNull();
+    expect(await findBook(bookIdOf("../secret.pdf"), root, data)).toBeNull();
   });
 
   it("lists only books, grouped by their folder", async () => {
-    const books = await scanLibrary(root);
+    const books = await scanLibrary(root, data);
     expect(books.map((book) => [book.folder, book.relPath, book.format])).toEqual([["Fiction", "Fiction/Dune.epub", "epub"]]);
   });
 
   it("names a missing books folder the same way on every page", async () => {
     const missing = path.join(root, "Nowhere");
-    const error = await findBook(bookIdOf("Fiction/Dune.epub"), missing).catch((cause: unknown) => cause);
+    const missingData = await tempDir();
+    const error = await findBook(bookIdOf("Fiction/Dune.epub"), missing, missingData).catch((cause: unknown) => cause);
     expect(libraryProblem(error, missing)).toBe(`The books folder ${missing} does not exist. Check the books folder under Folders, or BOOKS_DIR in .env.local.`);
+    await expect(stat(indexPath(missingData))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("library index on disk", () => {
+  const shelfWith = async (files: string[]) => {
+    const books = await tempDir();
+    const data = await tempDir();
+    for (const name of files) {
+      await mkdir(path.dirname(path.join(books, name)), { recursive: true });
+      await writeFile(path.join(books, name), `bytes of ${name}`);
+    }
+    return { books, data };
+  };
+  const idsByPath = async (books: string, data: string) =>
+    Object.fromEntries((await scanLibrary(books, data)).map((book) => [book.relPath, book.id]));
+
+  it("seeds an existing library with the ids its paths gave it", async () => {
+    const { books, data } = await shelfWith(["a.epub", "Shelf/b.pdf"]);
+    expect(await idsByPath(books, data)).toEqual({ "a.epub": bookIdOf("a.epub"), "Shelf/b.pdf": bookIdOf("Shelf/b.pdf") });
+    expect(Object.keys(await readIndex(data)).sort()).toEqual([bookIdOf("a.epub"), bookIdOf("Shelf/b.pdf")].sort());
+  });
+
+  it("keeps a book's id across scans after it is moved and renamed on disk", async () => {
+    const { books, data } = await shelfWith(["a.epub", "b.pdf"]);
+    await scanLibrary(books, data);
+    await mkdir(path.join(books, "Shelf"));
+    await rename(path.join(books, "a.epub"), path.join(books, "Shelf", "renamed.epub"));
+    expect(await idsByPath(books, data)).toEqual({ "Shelf/renamed.epub": bookIdOf("a.epub"), "b.pdf": bookIdOf("b.pdf") });
+    expect((await findBook(bookIdOf("a.epub"), books, data))?.absPath).toBe(path.join(books, "Shelf", "renamed.epub"));
+    await rename(path.join(books, "Shelf", "renamed.epub"), path.join(books, "again.epub"));
+    expect((await idsByPath(books, data))["again.epub"]).toBe(bookIdOf("a.epub"));
+    expect((await readIndex(data))[bookIdOf("a.epub")].relPath).toBe("again.epub");
+  });
+
+  it("gives a book added after seeding a new random id", async () => {
+    const { books, data } = await shelfWith(["a.epub"]);
+    await scanLibrary(books, data);
+    await writeFile(path.join(books, "b.epub"), "new");
+    const id = (await idsByPath(books, data))["b.epub"];
+    expect(id).toMatch(/^[0-9a-f]{40}$/);
+    expect(id).not.toBe(bookIdOf("b.epub"));
+    expect((await findBook(id, books, data))?.book.relPath).toBe("b.epub");
+  });
+
+  it("does not rewrite the index when nothing changed", async () => {
+    const { books, data } = await shelfWith(["a.epub"]);
+    await scanLibrary(books, data);
+    const before = await stat(indexPath(data));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await scanLibrary(books, data);
+    const after = await stat(indexPath(data));
+    expect([after.ino, after.mtimeMs]).toEqual([before.ino, before.mtimeMs]);
+  });
+
+  it("leaves the index alone when the books folder turns up empty", async () => {
+    const { books, data } = await shelfWith(["a.epub"]);
+    await scanLibrary(books, data);
+    const text = await readFile(indexPath(data), "utf8");
+    expect(await scanLibrary(await tempDir(), data)).toEqual([]);
+    expect(await readFile(indexPath(data), "utf8")).toBe(text);
+  });
+
+  it("writes no index from an empty first scan", async () => {
+    const { books, data } = await shelfWith([]);
+    expect(await scanLibrary(books, data)).toEqual([]);
+    await expect(stat(indexPath(data))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps the index whole and every id unique under concurrent scans", async () => {
+    const names = Array.from({ length: 8 }, (_, n) => `book ${n}.epub`);
+    const { books, data } = await shelfWith(names);
+    await scanLibrary(books, data);
+    const scans = Array.from({ length: 6 }, () => scanLibrary(books, data));
+    await rename(path.join(books, "book 0.epub"), path.join(books, "moved.epub"));
+    scans.push(...Array.from({ length: 6 }, () => scanLibrary(books, data)));
+    await Promise.all(scans);
+    const ids = await idsByPath(books, data);
+    expect(ids["moved.epub"]).toBe(bookIdOf("book 0.epub"));
+    expect(new Set(Object.values(ids)).size).toBe(names.length);
+    const index = await readIndex(data);
+    expect(Object.keys(index)).toHaveLength(names.length);
+    expect(index[bookIdOf("book 0.epub")].relPath).toBe("moved.epub");
+  });
+
+  it("gives a new book one id however many scans find it at once", async () => {
+    const { books, data } = await shelfWith(["a.epub"]);
+    await scanLibrary(books, data);
+    await writeFile(path.join(books, "new.epub"), "new");
+    const scans = await Promise.all(Array.from({ length: 12 }, () => scanLibrary(books, data)));
+    const ids = new Set(scans.map((found) => found.find((book) => book.relPath === "new.epub")?.id));
+    expect(ids.size).toBe(1);
+    const entries = Object.entries(await readIndex(data)).filter(([, entry]) => entry.relPath === "new.epub");
+    expect(entries.map(([id]) => id)).toEqual([...ids]);
   });
 });

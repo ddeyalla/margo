@@ -1,22 +1,24 @@
-import { createHash } from "node:crypto";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { BookFormat, BookId, LibraryBook } from "@/lib/shared/types";
 import { ConfigError, getConfig } from "./config";
 import { parseFileName } from "./filename";
+import { reconcile, type FileStat, type LibraryIndex } from "./library-index";
+import { readJson, serialized, writeFileAtomic } from "./store";
+
+export { bookIdOf } from "./library-index";
 
 const FORMATS: Record<string, BookFormat> = { ".epub": "epub", ".pdf": "pdf" };
-
-export const bookIdOf = (relPath: string): BookId =>
-  createHash("sha1").update(relPath).digest("hex") as BookId;
 
 export const isBookId = (value: unknown): value is BookId =>
   typeof value === "string" && /^[0-9a-f]{40}$/.test(value);
 
 const toPosix = (relPath: string) => relPath.split(path.sep).join("/");
 
-const walkLibrary = async (root: string): Promise<LibraryBook[]> => {
-  const books: LibraryBook[] = [];
+type ScannedFile = FileStat & { book: Omit<LibraryBook, "id"> };
+
+const walkLibrary = async (root: string): Promise<ScannedFile[]> => {
+  const books: ScannedFile[] = [];
   const walk = async (dir: string): Promise<void> => {
     const entries = await readdir(dir, { withFileTypes: true });
     await Promise.all(
@@ -26,24 +28,58 @@ const walkLibrary = async (root: string): Promise<LibraryBook[]> => {
         if (entry.isDirectory()) return walk(absPath);
         const format = FORMATS[path.extname(entry.name).toLowerCase()];
         if (!entry.isFile() || !format) return;
-        const info = await stat(absPath);
+        /* A file renamed between listing its folder and reading it is found under its new name instead. */
+        const info = await stat(absPath, { bigint: true }).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return null;
+          throw error;
+        });
+        if (!info) return;
         const relPath = toPosix(path.relative(root, absPath));
         const { title, author } = parseFileName(entry.name);
+        const size = Number(info.size);
         books.push({
-          id: bookIdOf(relPath),
-          format,
           relPath,
-          folder: toPosix(path.relative(root, dir)),
-          fileTitle: title,
-          fileAuthor: author,
-          sizeBytes: info.size,
-          modifiedAt: info.mtime.toISOString(),
+          size,
+          mtimeMs: Number(info.mtimeMs),
+          ino: info.ino.toString(),
+          dev: info.dev.toString(),
+          book: {
+            format,
+            relPath,
+            folder: toPosix(path.relative(root, dir)),
+            fileTitle: title,
+            fileAuthor: author,
+            sizeBytes: size,
+            modifiedAt: info.mtime.toISOString(),
+          },
         });
       }),
     );
   };
   await walk(root);
   return books.sort((a, b) => a.relPath.localeCompare(b.relPath));
+};
+
+interface StoredIndex {
+  version: 1;
+  books: LibraryIndex;
+}
+
+const indexFile = (dataDir: string) => path.join(/*turbopackIgnore: true*/ dataDir, "library.json");
+
+/**
+ * Lists the books folder, then gives each file its id from library.json. The index is read and written
+ * inside its queue, so concurrent scans each reconcile against the one before.
+ */
+const identify = async (root: string, dataDir: string): Promise<LibraryBook[]> => {
+  const files = await walkLibrary(root);
+  const file = indexFile(dataDir);
+  return serialized(file, async () => {
+    const stored = await readJson<StoredIndex>(file);
+    const { index, books, changed } = reconcile(stored?.books ?? null, files);
+    if (changed) await writeFileAtomic(file, JSON.stringify({ version: 1, books: index } satisfies StoredIndex, null, 2) + "\n");
+    return books.map(({ id, file: { book } }) => ({ id, ...book }));
+  });
 };
 
 /* Every cover, saved position and chat turn looks its book up, so a scan is reused for a few seconds.
@@ -55,14 +91,16 @@ interface Scan {
 }
 const scans = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-scans")] ??= new Map()) as Map<string, Scan>;
 
-const freshScan = (root: string): Scan | null => {
-  const scan = scans.get(path.resolve(root));
+const scanKey = (root: string, dataDir: string) => `${path.resolve(root)}\0${path.resolve(dataDir)}`;
+
+const freshScan = (root: string, dataDir: string): Scan | null => {
+  const scan = scans.get(scanKey(root, dataDir));
   return scan && Date.now() - scan.at < SCAN_TTL_MS ? scan : null;
 };
 
-const rescan = (root: string): Promise<LibraryBook[]> => {
-  const key = path.resolve(root);
-  const scan: Scan = { at: Date.now(), books: walkLibrary(root) };
+const rescan = (root: string, dataDir: string): Promise<LibraryBook[]> => {
+  const key = scanKey(root, dataDir);
+  const scan: Scan = { at: Date.now(), books: identify(root, dataDir) };
   scans.set(key, scan);
   scan.books.catch(() => {
     if (scans.get(key) === scan) scans.delete(key);
@@ -70,8 +108,10 @@ const rescan = (root: string): Promise<LibraryBook[]> => {
   return scan.books;
 };
 
-/** Every EPUB and PDF under `root`, depth first, read from disk now. Hidden files and folders are skipped. */
-export const scanLibrary = async (root: string = getConfig().booksDir): Promise<LibraryBook[]> => [...(await rescan(root))];
+/** Every EPUB and PDF under `root`, read from disk now, with the ids library.json in `dataDir` gives them. Hidden files and folders are skipped. */
+export const scanLibrary = async (root: string = getConfig().booksDir, dataDir: string = getConfig().dataDir): Promise<LibraryBook[]> => [
+  ...(await rescan(root, dataDir)),
+];
 
 export interface FoundBook {
   book: LibraryBook;
@@ -82,12 +122,16 @@ export interface FoundBook {
  * The only way to turn a request into a file path. The id must match a book
  * the scan found, so a crafted id can never name a file outside BOOKS_DIR.
  */
-export const findBook = async (id: unknown, root: string = getConfig().booksDir): Promise<FoundBook | null> => {
+export const findBook = async (
+  id: unknown,
+  root: string = getConfig().booksDir,
+  dataDir: string = getConfig().dataDir,
+): Promise<FoundBook | null> => {
   if (!isBookId(id)) return null;
-  const cached = freshScan(root);
+  const cached = freshScan(root, dataDir);
   const byId = (books: LibraryBook[]) => books.find((candidate) => candidate.id === id);
   /* A book added since the cached scan is found by looking again once. */
-  const book = (cached && byId(await cached.books)) || byId(await rescan(root));
+  const book = (cached && byId(await cached.books)) || byId(await rescan(root, dataDir));
   if (!book) return null;
   const absPath = path.resolve(/*turbopackIgnore: true*/ root, book.relPath);
   const inside = path.relative(path.resolve(root), absPath);
