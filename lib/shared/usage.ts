@@ -5,10 +5,26 @@ export const tokenCount = (value: unknown): number => (typeof value === "number"
 
 export const positiveOrNull = (value: unknown): number | null => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null);
 
+/** A token count at a glance: 950, 1.2K, 312K, 1M. */
+export const formatTokens = (count: number): string => {
+  if (count < 1000) return String(count);
+  if (count < 1_000_000) return `${count < 10_000 ? (count / 1000).toFixed(1).replace(/\.0$/, "") : Math.round(count / 1000)}K`;
+  return `${(count / 1_000_000).toFixed(count < 10_000_000 ? 1 : 0).replace(/\.0$/, "")}M`;
+};
+
+/** Dollars: cents once there are any, otherwise enough places to show a fraction of a cent. */
+export const formatCost = (dollars: number): string => {
+  if (dollars === 0) return "$0";
+  if (dollars >= 0.01) return `$${dollars.toFixed(2)}`;
+  return dollars < 0.0001 ? "<$0.0001" : `$${dollars.toFixed(4).replace(/0+$/, "")}`;
+};
+
 /** One answer's tokens, ready to list. */
 export interface TurnRow {
   /** Index of the answer in the thread's messages. */
   index: number;
+  /** Which answer this is, from 1, counting answers that reported nothing. */
+  answer: number;
   usage: TurnUsage;
   /** This answer's own tokens. For Codex, the session total less the one before it in the same session. */
   tokens: { input: number; cacheRead: number; cacheWrite: number; output: number };
@@ -24,6 +40,8 @@ export interface ThreadUsage {
   listPriced: boolean;
   /** Answers with no cost: no usage reported, or a provider that gives none. */
   unpriced: number;
+  /** Answers whose provider reported no usage at all, such as those saved before usage was recorded. */
+  unreported: number;
 }
 
 const own = (usage: TurnUsage) => ({
@@ -58,7 +76,7 @@ export const threadUsage = (thread: Thread): ThreadUsage => {
       }
       totals.set(usage.sessionId, usage);
     }
-    rows.push({ index, usage, tokens });
+    rows.push({ index, answer: answers, usage, tokens });
   });
   const priced = rows.map((row) => row.usage).filter((usage) => usage.costUsd !== null);
   return {
@@ -67,5 +85,6 @@ export const threadUsage = (thread: Thread): ThreadUsage => {
     costUsd: priced.length ? priced.reduce((sum, usage) => sum + (usage.costUsd ?? 0), 0) : null,
     listPriced: priced.some((usage) => usage.costBasis === "list"),
     unpriced: answers - rows.filter((row) => row.usage.costUsd !== null).length,
+    unreported: answers - rows.length,
   };
 };

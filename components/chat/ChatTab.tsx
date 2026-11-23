@@ -10,6 +10,7 @@ import { threadLabel } from "@/lib/shared/threads";
 import type { ParkedThread } from "@/lib/shared/parked";
 import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread } from "@/lib/shared/types";
 import { Composer } from "./Composer";
+import { UsageRow } from "./UsageRow";
 import { DropArea, Lightbox, MessageImages } from "./Images";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { useImageDraft } from "./useImageDraft";
@@ -438,6 +439,7 @@ function ThreadView({
         onSend={onReply}
         onStop={onStop}
       />
+      <UsageRow thread={thread} />
       {viewing ? <Lightbox bookId={bookId} image={viewing} onClose={() => setViewing(null)} /> : null}
     </DropArea>
   );

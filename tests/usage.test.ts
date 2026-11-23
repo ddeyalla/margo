@@ -9,7 +9,7 @@ import { apiCost, apiUsage } from "@/lib/server/tutor/api";
 import { parseClaudeLine } from "@/lib/server/tutor/claude";
 import { createCodexParser } from "@/lib/server/tutor/codex";
 import type { BookId, ChatMessage, Thread, TurnUsage } from "@/lib/shared/types";
-import { threadUsage } from "@/lib/shared/usage";
+import { formatCost, formatTokens, threadUsage } from "@/lib/shared/usage";
 
 /* The closing line of a real `claude --print --output-format stream-json` run (Claude Code 2.1.326, signed in with a
    plan), with the fields this app doesn't read taken out. */
@@ -186,6 +186,21 @@ describe("a thread's usage", () => {
 
   it("has no cost at all when no answer has one", () => {
     expect(threadUsage(thread([ask, answer(undefined)])).costUsd).toBeNull();
+  });
+
+  it("numbers answers by their place in the thread, counting those that reported nothing", () => {
+    const summary = threadUsage(thread([ask, answer(undefined), ask, answer(turnUsage({}))]));
+    expect([summary.rows.map((row) => row.answer), summary.unreported]).toEqual([[2], 1]);
+  });
+});
+
+describe("usage figures", () => {
+  it("shortens token counts", () => {
+    expect([950, 1011, 1250, 12_400, 312_000, 1_000_000, 1_500_000].map(formatTokens)).toEqual(["950", "1K", "1.3K", "12K", "312K", "1M", "1.5M"]);
+  });
+
+  it("shows cents, or a fraction of one", () => {
+    expect([0, 0.0042, 0.016304, 0.42, 1.5, 0.00002].map(formatCost)).toEqual(["$0", "$0.0042", "$0.02", "$0.42", "$1.50", "<$0.0001"]);
   });
 });
 
