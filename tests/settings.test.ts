@@ -76,6 +76,21 @@ describe("folder settings", () => {
   const patch = (body: unknown) =>
     PATCH(new Request("http://localhost/api/settings", { method: "PATCH", body: JSON.stringify(body) }));
 
+  it("saves a tutor's model, keeps the others, and goes back to the default with null", async () => {
+    expect((await patch({ models: { claude: "claude-sonnet-5-5" } })).status).toBe(200);
+    expect((await patch({ models: { api: "claude-opus-5-5" } })).status).toBe(200);
+    expect((await readSettings()).models).toEqual({ claude: "claude-sonnet-5-5", api: "claude-opus-5-5" });
+    expect((await patch({ models: { claude: null } })).status).toBe(200);
+    expect((await readSettings()).models).toEqual({ api: "claude-opus-5-5" });
+  });
+
+  it("refuses a model the tutor doesn't offer, and saves nothing", async () => {
+    for (const models of [{ claude: "gpt-6-luna" }, { codex: "gpt-6-luna" }, { nobody: "claude-opus-5-5" }, { api: 4 }]) {
+      expect((await patch({ models })).status).toBe(400);
+    }
+    expect((await readSettings()).models).toEqual({});
+  });
+
   it("reads settings with no books folder set", async () => {
     expect(await readSettings()).toMatchObject({ booksDir: null, notesDir: null });
   });

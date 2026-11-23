@@ -39,6 +39,7 @@ async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
       initialState={state}
       settings={{
         provider: settings.provider,
+        models: settings.models,
         pdfPage: settings.pdfPage,
         readingMode: settings.readingMode,
         epubPage: settings.epubPage,

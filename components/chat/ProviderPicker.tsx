@@ -9,9 +9,14 @@ import {
   MenuItemIndicator,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuSeparator,
   MenuTrigger,
 } from "@ui-sdk/react/menu";
-import type { ProviderId, ProviderInfo } from "@/lib/shared/types";
+import { DEFAULT_MODEL_LABEL, TUTOR_MODELS } from "@/lib/shared/models";
+import type { AppSettings, ProviderId, ProviderInfo } from "@/lib/shared/types";
+
+/** The radio value for "no model chosen"; the menu's values are strings. */
+const DEFAULT = "default";
 
 const STATUS_NOTE: Record<Exclude<ProviderInfo["status"], "ready">, string> = {
   "needs-auth": "Sign in required",
@@ -24,18 +29,31 @@ const statusLine = (provider: ProviderInfo) =>
     ? ["Ready", provider.version].filter(Boolean).join(" · ")
     : (provider.detail ?? STATUS_NOTE[provider.status]);
 
-/** One pill naming the tutor in use. Providers that can't answer stay listed, disabled, with the reason. */
+const itemClass =
+  "flex min-h-8 cursor-default select-none items-start gap-2 rounded-sm px-2 py-1.5 text-[12px] text-fog outline-none data-[highlighted]:bg-tint data-[highlighted]:text-paper data-[checked]:text-paper";
+
+/**
+ * One pill naming the tutor in use, and its model. Providers that can't answer stay listed, disabled, with the
+ * reason. Both choices are saved for every book.
+ */
 export function ProviderPicker({
   providers,
   current,
   onSelect,
+  models,
+  onModel,
 }: {
   providers: ProviderInfo[] | null;
   current: ProviderId | null;
   onSelect(id: ProviderId): void;
+  models: AppSettings["models"];
+  onModel(id: ProviderId, model: string | null): void;
 }) {
   const active = providers?.find((p) => p.id === current) ?? null;
-  const label = providers === null ? "Checking…" : (active?.label ?? "No tutor");
+  const choices = current ? TUTOR_MODELS[current] : undefined;
+  const model = current ? models[current] : undefined;
+  const modelLabel = choices?.find((m) => m.id === model)?.label;
+  const label = providers === null ? "Checking…" : active ? [active.label, modelLabel].filter(Boolean).join(" · ") : "No tutor";
 
   return (
     <Menu>
@@ -63,7 +81,7 @@ export function ProviderPicker({
               value={provider.id}
               disabled={provider.status !== "ready"}
               closeOnSelect
-              className="flex min-h-8 cursor-default select-none items-start gap-2 rounded-sm px-2 py-1.5 text-[12px] text-fog outline-none data-[highlighted]:bg-tint data-[highlighted]:text-paper data-[checked]:text-paper"
+              className={itemClass}
             >
               <span
                 aria-hidden
@@ -82,6 +100,25 @@ export function ProviderPicker({
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
+        {current && choices ? (
+          <>
+            <MenuSeparator className="mx-1 my-1 h-px bg-line" />
+            <MenuRadioGroup value={model ?? DEFAULT} onValueChange={(value) => onModel(current, value === DEFAULT ? null : (value as string))}>
+              <MenuGroupLabel className="px-2 pb-1 pt-1.5 text-[11px] text-dim">Model</MenuGroupLabel>
+              {[{ id: DEFAULT, label: DEFAULT_MODEL_LABEL[current] ?? "Default", note: null }, ...choices].map((choice) => (
+                <MenuRadioItem key={choice.id} value={choice.id} closeOnSelect className={itemClass}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block">{choice.label}</span>
+                    {choice.note ? <span className="block text-[11px] leading-snug text-dim">{choice.note}</span> : null}
+                  </span>
+                  <MenuItemIndicator className="mt-0.5 shrink-0">
+                    <Check size={13} aria-hidden />
+                  </MenuItemIndicator>
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </>
+        ) : null}
       </MenuContent>
     </Menu>
   );

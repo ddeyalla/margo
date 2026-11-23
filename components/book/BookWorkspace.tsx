@@ -76,7 +76,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
     return response.ok ? ((await response.json()) as { revision: string }).revision : null;
   }, [book.id]);
   const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId);
-  const { providers, current: provider, choose: chooseProvider, unavailable } = useProviders(saved.provider);
+  const { providers, current: provider, choose: chooseProvider, models, chooseModel, unavailable } = useProviders(saved.provider, saved.models);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
   const cards = useCards(book.id, initialState.cardSets);
   const [reviewing, setReviewing] = useState(false);
@@ -260,6 +260,8 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
         providers={providers}
         provider={provider}
         onProvider={chooseProvider}
+        models={models}
+        onModel={chooseModel}
         spotlight={spotlight}
         onSpotlight={toggleSpotlight}
         panelId={PANEL_ID}

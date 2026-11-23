@@ -314,7 +314,7 @@ export interface AppSettings {
 }
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "booksDir" | "notesDir">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "booksDir" | "notesDir">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 
