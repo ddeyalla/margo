@@ -80,12 +80,38 @@ export interface ImageAttachment {
   height: number;
 }
 
+/**
+ * The tokens behind one answer, as its provider reported them. Nothing here is estimated: a provider that reports
+ * no usage leaves the answer without any, and a figure it doesn't give is null.
+ */
+export interface TurnUsage {
+  provider: ProviderId;
+  model: string | null;
+  /** "turn": this answer's own counts. "session": Codex reports its session's running total instead. */
+  scope: "turn" | "session";
+  /** The session a "session" total runs over, so two totals from one session can be told apart. */
+  sessionId: string | null;
+  /** Input read at full price, read from the cache, and written to it. */
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  /** How big the conversation was for this answer: what the model read on its last call plus what it wrote. */
+  contextTokens: number | null;
+  contextWindow: number | null;
+  costUsd: number | null;
+  /** "api": what the API charges for these tokens. "list": the same rates, for a reader whose plan pays instead. */
+  costBasis: "api" | "list" | null;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
   partial?: boolean;
   attachments?: ImageAttachment[];
+  /** On an answer, when its provider reported usage. */
+  usage?: TurnUsage;
 }
 
 interface ThreadBase {

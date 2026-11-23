@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MAX_IMAGES_PER_MESSAGE } from "@/lib/shared/attachments";
-import type { BookId, BookState, ChatMessage, ImageAttachment, LibraryBook, ProviderId, Thread } from "@/lib/shared/types";
+import type { BookId, BookState, ChatMessage, ImageAttachment, LibraryBook, ProviderId, Thread, TurnUsage } from "@/lib/shared/types";
 import { readAttachment } from "./attachments";
 import { getConfig } from "./config";
 import { passageThread } from "./passage";
@@ -84,6 +84,8 @@ export interface TurnAnswer {
   sessionId: string | null;
   /** Stopped or failed before the answer finished. */
   partial: boolean;
+  /** What the provider reported, if it did. */
+  usage?: TurnUsage | null;
 }
 
 /** A turn that holds its thread: the reader's message is saved; `close` saves the answer and lets the next turn in. */
@@ -124,6 +126,7 @@ const saveAnswer = async (bookId: BookId, thread: Thread, answer: TurnAnswer, da
   if (!answer.text.trim()) return thread;
   const reply: ChatMessage = { role: "assistant", content: answer.text, createdAt: new Date().toISOString() };
   if (answer.partial) reply.partial = true;
+  if (answer.usage) reply.usage = answer.usage;
   const state = await updateBookState(
     bookId,
     (current) => ({

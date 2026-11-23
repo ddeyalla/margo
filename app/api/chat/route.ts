@@ -7,7 +7,7 @@ import { CODEX_DEFAULT_MODEL } from "@/lib/server/tutor/codex";
 import { buildTurn } from "@/lib/server/tutor/prompt";
 import { PROVIDERS, isProviderId } from "@/lib/server/tutor/providers";
 import { bookNotFound, readObject } from "@/lib/server/with-book";
-import type { ChatStreamEvent, ProviderId } from "@/lib/shared/types";
+import type { ChatStreamEvent, ProviderId, TurnUsage } from "@/lib/shared/types";
 
 const DEFAULT_MODELS: Partial<Record<ProviderId, string>> = { codex: CODEX_DEFAULT_MODEL };
 
@@ -67,6 +67,7 @@ export async function POST(request: Request) {
       send({ type: "thread", thread });
       let answer = "";
       let sessionId = thread.sessionId;
+      let usage: TurnUsage | null = null;
       let failure: string | null = null;
       try {
         for await (const event of PROVIDERS[providerId].run(prompt, abort.signal)) {
@@ -75,6 +76,8 @@ export async function POST(request: Request) {
             send({ type: "text", delta: event.delta });
           } else if (event.type === "session") {
             sessionId = event.id;
+          } else if (event.type === "usage") {
+            usage = event.usage;
           } else {
             failure = event.message;
           }
@@ -83,7 +86,7 @@ export async function POST(request: Request) {
         if (!abort.signal.aborted) failure = error instanceof Error ? error.message : "The tutor stopped unexpectedly.";
       }
 
-      const saved = await turn.close({ text: answer, sessionId, partial: abort.signal.aborted || failure !== null });
+      const saved = await turn.close({ text: answer, sessionId, partial: abort.signal.aborted || failure !== null, usage });
       if (failure) send({ type: "error", message: failure });
       send({ type: "done", thread: saved });
       try {
