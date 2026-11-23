@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createStore, useStableCallback, useStore, type Store } from "@/components/ui/store";
 import { patchBookState } from "@/lib/client/api";
 import { streamChat } from "@/lib/client/chat";
+import { useUnsentText } from "@/lib/client/unsent";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
 import { isParked, parkedFirst } from "@/lib/shared/parked";
 import type { BookId, ImageAttachment, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
@@ -15,6 +16,9 @@ export interface MessageDraft {
 }
 
 const ids = (draft: MessageDraft) => draft.attachments.map((attachment) => attachment.id);
+
+/** A typed message: the only kind that can wait for the answer before it. */
+export type QueuedMessage = Extract<ChatRequest, { kind: "general" | "reply" }>;
 
 /** A turn that ended without a full answer. */
 export interface FailedTurn {
@@ -60,6 +64,15 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<FailedTurn | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /* A message the reader sent while an answer was still coming. It goes once that answer settles. The ref is
+     what the finishing turn reads; the state is what the chat shows. */
+  const queue = useRef<QueuedMessage | null>(null);
+  const [queued, setQueuedState] = useState<QueuedMessage | null>(null);
+  const setQueued = (request: QueuedMessage | null) => {
+    queue.current = request;
+    setQueuedState(request);
+  };
+  useUnsentText(queued !== null);
 
   /* Cleared only once the finished turn has committed, so the saved answer replaces the bubble with no blank frame between. */
   useLayoutEffect(() => {
@@ -149,6 +162,18 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       const inThread = "threadId" in request ? request.threadId : null;
       setFailure({ threadId: thread?.id ?? inThread, message: error, request: thread || inThread ? null : request });
     }
+    /* The queued message goes now, unless the answer before it failed: then it waits for the reader to send it. */
+    const next = queue.current;
+    if (next && (!error || aborted)) {
+      setQueued(null);
+      void run(next);
+    }
+  };
+
+  /** Sends a typed message, or queues it while another answer is coming. One message waits at a time. */
+  const send = (request: QueuedMessage) => {
+    if (!abortRef.current) void run(request);
+    else if (!queue.current) setQueued(request);
   };
 
   const active = useMemo(() => threads.find((t) => t.id === activeId) ?? null, [threads, activeId]);
@@ -161,12 +186,22 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
 
   /** Starts a thread with no passage, placed where the reader is. */
   const ask = useStableCallback((draft: MessageDraft, place: QuestionPlace | null, provider: ProviderId) => {
-    void run({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), place });
+    send({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), place });
   });
 
   const reply = useStableCallback((draft: MessageDraft, provider: ProviderId) => {
-    if (activeId) void run({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft) });
+    if (activeId) send({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft) });
   });
+
+  /** Sends the queued message now: the one held back because the answer before it failed. */
+  const sendQueued = useStableCallback(() => {
+    const next = queue.current;
+    if (!next || abortRef.current) return;
+    setQueued(null);
+    void run(next);
+  });
+
+  const cancelQueued = useStableCallback(() => setQueued(null));
 
   /** Asks again for the active thread's unanswered message, or resends a first turn the server never saved. */
   const retry = useStableCallback((provider: ProviderId) => {
@@ -238,6 +273,10 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       live,
       sending,
       failure: shownFailure,
+      /** A message waiting for the current answer to settle. */
+      queued,
+      sendQueued,
+      cancelQueued,
       start,
       park,
       unpark,
@@ -248,7 +287,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       stop,
       open,
     }),
-    [bookId, listed, parked, active, live, sending, shownFailure, start, park, unpark, discard, ask, reply, retry, stop, open],
+    [bookId, listed, parked, active, live, sending, shownFailure, queued, sendQueued, cancelQueued, start, park, unpark, discard, ask, reply, retry, stop, open],
   );
 }
 

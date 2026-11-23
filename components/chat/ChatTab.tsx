@@ -14,7 +14,7 @@ import { UsageRow } from "./UsageRow";
 import { DropArea, Lightbox, MessageImages } from "./Images";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { useImageDraft } from "./useImageDraft";
-import { awaitsAnswer, useCompacting, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type Tutor } from "./useTutor";
+import { awaitsAnswer, useCompacting, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type QueuedMessage, type Tutor } from "./useTutor";
 
 const when = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -88,6 +88,9 @@ export function ChatTab({
         live={tutor.live}
         sending={tutor.sending}
         failure={failure}
+        queued={tutor.queued?.kind === "reply" && tutor.queued.threadId === active.id ? tutor.queued : null}
+        onSendQueued={tutor.sendQueued}
+        onCancelQueued={tutor.cancelQueued}
         unavailable={unavailable}
         onBack={() => tutor.open(null)}
         onJump={() => active.anchor && onJump(active.anchor)}
@@ -161,10 +164,14 @@ function Threads({
           body="Select text in the book, then choose Explain, Go deeper, Work it out, Explain it back or Ask… Or ask below, and paste or drop an image to show the tutor."
         />
       )}
+      {tutor.queued?.kind === "general" ? (
+        <QueuedNote queued={tutor.queued} sending={tutor.sending} onSend={tutor.sendQueued} onCancel={tutor.cancelQueued} />
+      ) : null}
       <Composer
         placeholder="Ask about the book, or paste an image…"
         disabledReason={unavailable}
         sending={tutor.sending}
+        canQueue={tutor.queued === null}
         images={images}
         onSend={onAsk}
         onStop={tutor.stop}
@@ -306,6 +313,9 @@ function ThreadView({
   live,
   sending,
   failure,
+  queued,
+  onSendQueued,
+  onCancelQueued,
   unavailable,
   onBack,
   onJump,
@@ -319,6 +329,10 @@ function ThreadView({
   /** Any request is in flight, for this thread or another. */
   sending: boolean;
   failure: FailedTurn | null;
+  /** The reply waiting for the answer in flight, when it is for this thread. */
+  queued: QueuedMessage | null;
+  onSendQueued(): void;
+  onCancelQueued(): void;
   unavailable: string | null;
   onBack(): void;
   onJump(): void;
@@ -438,10 +452,12 @@ function ThreadView({
           </Button>
         </div>
       ) : null}
+      {queued ? <QueuedNote queued={queued} sending={sending} onSend={onSendQueued} onCancel={onCancelQueued} /> : null}
       <Composer
         placeholder="Ask a follow-up…"
         disabledReason={unavailable}
         sending={sending}
+        canQueue={!queued}
         images={images}
         onSend={onReply}
         onStop={onStop}
@@ -487,6 +503,29 @@ function AskedAt({ thread, onJump }: { thread: GeneralThread; onJump(): void }) 
       <CornerDownRight className="size-3 shrink-0" aria-hidden />
       <span className="truncate">Asked at {place}</span>
     </button>
+  );
+}
+
+/** A message sent while an answer was coming: it goes when that answer settles, or waits here if it failed. */
+function QueuedNote({ queued, sending, onSend, onCancel }: { queued: QueuedMessage; sending: boolean; onSend(): void; onCancel(): void }) {
+  const images = queued.attachments.length;
+  const words = queued.text || `${images} image${images === 1 ? "" : "s"}`;
+  const link =
+    "press shrink-0 rounded-xs px-1 text-fog underline decoration-dim underline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-paper";
+  return (
+    <div role="status" className="flex shrink-0 items-center gap-2 px-4 pb-1.5 text-[11px] text-dim">
+      <span className="min-w-0 flex-1 truncate">
+        {sending ? "Queued, sends after this answer" : "Not sent, the answer before it failed"}: <span className="text-fog">“{words}”</span>
+      </span>
+      {sending ? null : (
+        <button type="button" onClick={onSend} className={link}>
+          Send now
+        </button>
+      )}
+      <button type="button" onClick={onCancel} className={link}>
+        Cancel
+      </button>
+    </div>
   );
 }
 
