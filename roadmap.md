@@ -185,17 +185,25 @@ thread on every request (`apiMessages`, `lib/server/tutor/api.ts:9`) and the onl
 the file is `max_tokens: 64000` (`:33`). A long thread either overflows the window or
 arrives as a bill you didn't see coming, and nothing in the UI says which.
 
-- [ ] Record token usage per turn, per thread, from whatever the provider reports. Never
-      estimate in place of a real number; show "—" when the provider sent none.
-- [ ] A quiet row under the composer: context used out of the model's window, and the
-      session's estimated cost. Click for per-turn detail.
-- [ ] **Compaction.** Past a threshold, replace the oldest turns with a summary and keep
+- [x] Record token usage per turn, per thread, from whatever the provider reports. Never
+      estimate in place of a real number; show "—" when the provider sent none. Each
+      answer saves the provider's `usage`: Claude Code's `result` line (cost from
+      `total_cost_usd`, marked plan-paid when `costBasis` is `list`), Codex's
+      `turn.completed` (a running total per session, turned into per-answer deltas), and
+      the API's final message (priced from the table in `api.ts`).
+- [x] A quiet row under the composer: context used out of the model's window, and the
+      session's estimated cost. Click for per-turn detail. (`UsageRow.tsx`)
+- [x] **Compaction.** Past a threshold, replace the oldest turns with a summary and keep
       the rest. The full history stays on disk and stays readable — only what goes to the
       model is cut. Summaries keep the position, the open threads and the reader's own
-      words, not just the gist.
-- [ ] A line above the composer when the reader types while a turn is running: queued,
-      not dropped, and sent when the current turn settles. Today `useTutor.ts:84` just
-      refuses the second request.
+      words, not just the gist. Past about 150K tokens sent, the same tutor writes a
+      summary of all but the newest six messages, saved as `thread.compaction`; the
+      passage always goes as written. A resumed CLI session sends only the newest message
+      and compacts itself, so this applies to the API and to CLI threads with no session.
+- [x] A line above the composer when the reader types while a turn is running: queued,
+      not dropped, and sent when the current turn settles. One message waits at a time;
+      if the answer before it fails it is held with Send now, and nothing newer goes
+      ahead of it.
 
 Done when a thread of 200 turns still answers, and the cost of asking is on screen.
 

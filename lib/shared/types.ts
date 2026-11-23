@@ -80,12 +80,53 @@ export interface ImageAttachment {
   height: number;
 }
 
+/**
+ * The tokens behind one answer, as its provider reported them. Nothing here is estimated: a provider that reports
+ * no usage leaves the answer without any, and a figure it doesn't give is null.
+ */
+export interface TurnUsage {
+  provider: ProviderId;
+  model: string | null;
+  /** "turn": this answer's own counts. "session": Codex reports its session's running total instead. */
+  scope: "turn" | "session";
+  /** The session a "session" total runs over, so two totals from one session can be told apart. */
+  sessionId: string | null;
+  /** "session": the cost is the session's running total, as Claude Code reports it on a resumed session. */
+  costScope: "turn" | "session";
+  /** Input read at full price, read from the cache, and written to it. */
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  /** How big the conversation was for this answer: what the model read on its last call plus what it wrote. */
+  contextTokens: number | null;
+  contextWindow: number | null;
+  costUsd: number | null;
+  /** "api": what the API charges for these tokens. "list": the same rates, for a reader whose plan pays instead. */
+  costBasis: "api" | "list" | null;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
   partial?: boolean;
   attachments?: ImageAttachment[];
+  /** On an answer, when its provider reported usage. */
+  usage?: TurnUsage;
+}
+
+/**
+ * Earlier turns of a long thread, folded into one summary for the tutor. Only what goes to the model is shorter:
+ * the thread keeps every message, and the reader still reads them all.
+ */
+export interface Compaction {
+  summary: string;
+  /** Messages from this index on go to the tutor as written; those between the first and this one are in the summary. */
+  keepFrom: number;
+  createdAt: string;
+  /** What writing each summary so far used, oldest first. */
+  usage: TurnUsage[];
 }
 
 interface ThreadBase {
@@ -94,6 +135,7 @@ interface ThreadBase {
   sessionId: string | null;
   createdAt: string;
   messages: ChatMessage[];
+  compaction?: Compaction;
 }
 
 /** A thread about a passage the reader selected. */
@@ -272,7 +314,7 @@ export interface AppSettings {
 }
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "booksDir" | "notesDir">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "booksDir" | "notesDir">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 
@@ -287,6 +329,8 @@ export interface ProviderInfo {
 /** One line of the /api/chat response stream (newline-delimited JSON). */
 export type ChatStreamEvent =
   | { type: "thread"; thread: Thread }
+  /** The tutor is summarizing the thread's older turns before it answers. */
+  | { type: "compacting" }
   | { type: "text"; delta: string }
   | { type: "error"; message: string }
   | { type: "done"; thread: Thread };

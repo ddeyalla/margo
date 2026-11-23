@@ -1,4 +1,4 @@
-import type { ImageMediaType, ProviderId, ProviderStatus } from "@/lib/shared/types";
+import type { ImageMediaType, ProviderId, ProviderStatus, TurnUsage } from "@/lib/shared/types";
 
 /** An image's bytes as base64, the form both Anthropic formats take. */
 export interface TutorImage {
@@ -25,6 +25,7 @@ export interface TutorTurn {
 export type TutorEvent =
   | { type: "text"; delta: string }
   | { type: "session"; id: string }
+  | { type: "usage"; usage: TurnUsage }
   | { type: "error"; message: string };
 
 export interface ProviderProbe {

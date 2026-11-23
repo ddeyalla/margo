@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, useSyncExternalStore } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui";
 import { saveFolders } from "@/lib/client/api";
 
@@ -10,36 +10,65 @@ export interface FolderValue {
   fromEnv: boolean;
 }
 
-const noSubscription = () => () => undefined;
-/** The Mac app offers a native folder picker; a browser does not. */
-const useFolderPicker = () =>
-  useSyncExternalStore(
-    noSubscription,
-    () => typeof window.riggApp?.pickFolder === "function",
-    () => false,
-  );
+type FolderKind = "books" | "notes";
+
+/**
+ * Opens the Mac's folder dialog: the Mac app's own, or in a browser one the server opens, since a page can't learn
+ * a folder's full path. Resolves to the path, null when cancelled, or "unsupported" when the server isn't a Mac.
+ */
+const pickFolder = async (kind: FolderKind): Promise<string | null | "unsupported"> => {
+  if (window.riggApp?.pickFolder) return window.riggApp.pickFolder();
+  const response = await fetch("/api/folder-picker", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind }),
+  });
+  if (response.status === 501) return "unsupported";
+  const body = (await response.json().catch(() => null)) as { path?: string | null; error?: string } | null;
+  if (!response.ok) throw new Error(body?.error ?? "The folder dialog could not open.");
+  return body?.path ?? null;
+};
 
 function FolderField({
   label,
+  kind,
   hint,
   value,
   fromEnv,
   hasPicker,
   placeholder,
+  optional = false,
   onChange,
+  onNoPicker,
+  onError,
 }: {
   label: string;
+  kind: FolderKind;
   hint: string;
   value: string;
   fromEnv: boolean;
   hasPicker: boolean;
   placeholder: string;
+  /** The folder may be left unset, so a chosen one can be cleared. */
+  optional?: boolean;
   onChange: (value: string) => void;
+  /** The server can't open a folder dialog, so paths are typed instead. */
+  onNoPicker(): void;
+  onError(message: string): void;
 }) {
   const inputId = useId();
+  const [picking, setPicking] = useState(false);
   const pick = async () => {
-    const chosen = await window.riggApp?.pickFolder();
-    if (chosen) onChange(chosen);
+    setPicking(true);
+    try {
+      const chosen = await pickFolder(kind);
+      if (chosen === "unsupported") onNoPicker();
+      else if (chosen) onChange(chosen);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "The folder dialog could not open.");
+    } finally {
+      setPicking(false);
+    }
   };
   /* Only a typed path is a form control; a set or picked path is just shown. */
   const typed = !fromEnv && !hasPicker;
@@ -78,7 +107,16 @@ function FolderField({
                 className="h-8 min-w-0 flex-1 rounded-sm bg-panel px-2.5 text-label text-paper placeholder:text-dim focus:outline-1 focus:outline-fog/40"
               />
             )}
-            {hasPicker ? <Button onClick={pick}>Choose folder…</Button> : null}
+            {hasPicker ? (
+              <Button onClick={() => void pick()} disabled={picking}>
+                {picking ? "Choosing…" : "Choose folder…"}
+              </Button>
+            ) : null}
+            {hasPicker && optional && value ? (
+              <Button variant="ghost" onClick={() => onChange("")}>
+                Clear
+              </Button>
+            ) : null}
           </div>
           <p className="text-label text-dim">{hint}</p>
         </>
@@ -90,7 +128,8 @@ function FolderField({
 /** Asks for the books folder and, optionally, the notes folder, saves them and reloads the page. */
 export function FolderForm({ books, notes, onDone }: { books: FolderValue; notes: FolderValue; onDone?: () => void }) {
   const router = useRouter();
-  const hasPicker = useFolderPicker();
+  /* Every Mac can show the folder dialog; typing a path is only for a server that can't. */
+  const [hasPicker, setHasPicker] = useState(true);
   const [booksPath, setBooksPath] = useState(books.path ?? "");
   const [notesPath, setNotesPath] = useState(notes.path ?? "");
   const [saving, setSaving] = useState(false);
@@ -119,6 +158,9 @@ export function FolderForm({ books, notes, onDone }: { books: FolderValue; notes
     >
       <FolderField
         label="Books folder"
+        kind="books"
+        onNoPicker={() => setHasPicker(false)}
+        onError={setError}
         hint="EPUB and PDF files, in any subfolders. The app never changes them."
         value={books.fromEnv ? (books.path ?? "") : booksPath}
         fromEnv={books.fromEnv}
@@ -128,6 +170,10 @@ export function FolderForm({ books, notes, onDone }: { books: FolderValue; notes
       />
       <FolderField
         label="Notes folder (optional)"
+        kind="notes"
+        optional
+        onNoPicker={() => setHasPicker(false)}
+        onError={setError}
         hint="A folder in your Obsidian vault gets a markdown copy of your highlights and notes."
         value={notes.fromEnv ? (notes.path ?? "") : notesPath}
         fromEnv={notes.fromEnv}

@@ -18,7 +18,8 @@ const MAX_LINES = 8;
 
 /**
  * The raised card at the foot of the chat. Its round send button is the
- * panel's one primary button; it turns into Stop while an answer streams.
+ * panel's one primary button; it turns into Stop while an answer streams,
+ * and Enter then queues the message to go after it.
  * Images come in by paste, by the attach button, or by a drop the panel
  * forwards to `images`; a message may be images alone.
  */
@@ -26,6 +27,7 @@ export function Composer({
   placeholder,
   disabledReason,
   sending,
+  waiting,
   images,
   onSend,
   onStop,
@@ -34,6 +36,8 @@ export function Composer({
   /** Why nothing can be sent; the box is disabled and shows this. */
   disabledReason: string | null;
   sending: boolean;
+  /** A message already waits to be sent; nothing new is taken until it goes or is cancelled. */
+  waiting: boolean;
   images: ImageDraft;
   onSend(draft: MessageDraft): void;
   onStop(): void;
@@ -54,7 +58,7 @@ export function Composer({
   });
   useUnsentText(text.trim().length > 0);
   const hasContent = text.trim().length > 0 || images.ready.length > 0;
-  const canSend = !disabledReason && !sending && !images.uploading && !images.failed && hasContent;
+  const canSend = !disabledReason && !waiting && !images.uploading && !images.failed && hasContent;
   const problem = images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;
 
   useLayoutEffect(() => {
@@ -139,7 +143,15 @@ export function Composer({
             <ImagePlus className="size-4" aria-hidden />
           </button>
           <span aria-hidden className="min-w-0 flex-1 truncate text-[11px] text-dim">
-            {sending ? "Answering…" : images.uploading ? "Attaching…" : "⏎ send · ⇧⏎ new line"}
+            {sending
+              ? waiting
+                ? "Answering…"
+                : "Answering… ⏎ queues yours"
+              : waiting
+                ? "Send or cancel the waiting message first"
+                : images.uploading
+                  ? "Attaching…"
+                  : "⏎ send · ⇧⏎ new line"}
           </span>
           <MicButton dictation={dictation} disabled={disabledReason !== null} />
           <button

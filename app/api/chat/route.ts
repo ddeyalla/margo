@@ -4,10 +4,12 @@ import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
 import { openTurn, parseTurnRequest } from "@/lib/server/turns";
 import { CODEX_DEFAULT_MODEL } from "@/lib/server/tutor/codex";
+import { COMPACT_AT, foldPoint, sentTokens, writeSummary } from "@/lib/server/tutor/compact";
 import { buildTurn } from "@/lib/server/tutor/prompt";
 import { PROVIDERS, isProviderId } from "@/lib/server/tutor/providers";
+import type { TutorTurn } from "@/lib/server/tutor/types";
 import { bookNotFound, readObject } from "@/lib/server/with-book";
-import type { ChatStreamEvent, ProviderId } from "@/lib/shared/types";
+import type { ChatStreamEvent, ProviderId, TurnUsage } from "@/lib/shared/types";
 
 const DEFAULT_MODELS: Partial<Record<ProviderId, string>> = { codex: CODEX_DEFAULT_MODEL };
 
@@ -38,9 +40,11 @@ export async function POST(request: Request) {
   const turn = await openTurn(found.book.id, parsed, providerId);
   if (typeof turn === "string") return badRequest(turn);
   const { thread } = turn;
-  let prompt;
+  let images: Map<string, Buffer>;
+  let prompt: TutorTurn;
   try {
-    prompt = buildTurn(label, thread, model, await readMessageImages(found.book.id, thread.messages));
+    images = await readMessageImages(found.book.id, thread.messages);
+    prompt = buildTurn(label, thread, model, images);
   } catch (error) {
     /* The turn holds the thread's lock; without this the thread would stay locked until the server restarts. */
     await turn.close({ text: "", sessionId: thread.sessionId, partial: true });
@@ -65,8 +69,27 @@ export async function POST(request: Request) {
       };
 
       send({ type: "thread", thread });
+
+      /* A thread grown past the limit sends a summary of its older turns in their place. */
+      const keepFrom = sentTokens(prompt) > COMPACT_AT ? foldPoint(thread) : null;
+      if (keepFrom !== null) {
+        send({ type: "compacting" });
+        const written = await writeSummary(PROVIDERS[providerId], label, thread, keepFrom, model, abort.signal);
+        if (written) {
+          const usage = [...(thread.compaction?.usage ?? []), ...(written.usage ? [written.usage] : [])];
+          /* A failed save goes ahead uncompacted: a throw here would skip the close below and leave the thread locked. */
+          try {
+            const compacted = await turn.compact({ summary: written.summary, keepFrom, createdAt: new Date().toISOString(), usage });
+            prompt = buildTurn(label, compacted, model, images);
+          } catch (error) {
+            console.error("Saving the thread's summary failed", error);
+          }
+        }
+      }
+
       let answer = "";
       let sessionId = thread.sessionId;
+      let usage: TurnUsage | null = null;
       let failure: string | null = null;
       try {
         for await (const event of PROVIDERS[providerId].run(prompt, abort.signal)) {
@@ -75,6 +98,8 @@ export async function POST(request: Request) {
             send({ type: "text", delta: event.delta });
           } else if (event.type === "session") {
             sessionId = event.id;
+          } else if (event.type === "usage") {
+            usage = event.usage;
           } else {
             failure = event.message;
           }
@@ -83,7 +108,7 @@ export async function POST(request: Request) {
         if (!abort.signal.aborted) failure = error instanceof Error ? error.message : "The tutor stopped unexpectedly.";
       }
 
-      const saved = await turn.close({ text: answer, sessionId, partial: abort.signal.aborted || failure !== null });
+      const saved = await turn.close({ text: answer, sessionId, partial: abort.signal.aborted || failure !== null, usage });
       if (failure) send({ type: "error", message: failure });
       send({ type: "done", thread: saved });
       try {

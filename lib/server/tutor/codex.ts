@@ -1,6 +1,9 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { IMAGE_EXTENSIONS } from "@/lib/shared/attachments";
+import type { TurnUsage } from "@/lib/shared/types";
+import { tokenCount } from "@/lib/shared/usage";
+import { isObject } from "../validate";
 import { cliInput } from "./prompt";
 import { lastErrorLine, parseJsonLine, runQuiet, scratchDir, streamCli } from "./process";
 import type { Provider, TutorEvent, TutorImage, TutorTurn } from "./types";
@@ -41,18 +44,50 @@ const writeImages = async (cwd: string, images: TutorImage[]): Promise<{ dir: st
 };
 
 /**
+ * The usage on `turn.completed`. `codex exec` reports the session's running total there, not the turn's
+ * (`usage_from_last_total` in codex-rs/exec), and gives neither the window nor a cost. Its input count includes
+ * the cached part, which is split out here to match the other providers.
+ */
+export const codexUsage = (value: unknown, sessionId: string | null): TurnUsage | null => {
+  if (!isObject(value)) return null;
+  const cached = tokenCount(value.cached_input_tokens);
+  return {
+    provider: "codex",
+    model: null,
+    scope: "session",
+    costScope: "turn",
+    sessionId,
+    inputTokens: Math.max(0, tokenCount(value.input_tokens) - cached),
+    cacheReadTokens: cached,
+    cacheWriteTokens: tokenCount(value.cache_write_input_tokens),
+    outputTokens: tokenCount(value.output_tokens),
+    contextTokens: null,
+    contextWindow: null,
+    costUsd: null,
+    costBasis: null,
+  };
+};
+
+/**
  * A parser for one run of `codex exec --json`. Answers arrive as whole
  * `agent_message` items, so items after the first are set apart as paragraphs.
  * Top-level `error` lines are skipped: they repeat the turn.failed message or
  * report a reconnect that may still succeed. Items of type "error" are warnings.
  */
-export const createCodexParser = () => {
+export const createCodexParser = (resumed: string | null = null) => {
   let sawText = false;
+  /* The session the usage totals run over: the one resumed, or the one this run starts. */
+  let session = resumed;
   return (line: string): TutorEvent[] => {
     const event = parseJsonLine(line);
     if (!event) return [];
     if (event.type === "thread.started" && typeof event.thread_id === "string") {
+      session = event.thread_id;
       return [{ type: "session", id: event.thread_id }];
+    }
+    if (event.type === "turn.completed") {
+      const usage = codexUsage(event.usage, session);
+      return usage ? [{ type: "usage", usage }] : [];
     }
     if (event.type === "turn.failed") {
       const message = (event.error as { message?: unknown } | undefined)?.message;
@@ -80,14 +115,14 @@ async function* run(turn: TutorTurn, signal: AbortSignal): AsyncGenerator<TutorE
       args: codexArgs(turn, cwd, images?.files),
       cwd,
       signal,
-      parseLine: createCodexParser(),
+      parseLine: createCodexParser(turn.sessionId),
       describeExit: (code, stderr) => lastErrorLine(stderr) ?? `Codex exited with code ${code}.`,
     })) {
       if (event.type === "error" && turn.sessionId && LOST_SESSION.test(event.message)) {
         lostSession = true;
         break;
       }
-      yield event;
+      yield event.type === "usage" ? { ...event, usage: { ...event.usage, model: turn.model ?? CODEX_DEFAULT_MODEL } } : event;
     }
   } finally {
     if (images) await rm(images.dir, { recursive: true, force: true });

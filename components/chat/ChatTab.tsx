@@ -10,10 +10,11 @@ import { threadLabel } from "@/lib/shared/threads";
 import type { ParkedThread } from "@/lib/shared/parked";
 import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread } from "@/lib/shared/types";
 import { Composer } from "./Composer";
+import { UsageRow } from "./UsageRow";
 import { DropArea, Lightbox, MessageImages } from "./Images";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { useImageDraft } from "./useImageDraft";
-import { awaitsAnswer, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type Tutor } from "./useTutor";
+import { awaitsAnswer, useCompacting, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type QueuedMessage, type Tutor } from "./useTutor";
 
 const when = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -87,6 +88,9 @@ export function ChatTab({
         live={tutor.live}
         sending={tutor.sending}
         failure={failure}
+        queued={tutor.queued}
+        onSendQueued={tutor.sendQueued}
+        onCancelQueued={tutor.cancelQueued}
         unavailable={unavailable}
         onBack={() => tutor.open(null)}
         onJump={() => active.anchor && onJump(active.anchor)}
@@ -160,10 +164,20 @@ function Threads({
           body="Select text in the book, then choose Explain, Go deeper, Work it out, Explain it back or Ask… Or ask below, and paste or drop an image to show the tutor."
         />
       )}
+      {tutor.queued ? (
+        <QueuedNote
+          queued={tutor.queued}
+          elsewhere={tutor.queued.kind === "reply"}
+          sending={tutor.sending}
+          onSend={tutor.sendQueued}
+          onCancel={tutor.cancelQueued}
+        />
+      ) : null}
       <Composer
         placeholder="Ask about the book, or paste an image…"
         disabledReason={unavailable}
         sending={tutor.sending}
+        waiting={tutor.queued !== null}
         images={images}
         onSend={onAsk}
         onStop={tutor.stop}
@@ -305,6 +319,9 @@ function ThreadView({
   live,
   sending,
   failure,
+  queued,
+  onSendQueued,
+  onCancelQueued,
   unavailable,
   onBack,
   onJump,
@@ -318,6 +335,10 @@ function ThreadView({
   /** Any request is in flight, for this thread or another. */
   sending: boolean;
   failure: FailedTurn | null;
+  /** The message waiting for the answer in flight, for this thread or another. */
+  queued: QueuedMessage | null;
+  onSendQueued(): void;
+  onCancelQueued(): void;
   unavailable: string | null;
   onBack(): void;
   onJump(): void;
@@ -344,7 +365,7 @@ function ThreadView({
   /* The reader's last message went unanswered: stopped before the first word, or failed. */
   const unanswered = !sending && awaitsAnswer(thread);
   const { leading, hintsUsed } = workState(thread);
-  const busy = sending || !!unavailable;
+  const busy = sending || !!unavailable || queued !== null;
 
   return (
     <DropArea onFiles={images.add} enabled={!unavailable} className="flex min-h-0 flex-1 flex-col">
@@ -384,7 +405,14 @@ function ThreadView({
         )}
 
         <div className="mt-4 flex flex-col gap-4">
-          {thread.messages.map((message, index) =>
+          {thread.messages.flatMap((message, index) => [
+            index === thread.compaction?.keepFrom ? (
+              <p key="summarized" className="flex items-center gap-3 text-[11px] text-dim">
+                <span aria-hidden className="h-px flex-1 bg-line-strong" />
+                The tutor reads the turns above as a summary
+                <span aria-hidden className="h-px flex-1 bg-line-strong" />
+              </p>
+            ) : null,
             message.role === "user" ? (
               <div key={index} className={clsx("flex flex-col items-end gap-1.5 pl-8", index >= firstSent && "animate-rise")}>
                 {message.attachments?.length ? <MessageImages bookId={bookId} images={message.attachments} onOpen={setViewing} /> : null}
@@ -398,7 +426,7 @@ function ThreadView({
                 {message.partial ? <p className="mt-1.5 text-[11px] text-dim">Stopped before the answer finished.</p> : null}
               </div>
             ),
-          )}
+          ])}
           <StreamingAnswer live={live} threadId={thread.id} onGrow={follow} />
           {failure ? (
             <FailureNote failure={failure} onRetry={unanswered ? onRetry : null} />
@@ -430,14 +458,25 @@ function ThreadView({
           </Button>
         </div>
       ) : null}
+      {queued ? (
+        <QueuedNote
+          queued={queued}
+          elsewhere={queued.kind !== "reply" || queued.threadId !== thread.id}
+          sending={sending}
+          onSend={onSendQueued}
+          onCancel={onCancelQueued}
+        />
+      ) : null}
       <Composer
         placeholder="Ask a follow-up…"
         disabledReason={unavailable}
         sending={sending}
+        waiting={queued !== null}
         images={images}
         onSend={onReply}
         onStop={onStop}
       />
+      <UsageRow thread={thread} />
       {viewing ? <Lightbox bookId={bookId} image={viewing} onClose={() => setViewing(null)} /> : null}
     </DropArea>
   );
@@ -446,13 +485,14 @@ function ThreadView({
 /** The answer arriving in this thread. The only part of the chat that renders per streamed token. */
 function StreamingAnswer({ live, threadId, onGrow }: { live: LiveAnswer; threadId: string; onGrow(): void }) {
   const streaming = useStreaming(live, threadId);
+  const compacting = useCompacting(live, threadId);
   useLayoutEffect(() => onGrow(), [onGrow, streaming]);
   if (streaming === null) return null;
   if (streaming === "") {
     return (
       <p role="status" className="flex items-center gap-2 text-label text-dim">
         <Spinner />
-        Thinking…
+        {compacting ? "Summarizing the earlier turns for the tutor…" : "Thinking…"}
       </p>
     );
   }
@@ -477,6 +517,43 @@ function AskedAt({ thread, onJump }: { thread: GeneralThread; onJump(): void }) 
       <CornerDownRight className="size-3 shrink-0" aria-hidden />
       <span className="truncate">Asked at {place}</span>
     </button>
+  );
+}
+
+/** A message sent while an answer was coming: it goes when that answer settles, or waits here if it failed. */
+function QueuedNote({
+  queued,
+  elsewhere,
+  sending,
+  onSend,
+  onCancel,
+}: {
+  queued: QueuedMessage;
+  /** It belongs to a thread other than the one on screen, or starts a new one. */
+  elsewhere: boolean;
+  sending: boolean;
+  onSend(): void;
+  onCancel(): void;
+}) {
+  const images = queued.attachments.length;
+  const words = queued.text || `${images} image${images === 1 ? "" : "s"}`;
+  const link =
+    "press shrink-0 rounded-xs px-1 text-fog underline decoration-dim underline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-paper";
+  return (
+    <div role="status" className="flex shrink-0 items-center gap-2 px-4 pb-1.5 text-[11px] text-dim">
+      <span className="min-w-0 flex-1 truncate">
+        {sending ? "Queued, sends after this answer" : "Not sent, the answer before it failed"}
+        {elsewhere ? (queued.kind === "general" ? " (a new question)" : " (in another thread)") : ""}: <span className="text-fog">“{words}”</span>
+      </span>
+      {sending ? null : (
+        <button type="button" onClick={onSend} className={link}>
+          Send now
+        </button>
+      )}
+      <button type="button" onClick={onCancel} className={link}>
+        Cancel
+      </button>
+    </div>
   );
 }
 

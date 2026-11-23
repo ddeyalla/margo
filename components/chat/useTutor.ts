@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createStore, useStableCallback, useStore, type Store } from "@/components/ui/store";
 import { patchBookState } from "@/lib/client/api";
 import { streamChat } from "@/lib/client/chat";
+import { useUnsentText } from "@/lib/client/unsent";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
 import { isParked, parkedFirst } from "@/lib/shared/parked";
 import type { BookId, ImageAttachment, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
@@ -16,6 +17,9 @@ export interface MessageDraft {
 
 const ids = (draft: MessageDraft) => draft.attachments.map((attachment) => attachment.id);
 
+/** A typed message: the only kind that can wait for the answer before it. */
+export type QueuedMessage = Extract<ChatRequest, { kind: "general" | "reply" }>;
+
 /** A turn that ended without a full answer. */
 export interface FailedTurn {
   threadId: string | null;
@@ -24,11 +28,14 @@ export interface FailedTurn {
   request: ChatRequest | null;
 }
 
-/** The answer streaming in, and the thread it belongs to. */
-export type LiveAnswer = Store<{ threadId: string; text: string } | null>;
+/** The answer streaming in, and the thread it belongs to. `compacting` while the tutor summarizes older turns first. */
+export type LiveAnswer = Store<{ threadId: string; text: string; compacting: boolean } | null>;
 
 /** The answer streaming into `threadId`, or null when that thread isn't the one answering. Only its subscriber re-renders per token. */
 export const useStreaming = (live: LiveAnswer, threadId: string) => useStore(live, (answer) => (answer && answer.threadId === threadId ? answer.text : null));
+
+/** Whether `threadId`'s older turns are being summarized before its answer starts. */
+export const useCompacting = (live: LiveAnswer, threadId: string) => useStore(live, (answer) => answer?.threadId === threadId && answer.compacting);
 
 const newestFirst = (a: Thread, b: Thread) => b.createdAt.localeCompare(a.createdAt);
 
@@ -57,6 +64,15 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<FailedTurn | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /* A message the reader sent while an answer was still coming. It goes once that answer settles. The ref is
+     what the finishing turn reads; the state is what the chat shows. */
+  const queue = useRef<QueuedMessage | null>(null);
+  const [queued, setQueuedState] = useState<QueuedMessage | null>(null);
+  const setQueued = (request: QueuedMessage | null) => {
+    queue.current = request;
+    setQueuedState(request);
+  };
+  useUnsentText(queued !== null);
 
   /* Cleared only once the finished turn has committed, so the saved answer replaces the bubble with no blank frame between. */
   useLayoutEffect(() => {
@@ -84,17 +100,20 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     if (abortRef.current) return;
     const controller = new AbortController();
     abortRef.current = controller;
+    /* A message already waiting when nothing was running is one held after a failure; only Send now sends it. */
+    const held = queue.current;
     setFailure(null);
     setSending(true);
     live.set(null);
     let thread: Thread | null = null;
     let text = "";
+    let compacting = false;
     let error: string | null = null;
     let finished = false;
     /* Tokens arrive faster than frames; the bubble takes the text so far once per frame. */
     const publish = () => {
       frame.current = 0;
-      if (thread) live.set({ threadId: thread.id, text });
+      if (thread) live.set({ threadId: thread.id, text, compacting: compacting && !text });
     };
     try {
       for await (const event of streamChat(request, controller.signal)) {
@@ -103,6 +122,9 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
           upsert(thread);
           setActiveId(thread.id);
           cancelAnimationFrame(frame.current);
+          publish();
+        } else if (event.type === "compacting") {
+          compacting = true;
           publish();
         } else if (event.type === "text") {
           text += event.delta;
@@ -142,6 +164,20 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       const inThread = "threadId" in request ? request.threadId : null;
       setFailure({ threadId: thread?.id ?? inThread, message: error, request: thread || inThread ? null : request });
     }
+    /* The queued message goes now, unless the answer before it failed: then it waits for the reader to send it. */
+    const next = queue.current;
+    if (next && next !== held && (!error || aborted)) {
+      setQueued(null);
+      void run(next);
+    }
+  };
+
+  /** Sends a typed message, or queues it while another answer is coming. One message waits at a time, and while
+      one waits nothing new is taken, so messages go in the order they were written. */
+  const send = (request: QueuedMessage) => {
+    if (queue.current) return;
+    if (!abortRef.current) void run(request);
+    else setQueued(request);
   };
 
   const active = useMemo(() => threads.find((t) => t.id === activeId) ?? null, [threads, activeId]);
@@ -154,12 +190,22 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
 
   /** Starts a thread with no passage, placed where the reader is. */
   const ask = useStableCallback((draft: MessageDraft, place: QuestionPlace | null, provider: ProviderId) => {
-    void run({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), place });
+    send({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), place });
   });
 
   const reply = useStableCallback((draft: MessageDraft, provider: ProviderId) => {
-    if (activeId) void run({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft) });
+    if (activeId) send({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft) });
   });
+
+  /** Sends the queued message now: the one held back because the answer before it failed. */
+  const sendQueued = useStableCallback(() => {
+    const next = queue.current;
+    if (!next || abortRef.current) return;
+    setQueued(null);
+    void run(next);
+  });
+
+  const cancelQueued = useStableCallback(() => setQueued(null));
 
   /** Asks again for the active thread's unanswered message, or resends a first turn the server never saved. */
   const retry = useStableCallback((provider: ProviderId) => {
@@ -231,6 +277,10 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       live,
       sending,
       failure: shownFailure,
+      /** A message waiting for the current answer to settle. */
+      queued,
+      sendQueued,
+      cancelQueued,
       start,
       park,
       unpark,
@@ -241,7 +291,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       stop,
       open,
     }),
-    [bookId, listed, parked, active, live, sending, shownFailure, start, park, unpark, discard, ask, reply, retry, stop, open],
+    [bookId, listed, parked, active, live, sending, shownFailure, queued, sendQueued, cancelQueued, start, park, unpark, discard, ask, reply, retry, stop, open],
   );
 }
 

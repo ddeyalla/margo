@@ -1,3 +1,6 @@
+import { positiveOrNull, tokenCount } from "@/lib/shared/usage";
+import type { TurnUsage } from "@/lib/shared/types";
+import { isObject } from "../validate";
 import { cliInput, imageBlock } from "./prompt";
 import { lastErrorLine, parseJsonLine, runQuiet, scratchDir, streamCli } from "./process";
 import type { Provider, TutorEvent, TutorTurn } from "./types";
@@ -52,12 +55,47 @@ export const parseClaudeLine = (line: string): TutorEvent[] => {
       return [{ type: "text", delta: inner.delta.text }];
     }
   }
-  if (event.type === "result" && event.is_error === true) {
+  if (event.type === "result") {
+    const usage = claudeUsage(event);
+    const events: TutorEvent[] = usage ? [{ type: "usage", usage }] : [];
+    if (event.is_error !== true) return events;
     const errors = Array.isArray(event.errors) ? event.errors.filter((e): e is string => typeof e === "string") : [];
     const message = errors.join("\n") || (typeof event.result === "string" && event.result) || "Claude Code could not answer.";
-    return [{ type: "error", message }];
+    return [...events, { type: "error", message }];
   }
   return [];
+};
+
+/**
+ * The usage on the closing `result` line. `usage` sums every model call in the run and `iterations` lists them, so
+ * the conversation's size is the last call's input plus what was written. `modelUsage` names the model with its
+ * window and says whether the cost is billed or, on a Claude plan, only priced at list rates. `usage` covers this run
+ * alone, but `total_cost_usd` (like `modelUsage`) is the running total of the whole session, resumes included.
+ */
+export const claudeUsage = (event: Record<string, unknown>): TurnUsage | null => {
+  if (!isObject(event.usage)) return null;
+  const usage = event.usage;
+  const calls = Array.isArray(usage.iterations) ? usage.iterations.filter(isObject) : [];
+  const last = calls.at(-1) ?? usage;
+  const [model, perModel] = Object.entries(isObject(event.modelUsage) ? event.modelUsage : {}).findLast(([, value]) => isObject(value)) ?? [null, null];
+  const details = isObject(perModel) ? perModel : {};
+  const outputTokens = tokenCount(usage.output_tokens);
+  return {
+    provider: "claude",
+    model,
+    scope: "turn",
+    sessionId: typeof event.session_id === "string" ? event.session_id : null,
+    costScope: "session",
+    inputTokens: tokenCount(usage.input_tokens),
+    cacheReadTokens: tokenCount(usage.cache_read_input_tokens),
+    cacheWriteTokens: tokenCount(usage.cache_creation_input_tokens),
+    outputTokens,
+    contextTokens:
+      tokenCount(last.input_tokens) + tokenCount(last.cache_read_input_tokens) + tokenCount(last.cache_creation_input_tokens) + tokenCount(last.output_tokens),
+    contextWindow: positiveOrNull(details.contextWindow),
+    costUsd: typeof event.total_cost_usd === "number" && event.total_cost_usd >= 0 ? event.total_cost_usd : null,
+    costBasis: typeof event.total_cost_usd !== "number" ? null : details.costBasis === "list" ? "list" : "api",
+  };
 };
 
 const LOST_SESSION = /no conversation found/i;

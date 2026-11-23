@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { ArrowLeft, BookOpen, Focus, Moon, PanelRight, Sun, SunMoon, TableOfContents } from "lucide-react";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import { IconButton, Segmented } from "@/components/ui";
-import type { BookFormat, ProviderId, ProviderInfo, ReadingFont, ReadingMode, ReadingTheme } from "@/lib/shared/types";
+import type { AppSettings, BookFormat, ProviderId, ProviderInfo, ReadingFont, ReadingMode, ReadingTheme } from "@/lib/shared/types";
 import { useChapter, type PlaceStore } from "./place";
 import { ReadingSettings } from "./ReadingSettings";
 import type { BookSettings, ChooseSetting } from "./useBookSettings";
@@ -40,6 +40,8 @@ export function BookHeader({
   providers,
   provider,
   onProvider,
+  models,
+  onModel,
   spotlight,
   onSpotlight,
   panelId,
@@ -59,6 +61,8 @@ export function BookHeader({
   providers: ProviderInfo[] | null;
   provider: ProviderId | null;
   onProvider(id: ProviderId): void;
+  models: AppSettings["models"];
+  onModel(id: ProviderId, model: string | null): void;
   spotlight: boolean;
   onSpotlight(): void;
   panelId: string;
@@ -93,7 +97,7 @@ export function BookHeader({
         <ChapterLabel spot={spot} />
       </div>
       <div className="shrink-0">
-        <ProviderPicker providers={providers} current={provider} onSelect={onProvider} />
+        <ProviderPicker providers={providers} current={provider} onSelect={onProvider} models={models} onModel={onModel} />
       </div>
       <Segmented label="Reading mode" options={MODES} value={settings.readingMode} onChange={(mode) => choose("readingMode", mode)} />
       {format === "epub" ? (
