@@ -14,7 +14,7 @@ import { UsageRow } from "./UsageRow";
 import { DropArea, Lightbox, MessageImages } from "./Images";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { useImageDraft } from "./useImageDraft";
-import { awaitsAnswer, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type Tutor } from "./useTutor";
+import { awaitsAnswer, useCompacting, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type Tutor } from "./useTutor";
 
 const when = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -385,7 +385,14 @@ function ThreadView({
         )}
 
         <div className="mt-4 flex flex-col gap-4">
-          {thread.messages.map((message, index) =>
+          {thread.messages.flatMap((message, index) => [
+            index === thread.compaction?.keepFrom ? (
+              <p key="summarized" className="flex items-center gap-3 text-[11px] text-dim">
+                <span aria-hidden className="h-px flex-1 bg-line-strong" />
+                The tutor reads the turns above as a summary
+                <span aria-hidden className="h-px flex-1 bg-line-strong" />
+              </p>
+            ) : null,
             message.role === "user" ? (
               <div key={index} className={clsx("flex flex-col items-end gap-1.5 pl-8", index >= firstSent && "animate-rise")}>
                 {message.attachments?.length ? <MessageImages bookId={bookId} images={message.attachments} onOpen={setViewing} /> : null}
@@ -399,7 +406,7 @@ function ThreadView({
                 {message.partial ? <p className="mt-1.5 text-[11px] text-dim">Stopped before the answer finished.</p> : null}
               </div>
             ),
-          )}
+          ])}
           <StreamingAnswer live={live} threadId={thread.id} onGrow={follow} />
           {failure ? (
             <FailureNote failure={failure} onRetry={unanswered ? onRetry : null} />
@@ -448,13 +455,14 @@ function ThreadView({
 /** The answer arriving in this thread. The only part of the chat that renders per streamed token. */
 function StreamingAnswer({ live, threadId, onGrow }: { live: LiveAnswer; threadId: string; onGrow(): void }) {
   const streaming = useStreaming(live, threadId);
+  const compacting = useCompacting(live, threadId);
   useLayoutEffect(() => onGrow(), [onGrow, streaming]);
   if (streaming === null) return null;
   if (streaming === "") {
     return (
       <p role="status" className="flex items-center gap-2 text-label text-dim">
         <Spinner />
-        Thinking…
+        {compacting ? "Summarizing the earlier turns for the tutor…" : "Thinking…"}
       </p>
     );
   }

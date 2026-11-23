@@ -98,17 +98,25 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
     .join("\n");
 };
 
+/** How a summary of folded turns reads to the tutor, after the passage and the reader's first message. */
+export const summaryNote = (summary: string) =>
+  `Our conversation has gone on for a while. Here is a summary of it up to the messages that follow, written for you:\n<summary>\n${summary}\n</summary>`;
+
 /**
  * The provider-facing conversation: the stored thread, with its first message
  * expanded into the full context and each message's images read from `images`,
- * the stored bytes by id. A message sent after an unanswered one joins it, so
- * roles still alternate.
+ * the stored bytes by id. A compacted thread sends its summary after the first
+ * message and then only the messages it kept. A message sent after an
+ * unanswered one joins it, so roles still alternate.
  */
-export const buildTurn = (book: BookLabel, thread: Thread, model: string | null, images: ReadonlyMap<string, Buffer>): TutorTurn => ({
+export const buildTurn = (book: BookLabel, thread: Thread, model: string | null, images: ReadonlyMap<string, Buffer>): TutorTurn => {
+  const { compaction } = thread;
+  const sent = compaction ? [thread.messages[0], ...thread.messages.slice(compaction.keepFrom)] : thread.messages;
+  return {
   system: TUTOR_SYSTEM,
-  messages: thread.messages.reduce<TutorMessage[]>((merged, message, index) => {
-    const base = index === 0 ? contextMessage(book, thread) : message.content;
-    const content = index === thread.messages.length - 1 && isSixthReply(thread) ? `${base}\n\n${SIXTH_REPLY_NOTE}` : base;
+  messages: sent.reduce<TutorMessage[]>((merged, message, index) => {
+    const base = index === 0 ? contextMessage(book, thread) + (compaction ? `\n\n${summaryNote(compaction.summary)}` : "") : message.content;
+    const content = index === sent.length - 1 && isSixthReply(thread) ? `${base}\n\n${SIXTH_REPLY_NOTE}` : base;
     const attached = (message.attachments ?? []).flatMap((attachment): TutorImage[] => {
       const bytes = images.get(attachment.id);
       return bytes ? [{ mediaType: attachment.mediaType, data: bytes.toString("base64") }] : [];
@@ -124,7 +132,8 @@ export const buildTurn = (book: BookLabel, thread: Thread, model: string | null,
   }, []),
   sessionId: thread.sessionId,
   model,
-});
+  };
+};
 
 /** An image as an Anthropic content block, used by the API and by Claude Code's stream-json input. */
 export const imageBlock = (image: TutorImage) => ({

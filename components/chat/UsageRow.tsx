@@ -48,8 +48,9 @@ export function UsageRow({ thread }: { thread: Thread }) {
 }
 
 function UsageDetail({ usage }: { usage: ReturnType<typeof threadUsage> }) {
-  const { rows, unreported, listPriced } = usage;
+  const { rows, unreported, listPriced, summaries } = usage;
   const sessionTotals = rows.some((row) => row.usage.scope === "session");
+  const summaryCosts = summaries.flatMap((summary) => (summary.costUsd === null ? [] : [summary.costUsd]));
   return (
     <>
       <p className="text-label text-paper">Usage by answer</p>
@@ -59,6 +60,14 @@ function UsageDetail({ usage }: { usage: ReturnType<typeof threadUsage> }) {
             <UsageLine key={row.index} row={row} />
           ))}
         </ol>
+      ) : null}
+      {summaries.length ? (
+        <p className="flex items-baseline gap-2 text-[11px] tabular-nums">
+          <span className="flex-1 text-fog">
+            {summaries.length === 1 ? "1 summary" : `${summaries.length} summaries`} of earlier turns
+          </span>
+          <span className="text-fog">{summaryCosts.length ? formatCost(summaryCosts.reduce((sum, cost) => sum + cost, 0)) : "—"}</span>
+        </p>
       ) : null}
       {unreported ? (
         <p className="text-[11px] leading-relaxed text-dim">

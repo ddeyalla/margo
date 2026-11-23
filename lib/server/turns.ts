@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MAX_IMAGES_PER_MESSAGE } from "@/lib/shared/attachments";
-import type { BookId, BookState, ChatMessage, ImageAttachment, LibraryBook, ProviderId, Thread, TurnUsage } from "@/lib/shared/types";
+import type { BookId, BookState, ChatMessage, Compaction, ImageAttachment, LibraryBook, ProviderId, Thread, TurnUsage } from "@/lib/shared/types";
 import { readAttachment } from "./attachments";
 import { getConfig } from "./config";
 import { passageThread } from "./passage";
@@ -91,6 +91,8 @@ export interface TurnAnswer {
 /** A turn that holds its thread: the reader's message is saved; `close` saves the answer and lets the next turn in. */
 export interface OpenTurn {
   thread: Thread;
+  /** Saves a summary of the thread's earlier turns, before the answer. The messages themselves are untouched. */
+  compact(compaction: Compaction): Promise<Thread>;
   close(answer: TurnAnswer): Promise<Thread>;
 }
 
@@ -160,7 +162,18 @@ export const openTurn = async (
       return thread;
     }
     await updateBookState(bookId, (state) => putThread(state, thread), dataDir);
-    return { thread, close: (answer) => saveAnswer(bookId, thread, answer, dataDir).finally(release) };
+    return {
+      thread,
+      compact: async (compaction) => {
+        const state = await updateBookState(
+          bookId,
+          (current) => ({ ...current, threads: current.threads.map((t) => (t.id === thread.id ? { ...t, compaction } : t)) }),
+          dataDir,
+        );
+        return state.threads.find((t) => t.id === thread.id) ?? thread;
+      },
+      close: (answer) => saveAnswer(bookId, thread, answer, dataDir).finally(release),
+    };
   } catch (error) {
     release();
     throw error;

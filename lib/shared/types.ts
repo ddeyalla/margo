@@ -114,12 +114,26 @@ export interface ChatMessage {
   usage?: TurnUsage;
 }
 
+/**
+ * Earlier turns of a long thread, folded into one summary for the tutor. Only what goes to the model is shorter:
+ * the thread keeps every message, and the reader still reads them all.
+ */
+export interface Compaction {
+  summary: string;
+  /** Messages from this index on go to the tutor as written; those between the first and this one are in the summary. */
+  keepFrom: number;
+  createdAt: string;
+  /** What writing each summary so far used, oldest first. */
+  usage: TurnUsage[];
+}
+
 interface ThreadBase {
   id: string;
   provider: ProviderId;
   sessionId: string | null;
   createdAt: string;
   messages: ChatMessage[];
+  compaction?: Compaction;
 }
 
 /** A thread about a passage the reader selected. */
@@ -313,6 +327,8 @@ export interface ProviderInfo {
 /** One line of the /api/chat response stream (newline-delimited JSON). */
 export type ChatStreamEvent =
   | { type: "thread"; thread: Thread }
+  /** The tutor is summarizing the thread's older turns before it answers. */
+  | { type: "compacting" }
   | { type: "text"; delta: string }
   | { type: "error"; message: string }
   | { type: "done"; thread: Thread };

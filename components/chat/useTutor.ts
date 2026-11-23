@@ -24,11 +24,14 @@ export interface FailedTurn {
   request: ChatRequest | null;
 }
 
-/** The answer streaming in, and the thread it belongs to. */
-export type LiveAnswer = Store<{ threadId: string; text: string } | null>;
+/** The answer streaming in, and the thread it belongs to. `compacting` while the tutor summarizes older turns first. */
+export type LiveAnswer = Store<{ threadId: string; text: string; compacting: boolean } | null>;
 
 /** The answer streaming into `threadId`, or null when that thread isn't the one answering. Only its subscriber re-renders per token. */
 export const useStreaming = (live: LiveAnswer, threadId: string) => useStore(live, (answer) => (answer && answer.threadId === threadId ? answer.text : null));
+
+/** Whether `threadId`'s older turns are being summarized before its answer starts. */
+export const useCompacting = (live: LiveAnswer, threadId: string) => useStore(live, (answer) => answer?.threadId === threadId && answer.compacting);
 
 const newestFirst = (a: Thread, b: Thread) => b.createdAt.localeCompare(a.createdAt);
 
@@ -89,12 +92,13 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     live.set(null);
     let thread: Thread | null = null;
     let text = "";
+    let compacting = false;
     let error: string | null = null;
     let finished = false;
     /* Tokens arrive faster than frames; the bubble takes the text so far once per frame. */
     const publish = () => {
       frame.current = 0;
-      if (thread) live.set({ threadId: thread.id, text });
+      if (thread) live.set({ threadId: thread.id, text, compacting: compacting && !text });
     };
     try {
       for await (const event of streamChat(request, controller.signal)) {
@@ -103,6 +107,9 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
           upsert(thread);
           setActiveId(thread.id);
           cancelAnimationFrame(frame.current);
+          publish();
+        } else if (event.type === "compacting") {
+          compacting = true;
           publish();
         } else if (event.type === "text") {
           text += event.delta;

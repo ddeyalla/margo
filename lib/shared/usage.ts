@@ -34,7 +34,7 @@ export interface ThreadUsage {
   rows: TurnRow[];
   /** The newest answer's usage: how big the conversation is now. */
   latest: TurnUsage | null;
-  /** The thread's cost so far, summed over the answers that have one; null when none does. */
+  /** The thread's cost so far, over the answers and summaries that have one; null when none does. */
   costUsd: number | null;
   /** Some of that cost is only priced at API rates: the reader's plan pays for it. */
   listPriced: boolean;
@@ -42,6 +42,8 @@ export interface ThreadUsage {
   unpriced: number;
   /** Answers whose provider reported no usage at all, such as those saved before usage was recorded. */
   unreported: number;
+  /** What writing each summary of earlier turns used. */
+  summaries: TurnUsage[];
 }
 
 const own = (usage: TurnUsage) => ({
@@ -51,7 +53,7 @@ const own = (usage: TurnUsage) => ({
   output: usage.outputTokens,
 });
 
-/** The thread's usage, answer by answer. */
+/** The thread's usage, answer by answer, with what its summaries cost counted in. */
 export const threadUsage = (thread: Thread): ThreadUsage => {
   const rows: TurnRow[] = [];
   /* The last Codex total seen in each session, so the next one can be told apart from it. */
@@ -78,7 +80,8 @@ export const threadUsage = (thread: Thread): ThreadUsage => {
     }
     rows.push({ index, answer: answers, usage, tokens });
   });
-  const priced = rows.map((row) => row.usage).filter((usage) => usage.costUsd !== null);
+  const summaries = thread.compaction?.usage ?? [];
+  const priced = [...rows.map((row) => row.usage), ...summaries].filter((usage) => usage.costUsd !== null);
   return {
     rows,
     latest: rows.at(-1)?.usage ?? null,
@@ -86,5 +89,6 @@ export const threadUsage = (thread: Thread): ThreadUsage => {
     listPriced: priced.some((usage) => usage.costBasis === "list"),
     unpriced: answers - rows.filter((row) => row.usage.costUsd !== null).length,
     unreported: answers - rows.length,
+    summaries,
   };
 };
