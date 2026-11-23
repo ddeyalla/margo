@@ -88,7 +88,7 @@ export function ChatTab({
         live={tutor.live}
         sending={tutor.sending}
         failure={failure}
-        queued={tutor.queued?.kind === "reply" && tutor.queued.threadId === active.id ? tutor.queued : null}
+        queued={tutor.queued}
         onSendQueued={tutor.sendQueued}
         onCancelQueued={tutor.cancelQueued}
         unavailable={unavailable}
@@ -164,14 +164,20 @@ function Threads({
           body="Select text in the book, then choose Explain, Go deeper, Work it out, Explain it back or Ask… Or ask below, and paste or drop an image to show the tutor."
         />
       )}
-      {tutor.queued?.kind === "general" ? (
-        <QueuedNote queued={tutor.queued} sending={tutor.sending} onSend={tutor.sendQueued} onCancel={tutor.cancelQueued} />
+      {tutor.queued ? (
+        <QueuedNote
+          queued={tutor.queued}
+          elsewhere={tutor.queued.kind === "reply"}
+          sending={tutor.sending}
+          onSend={tutor.sendQueued}
+          onCancel={tutor.cancelQueued}
+        />
       ) : null}
       <Composer
         placeholder="Ask about the book, or paste an image…"
         disabledReason={unavailable}
         sending={tutor.sending}
-        canQueue={tutor.queued === null}
+        waiting={tutor.queued !== null}
         images={images}
         onSend={onAsk}
         onStop={tutor.stop}
@@ -329,7 +335,7 @@ function ThreadView({
   /** Any request is in flight, for this thread or another. */
   sending: boolean;
   failure: FailedTurn | null;
-  /** The reply waiting for the answer in flight, when it is for this thread. */
+  /** The message waiting for the answer in flight, for this thread or another. */
   queued: QueuedMessage | null;
   onSendQueued(): void;
   onCancelQueued(): void;
@@ -359,7 +365,7 @@ function ThreadView({
   /* The reader's last message went unanswered: stopped before the first word, or failed. */
   const unanswered = !sending && awaitsAnswer(thread);
   const { leading, hintsUsed } = workState(thread);
-  const busy = sending || !!unavailable;
+  const busy = sending || !!unavailable || queued !== null;
 
   return (
     <DropArea onFiles={images.add} enabled={!unavailable} className="flex min-h-0 flex-1 flex-col">
@@ -452,12 +458,20 @@ function ThreadView({
           </Button>
         </div>
       ) : null}
-      {queued ? <QueuedNote queued={queued} sending={sending} onSend={onSendQueued} onCancel={onCancelQueued} /> : null}
+      {queued ? (
+        <QueuedNote
+          queued={queued}
+          elsewhere={queued.kind !== "reply" || queued.threadId !== thread.id}
+          sending={sending}
+          onSend={onSendQueued}
+          onCancel={onCancelQueued}
+        />
+      ) : null}
       <Composer
         placeholder="Ask a follow-up…"
         disabledReason={unavailable}
         sending={sending}
-        canQueue={!queued}
+        waiting={queued !== null}
         images={images}
         onSend={onReply}
         onStop={onStop}
@@ -507,7 +521,20 @@ function AskedAt({ thread, onJump }: { thread: GeneralThread; onJump(): void }) 
 }
 
 /** A message sent while an answer was coming: it goes when that answer settles, or waits here if it failed. */
-function QueuedNote({ queued, sending, onSend, onCancel }: { queued: QueuedMessage; sending: boolean; onSend(): void; onCancel(): void }) {
+function QueuedNote({
+  queued,
+  elsewhere,
+  sending,
+  onSend,
+  onCancel,
+}: {
+  queued: QueuedMessage;
+  /** It belongs to a thread other than the one on screen, or starts a new one. */
+  elsewhere: boolean;
+  sending: boolean;
+  onSend(): void;
+  onCancel(): void;
+}) {
   const images = queued.attachments.length;
   const words = queued.text || `${images} image${images === 1 ? "" : "s"}`;
   const link =
@@ -515,7 +542,8 @@ function QueuedNote({ queued, sending, onSend, onCancel }: { queued: QueuedMessa
   return (
     <div role="status" className="flex shrink-0 items-center gap-2 px-4 pb-1.5 text-[11px] text-dim">
       <span className="min-w-0 flex-1 truncate">
-        {sending ? "Queued, sends after this answer" : "Not sent, the answer before it failed"}: <span className="text-fog">“{words}”</span>
+        {sending ? "Queued, sends after this answer" : "Not sent, the answer before it failed"}
+        {elsewhere ? (queued.kind === "general" ? " (a new question)" : " (in another thread)") : ""}: <span className="text-fog">“{words}”</span>
       </span>
       {sending ? null : (
         <button type="button" onClick={onSend} className={link}>

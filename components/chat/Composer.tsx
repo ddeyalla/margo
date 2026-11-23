@@ -27,7 +27,7 @@ export function Composer({
   placeholder,
   disabledReason,
   sending,
-  canQueue,
+  waiting,
   images,
   onSend,
   onStop,
@@ -36,8 +36,8 @@ export function Composer({
   /** Why nothing can be sent; the box is disabled and shows this. */
   disabledReason: string | null;
   sending: boolean;
-  /** While an answer is coming, Enter queues the message to go after it. False once one is waiting. */
-  canQueue: boolean;
+  /** A message already waits to be sent; nothing new is taken until it goes or is cancelled. */
+  waiting: boolean;
   images: ImageDraft;
   onSend(draft: MessageDraft): void;
   onStop(): void;
@@ -58,7 +58,7 @@ export function Composer({
   });
   useUnsentText(text.trim().length > 0);
   const hasContent = text.trim().length > 0 || images.ready.length > 0;
-  const canSend = !disabledReason && (!sending || canQueue) && !images.uploading && !images.failed && hasContent;
+  const canSend = !disabledReason && !waiting && !images.uploading && !images.failed && hasContent;
   const problem = images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;
 
   useLayoutEffect(() => {
@@ -143,7 +143,15 @@ export function Composer({
             <ImagePlus className="size-4" aria-hidden />
           </button>
           <span aria-hidden className="min-w-0 flex-1 truncate text-[11px] text-dim">
-            {sending ? (canQueue ? "Answering… ⏎ queues yours" : "Answering…") : images.uploading ? "Attaching…" : "⏎ send · ⇧⏎ new line"}
+            {sending
+              ? waiting
+                ? "Answering…"
+                : "Answering… ⏎ queues yours"
+              : waiting
+                ? "Send or cancel the waiting message first"
+                : images.uploading
+                  ? "Attaching…"
+                  : "⏎ send · ⇧⏎ new line"}
           </span>
           <MicButton dictation={dictation} disabled={disabledReason !== null} />
           <button

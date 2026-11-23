@@ -100,6 +100,8 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     if (abortRef.current) return;
     const controller = new AbortController();
     abortRef.current = controller;
+    /* A message already waiting when nothing was running is one held after a failure; only Send now sends it. */
+    const held = queue.current;
     setFailure(null);
     setSending(true);
     live.set(null);
@@ -164,16 +166,18 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     }
     /* The queued message goes now, unless the answer before it failed: then it waits for the reader to send it. */
     const next = queue.current;
-    if (next && (!error || aborted)) {
+    if (next && next !== held && (!error || aborted)) {
       setQueued(null);
       void run(next);
     }
   };
 
-  /** Sends a typed message, or queues it while another answer is coming. One message waits at a time. */
+  /** Sends a typed message, or queues it while another answer is coming. One message waits at a time, and while
+      one waits nothing new is taken, so messages go in the order they were written. */
   const send = (request: QueuedMessage) => {
+    if (queue.current) return;
     if (!abortRef.current) void run(request);
-    else if (!queue.current) setQueued(request);
+    else setQueued(request);
   };
 
   const active = useMemo(() => threads.find((t) => t.id === activeId) ?? null, [threads, activeId]);

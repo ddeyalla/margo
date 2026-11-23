@@ -77,8 +77,13 @@ export async function POST(request: Request) {
         const written = await writeSummary(PROVIDERS[providerId], label, thread, keepFrom, model, abort.signal);
         if (written) {
           const usage = [...(thread.compaction?.usage ?? []), ...(written.usage ? [written.usage] : [])];
-          const compacted = await turn.compact({ summary: written.summary, keepFrom, createdAt: new Date().toISOString(), usage });
-          prompt = buildTurn(label, compacted, model, images);
+          /* A failed save goes ahead uncompacted: a throw here would skip the close below and leave the thread locked. */
+          try {
+            const compacted = await turn.compact({ summary: written.summary, keepFrom, createdAt: new Date().toISOString(), usage });
+            prompt = buildTurn(label, compacted, model, images);
+          } catch (error) {
+            console.error("Saving the thread's summary failed", error);
+          }
         }
       }
 
