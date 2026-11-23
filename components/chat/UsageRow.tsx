@@ -90,7 +90,7 @@ function UsageLine({ row }: { row: TurnRow }) {
       <span className="flex items-baseline gap-2">
         <span className="text-fog">Answer {row.answer}</span>
         <span className="min-w-0 flex-1 truncate text-dim">{usage.model ?? PROVIDER_NAMES[usage.provider]}</span>
-        <span className="text-fog">{usage.costUsd === null ? "—" : formatCost(usage.costUsd)}</span>
+        <span className="text-fog">{row.costUsd === null ? "—" : formatCost(row.costUsd)}</span>
       </span>
       <span className="text-dim">
         {formatTokens(tokens.input + tokens.cacheRead + tokens.cacheWrite)} in

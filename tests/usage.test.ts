@@ -41,7 +41,8 @@ describe("Claude Code usage", () => {
         provider: "claude",
         model: "claude-fable-5-2",
         scope: "turn",
-        sessionId: null,
+        sessionId: "ea0e0706-18c9-4097-8720-a1cb0fefe3af",
+        costScope: "session",
         inputTokens: 2,
         cacheReadTokens: 0,
         cacheWriteTokens: 1003,
@@ -137,6 +138,7 @@ const turnUsage = (over: Partial<TurnUsage>): TurnUsage => ({
   model: null,
   scope: "turn",
   sessionId: null,
+  costScope: "turn",
   inputTokens: 0,
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
@@ -167,6 +169,14 @@ describe("a thread's usage", () => {
       [3, 150, 20],
       [5, 80, 5],
     ]);
+  });
+
+  it("counts each Claude Code answer's cost as its session's running total less the one before it", () => {
+    /* The figures a real resumed Claude Code session reported, run by run: $0.020, $0.066, $0.075. */
+    const claude = (sessionId: string, cost: number) => turnUsage({ sessionId, costScope: "session", costUsd: cost, costBasis: "list" });
+    const summary = threadUsage(thread([ask, answer(claude("s1", 0.02)), ask, answer(claude("s1", 0.066)), ask, answer(claude("s1", 0.075)), ask, answer(claude("s2", 0.01))]));
+    expect(summary.rows.map((row) => row.costUsd)).toEqual([0.02, expect.closeTo(0.046, 10), expect.closeTo(0.009, 10), 0.01]);
+    expect(summary.costUsd).toBeCloseTo(0.085, 10);
   });
 
   it("sums the cost it knows, counts the answers it doesn't, and says when a plan pays", () => {

@@ -67,6 +67,7 @@ export const apiUsage = (model: string, usage: BetaUsage, window: number | null)
     provider: "api",
     model,
     scope: "turn",
+    costScope: "turn",
     sessionId: null,
     inputTokens: usage.input_tokens,
     cacheReadTokens: cacheRead,

@@ -53,6 +53,7 @@ const fakeProvider = (answer: string | null, seen: TutorTurn[] = []): Provider =
       model: "m",
       scope: "turn",
       sessionId: null,
+      costScope: "turn",
       inputTokens: 100,
       cacheReadTokens: 0,
       cacheWriteTokens: 0,

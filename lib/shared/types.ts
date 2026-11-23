@@ -91,6 +91,8 @@ export interface TurnUsage {
   scope: "turn" | "session";
   /** The session a "session" total runs over, so two totals from one session can be told apart. */
   sessionId: string | null;
+  /** "session": the cost is the session's running total, as Claude Code reports it on a resumed session. */
+  costScope: "turn" | "session";
   /** Input read at full price, read from the cache, and written to it. */
   inputTokens: number;
   cacheReadTokens: number;

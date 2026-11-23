@@ -28,6 +28,8 @@ export interface TurnRow {
   usage: TurnUsage;
   /** This answer's own tokens. For Codex, the session total less the one before it in the same session. */
   tokens: { input: number; cacheRead: number; cacheWrite: number; output: number };
+  /** This answer's own cost. For Claude Code, the session's total less the one before it in the same session. */
+  costUsd: number | null;
 }
 
 export interface ThreadUsage {
@@ -56,8 +58,9 @@ const own = (usage: TurnUsage) => ({
 /** The thread's usage, answer by answer, with what its summaries cost counted in. */
 export const threadUsage = (thread: Thread): ThreadUsage => {
   const rows: TurnRow[] = [];
-  /* The last Codex total seen in each session, so the next one can be told apart from it. */
+  /* The last running totals seen in each session, so the next answer's own share can be told apart from them. */
   const totals = new Map<string, TurnUsage>();
+  const costs = new Map<string, number>();
   let answers = 0;
   thread.messages.forEach((message, index) => {
     if (message.role !== "assistant") return;
@@ -78,16 +81,21 @@ export const threadUsage = (thread: Thread): ThreadUsage => {
       }
       totals.set(usage.sessionId, usage);
     }
-    rows.push({ index, answer: answers, usage, tokens });
+    let costUsd = usage.costUsd;
+    if (costUsd !== null && usage.costScope === "session" && usage.sessionId) {
+      costUsd = Math.max(0, costUsd - (costs.get(usage.sessionId) ?? 0));
+      costs.set(usage.sessionId, usage.costUsd ?? 0);
+    }
+    rows.push({ index, answer: answers, usage, tokens, costUsd });
   });
   const summaries = thread.compaction?.usage ?? [];
-  const priced = [...rows.map((row) => row.usage), ...summaries].filter((usage) => usage.costUsd !== null);
+  const priced = [...rows.flatMap((row) => (row.costUsd === null ? [] : [{ cost: row.costUsd, usage: row.usage }])), ...summaries.flatMap((usage) => (usage.costUsd === null ? [] : [{ cost: usage.costUsd, usage }]))];
   return {
     rows,
     latest: rows.at(-1)?.usage ?? null,
-    costUsd: priced.length ? priced.reduce((sum, usage) => sum + (usage.costUsd ?? 0), 0) : null,
-    listPriced: priced.some((usage) => usage.costBasis === "list"),
-    unpriced: answers - rows.filter((row) => row.usage.costUsd !== null).length,
+    costUsd: priced.length ? priced.reduce((sum, { cost }) => sum + cost, 0) : null,
+    listPriced: priced.some(({ usage }) => usage.costBasis === "list"),
+    unpriced: answers - rows.filter((row) => row.costUsd !== null).length,
     unreported: answers - rows.length,
     summaries,
   };

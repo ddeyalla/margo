@@ -69,7 +69,8 @@ export const parseClaudeLine = (line: string): TutorEvent[] => {
 /**
  * The usage on the closing `result` line. `usage` sums every model call in the run and `iterations` lists them, so
  * the conversation's size is the last call's input plus what was written. `modelUsage` names the model with its
- * window and says whether the cost is billed or, on a Claude plan, only priced at list rates.
+ * window and says whether the cost is billed or, on a Claude plan, only priced at list rates. `usage` covers this run
+ * alone, but `total_cost_usd` (like `modelUsage`) is the running total of the whole session, resumes included.
  */
 export const claudeUsage = (event: Record<string, unknown>): TurnUsage | null => {
   if (!isObject(event.usage)) return null;
@@ -83,7 +84,8 @@ export const claudeUsage = (event: Record<string, unknown>): TurnUsage | null =>
     provider: "claude",
     model,
     scope: "turn",
-    sessionId: null,
+    sessionId: typeof event.session_id === "string" ? event.session_id : null,
+    costScope: "session",
     inputTokens: tokenCount(usage.input_tokens),
     cacheReadTokens: tokenCount(usage.cache_read_input_tokens),
     cacheWriteTokens: tokenCount(usage.cache_creation_input_tokens),

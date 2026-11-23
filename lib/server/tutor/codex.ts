@@ -55,6 +55,7 @@ export const codexUsage = (value: unknown, sessionId: string | null): TurnUsage 
     provider: "codex",
     model: null,
     scope: "session",
+    costScope: "turn",
     sessionId,
     inputTokens: Math.max(0, tokenCount(value.input_tokens) - cached),
     cacheReadTokens: cached,
