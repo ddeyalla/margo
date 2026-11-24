@@ -124,15 +124,16 @@ export type SaveResult =
   | { state: "conflict"; copy: string; copyHash: string; current: Versioned | null };
 
 /**
- * Saves `text` to `file` only if the file is still the version read as `baseHash`. When it changed or was
- * deleted since, the file is left alone and the text goes to a conflict copy beside it, so both are kept.
+ * Saves `text` to `file` only if the file is still the version read as `baseHash`, or already holds `text`. When
+ * it changed or was deleted since, the file is left alone and the text goes to a conflict copy beside it, so both are kept.
  * Saves to one file queue behind each other.
  */
 export const saveIfUnchanged = (file: string, text: string, baseHash: string, at = new Date()): Promise<SaveResult> =>
   serialized(file, async () => {
     const current = await readVersioned(file);
+    /* Already this text, whatever version the save started from: a repeated save, such as one more as the page closes. */
+    if (current?.text === text) return { state: "saved", hash: current.hash };
     if (current?.hash === baseHash) {
-      if (current.text === text) return { state: "saved", hash: current.hash };
       await writeFileAtomic(file, text);
       return { state: "saved", hash: contentHash(text) };
     }

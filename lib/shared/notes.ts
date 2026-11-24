@@ -20,6 +20,8 @@ export interface NotesIndex {
   books: BookFileInfo[];
   /** Every #tag used in a note, for completion. */
   tags: string[];
+  /** When the folder was read, an ISO time. */
+  listedAt: string;
 }
 
 export interface Backlink {

@@ -8,15 +8,16 @@ import { EmptyState } from "@/components/ui";
 import { getFolders } from "@/lib/server/config";
 import { listNotes } from "@/lib/server/notes";
 
-export default function NotesPage({ searchParams }: PageProps<"/notes">) {
+/* The open note is read from ?path= in the browser, so following links doesn't reload the page. */
+export default function NotesPage() {
   return (
     <Suspense fallback={<div className="h-dvh bg-ink" />}>
-      <Notes searchParams={searchParams} />
+      <Notes />
     </Suspense>
   );
 }
 
-async function Notes({ searchParams }: Pick<PageProps<"/notes">, "searchParams">) {
+async function Notes() {
   await connection();
   const notesDir = getFolders().notes.path;
   const there = notesDir ? (await stat(notesDir).catch(() => null))?.isDirectory() : false;
@@ -39,7 +40,5 @@ async function Notes({ searchParams }: Pick<PageProps<"/notes">, "searchParams">
       </div>
     );
   }
-  const query = await searchParams;
-  const wanted = typeof query.path === "string" ? query.path : null;
-  return <NotesWorkspace initialIndex={await listNotes(notesDir)} initialPath={wanted} notesDir={notesDir} />;
+  return <NotesWorkspace initialIndex={await listNotes(notesDir)} notesDir={notesDir} />;
 }

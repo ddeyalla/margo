@@ -19,6 +19,20 @@ export const IMAGES: Record<string, string> = {
 };
 const IMAGE_EXTENSIONS = Object.keys(IMAGES);
 
+/** `task` over every item, a few dozen at a time, so a big vault is read in parallel without running out of file handles. */
+const mapLimit = async <T, R>(items: readonly T[], task: (item: T) => Promise<R>, limit = 32): Promise<R[]> => {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await task(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+};
+
 interface Scanned {
   notes: (NoteFileInfo & { file: string })[];
   books: (BookFileInfo & { file: string })[];
@@ -28,8 +42,9 @@ interface Scanned {
 const scan = async (notesDir: string): Promise<Scanned> => {
   const files = await listFolderFiles(notesDir, MARKDOWN);
   const scanned: Scanned = { notes: [], books: [] };
-  for (const { rel, file, mtimeMs } of files) {
-    const bookId = await fileBookId(file);
+  const bookIds = await mapLimit(files, ({ file }) => fileBookId(file));
+  for (const [i, { rel, file, mtimeMs }] of files.entries()) {
+    const bookId = bookIds[i];
     if (bookId) scanned.books.push({ path: rel, title: noteTitle(rel), bookId, file });
     else scanned.notes.push({ path: rel, title: noteTitle(rel), modifiedAt: new Date(mtimeMs).toISOString(), file });
   }
@@ -42,11 +57,16 @@ const readText = (file: string) => readFile(file, "utf8").catch(() => "");
 export const listNotes = async (notesDir: string): Promise<NotesIndex> => {
   const { notes, books } = await scan(notesDir);
   const tags = new Map<string, string>();
-  for (const note of notes) {
-    for (const tag of parseTags(await readText(note.file))) if (!tags.has(tag.toLowerCase())) tags.set(tag.toLowerCase(), tag);
+  for (const text of await mapLimit(notes, (note) => readText(note.file))) {
+    for (const tag of parseTags(text)) if (!tags.has(tag.toLowerCase())) tags.set(tag.toLowerCase(), tag);
   }
   const strip = <T extends { file: string }>({ file, ...rest }: T) => (void file, rest);
-  return { notes: notes.map(strip), books: books.map(strip), tags: [...tags.values()].sort((a, b) => a.localeCompare(b)) };
+  return {
+    notes: notes.map(strip),
+    books: books.map(strip),
+    tags: [...tags.values()].sort((a, b) => a.localeCompare(b)),
+    listedAt: new Date().toISOString(),
+  };
 };
 
 /** Why a note can't be edited: it is one of the app's per-book files. */
@@ -68,9 +88,10 @@ export const backlinks = async (notesDir: string, rel: string): Promise<Backlink
   const { notes, books } = await scan(notesDir);
   const paths = [...notes, ...books].map((n) => n.path);
   const found: Backlink[] = [];
-  for (const note of notes) {
+  const texts = await mapLimit(notes, (note) => (note.path === rel ? Promise.resolve("") : readText(note.file)));
+  for (const [i, note] of notes.entries()) {
     if (note.path === rel) continue;
-    const text = await readText(note.file);
+    const text = texts[i];
     const link = parseWikiLinks(text).find((l) => resolveWikiLink(l.target, note.path, paths) === rel);
     if (!link) continue;
     const start = text.lastIndexOf("\n", link.from) + 1;

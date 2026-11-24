@@ -82,6 +82,14 @@ describe("saving a note never overwrites a change made on disk", () => {
     expect(await saveNote(dir, "Same.md", "new", hash)).toMatchObject({ state: "saved" });
   });
 
+  it("answers a repeated save of the same text as saved, without a copy", async () => {
+    await put("Twice.md", "base");
+    const hash = contentHash("base");
+    expect(await saveNote(dir, "Twice.md", "new", hash)).toMatchObject({ state: "saved" });
+    expect(await saveNote(dir, "Twice.md", "new", hash)).toEqual({ state: "saved", hash: contentHash("new") });
+    expect(await readdir(dir)).toEqual(["Twice.md"]);
+  });
+
   it("queues saves to one file, so two saves from the same version can't both win", async () => {
     await put("Race.md", "base");
     const hash = contentHash("base");
@@ -131,6 +139,7 @@ describe("what the app may touch in the notes folder", () => {
     expect(index.notes.map((n) => n.path)).toEqual(["Reading log.md"]);
     expect(index.books).toEqual([{ path: "Patterns.md", title: "Patterns", bookId: book.id }]);
     expect(index.tags).toEqual(["reading"]);
+    expect(Date.parse(index.listedAt)).toBeGreaterThan(0);
 
     await expect(openNote(dir, "Patterns.md")).rejects.toBeInstanceOf(GeneratedFileError);
     await expect(saveNote(dir, "Patterns.md", "edited", contentHash("x"))).rejects.toBeInstanceOf(GeneratedFileError);

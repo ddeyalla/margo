@@ -35,8 +35,9 @@ type Notice = { kind: "conflict"; copy: string; deleted: boolean } | { kind: "go
 
 const urlFor = (path: string | null) => (path ? `/notes?${new URLSearchParams({ path })}` : "/notes");
 
-const ago = (iso: string) => {
-  const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000);
+/** How long before `now` (when the list was read) `iso` was: the same on the server and in the browser, so the first render matches. */
+const ago = (iso: string, now: number) => {
+  const minutes = Math.round((now - Date.parse(iso)) / 60000);
   if (minutes < 1) return "now";
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.round(minutes / 60);
@@ -45,7 +46,7 @@ const ago = (iso: string) => {
 };
 
 /** The notes page: the notes folder's notes on the left, the open one in a live-preview editor, and what links to it. */
-export function NotesWorkspace({ initialIndex, initialPath, notesDir }: { initialIndex: NotesIndex; initialPath: string | null; notesDir: string }) {
+export function NotesWorkspace({ initialIndex, notesDir }: { initialIndex: NotesIndex; notesDir: string }) {
   const router = useRouter();
   const [index, setIndex] = useState(initialIndex);
   const [note, setNote] = useState<OpenedNote | null>(null);
@@ -57,6 +58,8 @@ export function NotesWorkspace({ initialIndex, initialPath, notesDir }: { initia
   const [filter, setFilter] = useState("");
   const sessionRef = useRef<NoteSession | null>(null);
   const openTurn = useRef(0);
+  /* `open`, for the events of the sessions it makes. */
+  const reopen = useRef<((path: string | null, history?: "push" | "replace" | "none") => Promise<void>) | null>(null);
   const editorRef = useRef<MarkdownEditorHandle>(null);
   const indexRef = useRef(index);
   const highlightsRef = useRef<Promise<HighlightBlock[]> | null>(null);
@@ -113,10 +116,14 @@ export function NotesWorkspace({ initialIndex, initialPath, notesDir }: { initia
           if (next === "error" && error) setNotice({ kind: "error", message: error });
         },
         conflict: (copy, deleted) => {
-          setNotice({ kind: "conflict", copy, deleted });
           void refreshIndex();
+          /* With the note deleted, the reader's text lives on only in the copy: carry on writing there. */
+          if (deleted) void reopen.current?.(copy, "replace").then(() => setNotice({ kind: "conflict", copy, deleted }));
+          else setNotice({ kind: "conflict", copy, deleted });
         },
         gone: () => {
+          sessionRef.current = null;
+          setNote(null);
           setNotice({ kind: "gone" });
           void refreshIndex();
         },
@@ -130,11 +137,15 @@ export function NotesWorkspace({ initialIndex, initialPath, notesDir }: { initia
     [refreshIndex],
   );
 
-  /* Opens the note named in the address, and follows the browser's back and forward buttons. */
-  const opening = useRef(initialPath);
   useEffect(() => {
-    if (opening.current) void open(opening.current, "none");
-    opening.current = null;
+    reopen.current = open;
+  }, [open]);
+
+  /* Opens the note named in the address, and follows the browser's back and forward buttons. */
+  useEffect(() => {
+    /* Every run opens it; when React runs this twice, the later open is the one that counts. */
+    const path = new URLSearchParams(window.location.search).get("path");
+    void Promise.resolve().then(() => open(path, "none"));
     const onPop = () => void open(new URLSearchParams(window.location.search).get("path"), "none");
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -271,7 +282,7 @@ export function NotesWorkspace({ initialIndex, initialPath, notesDir }: { initia
                         {item.title}
                         {folder ? <span className="ml-1.5 text-[11px] text-dim">{folder}</span> : null}
                       </span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-dim">{ago(item.modifiedAt)}</span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-dim">{ago(item.modifiedAt, Date.parse(index.listedAt))}</span>
                     </button>
                   </li>
                 );
