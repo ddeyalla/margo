@@ -24,7 +24,11 @@ if (!file || !dataDir) {
   process.exit(1);
 }
 
+/* Names compare loosely; passages compare as the search's own terms (case and accents folded, punctuation dropped)
+   run together, so curly quotes, dashes and a word hyphenated across a line break still match. */
 const flat = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
+const terms = (text) =>
+  [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => m[0].normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()).join("");
 const readJson = (p) => {
   try {
     return JSON.parse(readFileSync(p, "utf8"));
@@ -46,15 +50,16 @@ const books = readdirSync(searchDir)
 
 /** The anchors of every block in a chunk that holds the passage, as JSON, so a result anywhere in that chunk counts. */
 const targets = (passage, book) => {
-  const wanted = flat(passage);
+  const wanted = terms(passage);
+  if (!wanted) return new Set();
   const anchors = new Set();
   for (const { names, index } of books) {
     if (!index || (book && !names.includes(flat(book)))) continue;
-    const hits = new Set(index.blocks.flatMap((block, i) => (flat(block.t).includes(wanted) ? [i] : [])));
+    const hits = new Set(index.blocks.flatMap((block, i) => (terms(block.t).includes(wanted) ? [i] : [])));
     /* A passage can run across two blocks: look in each chunk's joined text too. */
     for (const [from, to] of index.chunks) {
       const blocks = index.blocks.slice(from, to + 1);
-      if (blocks.some((_, i) => hits.has(from + i)) || flat(blocks.map((b) => b.t).join(" ")).includes(wanted)) {
+      if (blocks.some((_, i) => hits.has(from + i)) || terms(blocks.map((b) => b.t).join(" ")).includes(wanted)) {
         for (const block of blocks) anchors.add(JSON.stringify(block.a));
       }
     }
@@ -68,6 +73,15 @@ if (!Array.isArray(queries)) {
   process.exit(1);
 }
 
+/* Counting before every book is indexed would score a book's missing text as misses. */
+const status = await (await fetch(`${base}/api/search?q=`)).json();
+const { ready, failed, total } = status.indexing ?? {};
+if (ready + failed !== total) {
+  console.error(`Only ${ready} of ${total} books are indexed yet. Open the search box or wait, then run this again.`);
+  process.exit(1);
+}
+if (failed) console.log(`${failed} of ${total} books' text couldn't be read; passages in them can't be found.\n`);
+
 let misses = 0;
 let unknown = 0;
 for (const { query, passage, book } of queries) {
@@ -80,10 +94,10 @@ for (const { query, passage, book } of queries) {
   const response = await fetch(`${base}/api/search?q=${encodeURIComponent(query)}`);
   const results = await response.json();
   const shown = results.books.flatMap((b) => b.chapters.flatMap((c) => c.hits));
-  const quote = flat(passage).slice(0, 40);
-  const rank = shown.findIndex((hit) => anchors.has(JSON.stringify(hit.anchor)) || flat(hit.snippet.replace(/…/g, "")).includes(quote)) + 1;
+  const quote = terms(passage).slice(0, 40);
+  const rank = shown.findIndex((hit) => anchors.has(JSON.stringify(hit.anchor)) || terms(hit.snippet).includes(quote)) + 1;
   const found = rank > 0 && rank <= k;
   if (!found) misses += 1;
   console.log(`${found ? "hit " : "MISS"}  ${rank ? `#${rank}`.padEnd(4) : "--  "}  ${JSON.stringify(query)}`);
 }
-console.log(`\n${misses} of ${queries.length - unknown} queries missed (not in the first ${k} results).${unknown ? ` ${unknown} had no passage to look for.` : ""}`);
+console.log(`\n${misses} of ${queries.length - unknown} queries missed (not in the first ${k} results). ${unknown} of ${queries.length} had no passage to look for (??).`);

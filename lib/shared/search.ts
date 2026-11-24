@@ -107,16 +107,19 @@ export interface SearchDoc {
   parts: readonly DocPart[];
 }
 
-/** One book's documents with an inverted index: each term's documents and how often it occurs in each. */
+/**
+ * One book's documents with an inverted index: for each term, the documents it occurs in and how often, packed
+ * flat as doc, count, doc, count. A typed array per term keeps a large library's index small in memory.
+ */
 export interface SearchSource {
   bookId: BookId;
   docs: readonly SearchDoc[];
   lengths: readonly number[];
-  postings: ReadonlyMap<string, readonly [doc: number, count: number][]>;
+  postings: ReadonlyMap<string, Uint32Array>;
 }
 
 export const makeSource = (bookId: BookId, docs: readonly SearchDoc[]): SearchSource => {
-  const postings = new Map<string, [number, number][]>();
+  const lists = new Map<string, number[]>();
   const lengths = docs.map((doc, index) => {
     const counts = new Map<string, number>();
     let length = 0;
@@ -127,12 +130,14 @@ export const makeSource = (bookId: BookId, docs: readonly SearchDoc[]): SearchSo
       }
     }
     for (const [term, count] of counts) {
-      const list = postings.get(term);
-      if (list) list.push([index, count]);
-      else postings.set(term, [[index, count]]);
+      const list = lists.get(term);
+      if (list) list.push(index, count);
+      else lists.set(term, [index, count]);
     }
     return length;
   });
+  const postings = new Map<string, Uint32Array>();
+  for (const [term, list] of lists) postings.set(term, Uint32Array.from(list));
   return { bookId, docs, lengths, postings };
 };
 
@@ -210,7 +215,10 @@ export const searchSources = (sources: readonly SearchSource[], query: string, l
   const counts = groups.map((group) =>
     sources.map((source) => {
       const byDoc = new Map<number, number>();
-      for (const term of group.terms(source)) for (const [doc, count] of source.postings.get(term) ?? []) byDoc.set(doc, (byDoc.get(doc) ?? 0) + count);
+      for (const term of group.terms(source)) {
+        const list = source.postings.get(term)!;
+        for (let i = 0; i < list.length; i += 2) byDoc.set(list[i], (byDoc.get(list[i]) ?? 0) + list[i + 1]);
+      }
       return byDoc;
     }),
   );
