@@ -342,8 +342,12 @@ first of this group. `components/chat/Markdown.tsx` and `lib/server/tutor/prompt
       passage. Obsidian renders it there. Threads with no passage have no button.
 
 Check on 20 real questions first: how often the first Mermaid parses, and whether the
-tutor draws only when it helps. **Not yet run:** two live questions on Sonnet 5.5 so far
-(one diagram parsed first time; one deliberately broken diagram came back fixed in 3.4 s).
+tutor draws only when it helps. **Done 2026-11-24** on *Inspired* with Claude Code on
+Sonnet 5.5, asking 20 reader questions each in a new thread. 5 answers drew a diagram,
+all `flowchart TD`, and all 5 parsed the first time in Mermaid 12.2.0, so no repair was
+needed. All 5 were questions about a process or flow. Definitions, comparisons and lists
+got none. Sample is small: 5 of 5 shows the first try usually works, not that repair is
+never needed. An earlier deliberately broken diagram came back fixed in 3.4 s.
 
 ## Phase 22 — Notes editor · M
 
