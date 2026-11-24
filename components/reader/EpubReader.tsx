@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState } from
 import { ArrowDown } from "lucide-react";
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
 import { countWords, minutesLeft } from "@/lib/shared/reading-time";
+import { samePassage } from "@/lib/shared/quotes";
 import { tailExcerpt } from "@/lib/shared/resume";
 import type { Highlight, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { blockText, insidePre, selectedRange, textAround, viewportRect } from "./dom";
@@ -44,7 +45,8 @@ interface FoliateView extends HTMLElement {
   open(src: string): Promise<void>;
   init(options: { lastLocation: string | null; showTextStart: boolean }): Promise<void>;
   close(): void;
-  goTo(target: string): Promise<unknown>;
+  /** Resolves to where it went, or undefined when the target doesn't resolve; foliate logs the failure itself. */
+  goTo(target: string): Promise<{ index: number; anchor?: (doc: Document) => Range | Node } | undefined>;
   goToFraction(fraction: number): Promise<void>;
   resolveNavigation(target: string): { index: number } | undefined;
   getCFI(index: number, range: Range): string;
@@ -296,6 +298,19 @@ export function EpubReader({
     },
     async goTo(anchor) {
       if (anchor.kind === "epub") await viewRef.current?.goTo(anchor.cfi);
+    },
+    async findPassage(anchor, text) {
+      const view = viewRef.current;
+      if (anchor.kind !== "epub" || !view) return false;
+      const landed = await view.goTo(anchor.cfi);
+      const doc = landed && view.renderer.getContents().find((content) => content.index === landed.index)?.doc;
+      if (!landed?.anchor || !doc) return false;
+      try {
+        const found = landed.anchor(doc);
+        return samePassage(found instanceof Range ? found.toString() : (found.textContent ?? ""), text);
+      } catch {
+        return false;
+      }
     },
     async goToEntry(entry) {
       if (entry.target.kind === "epub") await viewRef.current?.goTo(entry.target.href);

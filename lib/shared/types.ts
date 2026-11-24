@@ -81,6 +81,16 @@ export interface ImageAttachment {
 }
 
 /**
+ * A passage of the book the reader quoted into a message, such as a highlight. The tutor cites it by its number in
+ * the thread, and a citation finds it again from its anchor; the text is what was quoted, kept in case it can't.
+ */
+export interface QuotedPassage {
+  anchor: Anchor;
+  text: string;
+  chapterTitle: string | null;
+}
+
+/**
  * The tokens behind one answer, as its provider reported them. Nothing here is estimated: a provider that reports
  * no usage leaves the answer without any, and a figure it doesn't give is null.
  */
@@ -112,6 +122,8 @@ export interface ChatMessage {
   createdAt: string;
   partial?: boolean;
   attachments?: ImageAttachment[];
+  /** On the reader's message, the passages they quoted. Numbered across the thread, from 1, in the order quoted. */
+  quotes?: QuotedPassage[];
   /** On an answer, when its provider reported usage. */
   usage?: TurnUsage;
   /** On an answer, set once its broken diagrams went back to the tutor, so they go back only once. */

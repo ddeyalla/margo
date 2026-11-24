@@ -8,6 +8,7 @@ import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { ReviewSheet } from "@/components/cards/ReviewSheet";
 import { useCards } from "@/components/cards/useCards";
+import { addQuote, createQuoteDraft } from "@/components/chat/Quotes";
 import { dictationBusy } from "@/components/chat/useDictation";
 import { useProviders } from "@/components/chat/useProviders";
 import { useTutor, type MessageDraft } from "@/components/chat/useTutor";
@@ -20,7 +21,8 @@ import { createStore, useStableCallback } from "@/components/ui/store";
 import { useResolvedTheme } from "@/components/ui/theme";
 import { patchBookState } from "@/lib/client/api";
 import { hasUnsentText } from "@/lib/client/unsent";
-import type { Anchor, BookFormat, BookId, BookState, PanelTab, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
+import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
+import type { Anchor, BookFormat, BookId, BookState, Highlight, PanelTab, QuotedPassage, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { BookHeader, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
 import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
@@ -97,6 +99,8 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
   const { on: spotlight, end: endSpotlight, toggle: toggleSpotlight } = useSpotlight(panel, book.format === "epub" && !error, dismissNotice);
   const noticeExit = useNoticeExit(notice, spotlight || reviewing);
   const [toast, setToast] = useToast();
+  /* Passages quoted into the chat's composer, waiting for the reader's next message. */
+  const [quoteDraft] = useState(createQuoteDraft);
 
   /* The book's own title and author replace the file name once it has been opened. */
   const handleReady = (next: ReaderMeta) => {
@@ -218,6 +222,26 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
   const menuNote = menu ? annotations.notes.find((note) => note.highlightId === menu.id) : undefined;
 
   const jumpTo = useCallback((anchor: Anchor) => navigate((reader) => reader.goTo(anchor)), [navigate]);
+
+  /* A citation leads to its passage, or says the book no longer has it there. */
+  const findQuote = useCallback(
+    async (quote: QuotedPassage) => {
+      const reader = readerRef.current;
+      if (!reader) return false;
+      dismissNotice();
+      const found = await reader.findPassage(quote.anchor, quote.text);
+      if (!found) setToast({ text: "Couldn't find that passage in this copy of the book.", action: false });
+      return found;
+    },
+    [dismissNotice, setToast],
+  );
+
+  /* A highlight goes into the chat's composer whole, as a chip that carries its anchor. */
+  const quoteHighlight = useStableCallback((highlight: Highlight) => {
+    const added = addQuote(quoteDraft, { anchor: highlight.anchor, text: highlight.quote, chapterTitle: highlight.chapterTitle });
+    showTab("chat");
+    if (added === "full") setToast({ text: `A message can quote up to ${MAX_QUOTES_PER_MESSAGE} passages.`, action: false });
+  });
   const seek = useCallback((fraction: number) => navigate((reader) => reader.seek(fraction)), [navigate]);
   const reply = useStableCallback((draft: MessageDraft) => provider && tutor.reply(draft, provider));
   const retry = useStableCallback(() => provider && tutor.retry(provider));
@@ -363,6 +387,9 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
             noteFocus={noteFocus}
             onNoteDraft={setNoteDraft}
             onOpenNote={openNote}
+            quotes={quoteDraft}
+            onFindQuote={findQuote}
+            onQuote={quoteHighlight}
             cards={cards}
             onReview={startReview}
             panelOpen={panel.open}
@@ -389,6 +416,11 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
           rect={menu.rect}
           bounds={readerBounds}
           hasNote={!!menuNote}
+          onQuote={() => {
+            const clicked = annotations.highlights.find((h) => h.id === menu.id);
+            if (clicked) quoteHighlight(clicked);
+            setMenu(null);
+          }}
           onNote={() => {
             if (menuNote) openNote(menuNote.id);
             setMenu(null);
