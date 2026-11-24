@@ -11,7 +11,10 @@ interface Pending {
   at: string;
 }
 
-const passageOf = (selection: SelectionContext): Passage => ({
+/** What a highlight or note needs from a selection: where it is and what it says. */
+export type PassagePlace = Pick<SelectionContext, "anchor" | "text" | "chapterTitle">;
+
+const passageOf = (selection: PassagePlace): Passage => ({
   id: crypto.randomUUID(),
   anchor: selection.anchor,
   quote: selection.text,
@@ -90,7 +93,7 @@ export function useAnnotations(bookId: BookId, initial: Annotations, reader: Ref
   );
   const removeHighlight = useCallback((id: string) => send({ op: "remove-highlight", id }), [send]);
   const addNote = useCallback(
-    (selection: SelectionContext, body: string) => {
+    (selection: PassagePlace, body: string) => {
       const highlightId = crypto.randomUUID();
       made.current.add(highlightId);
       send({ op: "add-note", note: { ...passageOf(selection), body }, highlightId });

@@ -1,6 +1,12 @@
+import "katex/dist/katex.min.css";
+import type { Element } from "hast";
 import { createContext, memo, useContext, type ElementType, type JSX } from "react";
-import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
+import ReactMarkdown, { type Components, type ExtraProps, type Options } from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import { Diagram } from "./Diagram";
 import { settledStarts } from "./settled";
 
 type Tag = keyof JSX.IntrinsicElements;
@@ -17,6 +23,26 @@ const styled = <T extends Tag>(tag: T, className: string, extra?: JSX.IntrinsicE
     const Element = tag as ElementType;
     return <Element {...extra} {...props} data-live={live ? "" : undefined} className={className} />;
   };
+
+const preClass =
+  "my-2 overflow-x-auto rounded-md bg-ink/70 px-3 py-2.5 font-mono text-code text-fog [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-fog";
+const StyledPre = styled("pre", preClass);
+
+/** The source of a ```mermaid block, which the highlighter leaves as one plain text node; null for any other block. */
+const mermaidSource = (node: Element | undefined): string | null => {
+  const code = node?.children[0];
+  if (code?.type !== "element" || code.tagName !== "code") return null;
+  const classes = code.properties.className;
+  if (!Array.isArray(classes) || !classes.includes("language-mermaid")) return null;
+  return code.children.map((child) => (child.type === "text" ? child.value : "")).join("").replace(/\n$/, "");
+};
+
+/* A code block, or a diagram once its fence has closed: while the part being written is still arriving it stays code. */
+function Pre(props: JSX.IntrinsicElements["pre"] & ExtraProps) {
+  const live = useContext(Live);
+  const source = live ? null : mermaidSource(props.node);
+  return source === null ? <StyledPre {...props} /> : <Diagram source={source} codeClass={preClass} />;
+}
 
 /* Raw HTML in a reply stays text (no rehype-raw), and react-markdown drops unsafe link protocols. */
 const components: Components = {
@@ -35,19 +61,22 @@ const components: Components = {
   }),
   blockquote: styled("blockquote", "my-2 border-l-2 border-line-strong pl-3 text-fog"),
   hr: styled("hr", "my-4 border-line"),
-  pre: styled("pre", "my-2 overflow-x-auto rounded-md bg-ink/70 px-3 py-2.5 font-mono text-code text-fog [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-fog"),
+  pre: Pre,
   code: styled("code", "rounded-xs bg-tint px-1 py-px font-mono text-code text-paper"),
   table: styled("table", "my-2 block w-full overflow-x-auto border-collapse text-label"),
   th: styled("th", "border-b border-line-strong px-2 py-1.5 text-left font-medium text-fog"),
   td: styled("td", "border-b border-line px-2 py-1.5 align-top"),
 };
 
-const plugins = [remarkGfm];
+/* Math only between double dollars, so prices in a reply ("$5 and $10") stay text. Code is highlighted only when its
+   fence names a language; Mermaid is left for the diagram. */
+const remarkPlugins: Options["remarkPlugins"] = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+const rehypePlugins: Options["rehypePlugins"] = [rehypeKatex, [rehypeHighlight, { detect: false, plainText: ["mermaid"] }]];
 
 /* The blocks alone, with no wrapper, so a streaming answer's two parts sit in one box and keep its spacing rules. */
 const Blocks = memo(function Blocks({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={plugins} components={components}>
+    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
       {text}
     </ReactMarkdown>
   );

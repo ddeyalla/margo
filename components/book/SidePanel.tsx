@@ -92,7 +92,7 @@ export const SidePanel = memo(function SidePanel({
         </TabsList>
       </div>
       <TabsPanel value="chat" className={panelClass}>
-        <ChatTab shown={panelOpen && tab === "chat"} keyed={keyed} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} />
+        <ChatTab shown={panelOpen && tab === "chat"} keyed={keyed} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} onSaveNote={annotations.addNote} />
       </TabsPanel>
       <TabsPanel value="notes" className={panelClass}>
         <NotesTab

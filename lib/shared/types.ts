@@ -114,6 +114,8 @@ export interface ChatMessage {
   attachments?: ImageAttachment[];
   /** On an answer, when its provider reported usage. */
   usage?: TurnUsage;
+  /** On an answer, set once its broken diagrams went back to the tutor, so they go back only once. */
+  diagramsRepaired?: boolean;
 }
 
 /**
