@@ -66,9 +66,18 @@ interface Engine {
   isPaged(): boolean;
   /** Switches between one continuous column and one page per screen, keeping the page in view. */
   setPaged(paged: boolean): void;
+  /** A page's text, read from the document when the page hasn't drawn yet, or null if it can't be. */
+  textOf(page: number): Promise<string | null>;
 }
 
-const emptyEngine = (): Engine => ({ slots: [], texts: new Map(), outline: [], isPaged: () => false, setPaged: () => undefined });
+const emptyEngine = (): Engine => ({
+  slots: [],
+  texts: new Map(),
+  outline: [],
+  isPaged: () => false,
+  setPaged: () => undefined,
+  textOf: async () => null,
+});
 
 /** Scroll position updates between page or chapter changes are sent at most this often; the resting position always is. */
 const POSITION_THROTTLE_MS = 250;
@@ -255,7 +264,8 @@ export function PdfReader({
         scroller.scrollTo({ top: slot.sheet.offsetTop, behavior: "smooth" });
         return;
       }
-      const length = engineRef.current.texts.get(anchor.page)?.length;
+      /* A page far from the one shown hasn't drawn, so its text is read here to place the anchor within it. */
+      const length = (await engineRef.current.textOf(anchor.page))?.length;
       const within = length ? (anchor.start / length) * slot.el.offsetHeight : 0;
       scroller.scrollTo({ top: Math.max(0, slot.el.offsetTop + within - scroller.clientHeight / 3), behavior: "smooth" });
     },
@@ -483,6 +493,15 @@ export function PdfReader({
     };
     engine.isPaged = () => paged;
     engine.setPaged = (next) => relayout(next);
+    engine.textOf = async (page) => {
+      const known = texts.get(page);
+      if (known !== undefined || !doc) return known ?? null;
+      try {
+        return pageText(await (await doc.getPage(page)).getTextContent());
+      } catch {
+        return null;
+      }
+    };
 
     /* The last position sent, so scrolling within a page sends a few updates rather than one a frame. */
     let sent: { position: PdfPosition; chapter: OutlineEntry | null; at: number } | null = null;

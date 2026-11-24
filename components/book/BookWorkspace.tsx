@@ -103,7 +103,6 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
   /* The book's own title and author replace the file name once it has been opened. */
   const handleReady = (next: ReaderMeta) => {
     setToc(next.toc);
-    search.arrive();
     const merged = { title: next.title ?? meta.title, author: next.author ?? meta.author };
     setMeta(merged);
     const stored = initialState.meta;
@@ -238,6 +237,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
       savePosition(next);
       setMenu(null);
       placeMoved();
+      search.placed();
     },
     onInteract: dismissNotice,
     onError: (failure) => {

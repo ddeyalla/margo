@@ -140,8 +140,9 @@ const K1 = 1.2;
 const B = 0.75;
 /** A last word this long or longer, still being typed, also matches longer words that start with it. */
 const PREFIX_MIN = 3;
-const SNIPPET_CHARS = 220;
-const SNIPPET_LEAD = 60;
+/* Results show two lines, so a snippet starts a little before its first match even when the part is short. */
+const SNIPPET_CHARS = 200;
+const SNIPPET_LEAD = 40;
 
 /** A query term, or for a last word still being typed, every term that starts with it. */
 interface TermGroup {
@@ -175,8 +176,8 @@ const snippetOf = (text: string, spans: TokenSpan[], matched: (term: string) => 
   const hits = spans.filter((span) => matched(span.term));
   let start = 0;
   let end = text.length;
-  if (text.length > SNIPPET_CHARS) {
-    const first = hits[0]?.start ?? 0;
+  const first = hits[0]?.start ?? 0;
+  if (text.length > SNIPPET_CHARS || first > SNIPPET_LEAD) {
     start = Math.max(0, first - SNIPPET_LEAD);
     if (start > 0) start = text.slice(start, first).search(/\s/) >= 0 ? start + text.slice(start, first).search(/\s/) + 1 : start;
     end = Math.min(text.length, start + SNIPPET_CHARS);

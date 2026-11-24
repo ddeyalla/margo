@@ -29,7 +29,10 @@ export function LibrarySearch() {
         <Search />
         Search
       </Button>
-      {open ? <SearchDialog onClose={() => setOpen(false)} onPick={(book, hit) => router.push(bookHref(book.id, hit.anchor))} /> : null}
+      {open ? <SearchDialog onClose={() => setOpen(false)} onPick={(book, hit) => {
+            setOpen(false);
+            router.push(bookHref(book.id, hit.anchor));
+          }} /> : null}
     </>
   );
 }
