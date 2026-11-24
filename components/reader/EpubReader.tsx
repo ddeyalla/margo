@@ -306,8 +306,9 @@ export function EpubReader({
       const doc = landed && view.renderer.getContents().find((content) => content.index === landed.index)?.doc;
       if (!landed?.anchor || !doc) return false;
       try {
+        /* The range comes from the section's frame, whose Range is not this window's, so instanceof can't tell. */
         const found = landed.anchor(doc);
-        return samePassage(found instanceof Range ? found.toString() : (found.textContent ?? ""), text);
+        return samePassage("nodeType" in found ? (found.textContent ?? "") : found.toString(), text);
       } catch {
         return false;
       }
