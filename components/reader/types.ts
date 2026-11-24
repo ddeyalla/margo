@@ -55,6 +55,11 @@ export interface ReaderHandle {
   getSelection(): SelectionContext | null;
   clearSelection(): void;
   goTo(anchor: Anchor): Promise<void>;
+  /**
+   * Goes to a quoted passage and says whether it is still there: false when the anchor no longer resolves in this
+   * copy of the book, or lands on other text, as after a re-import of a different edition.
+   */
+  findPassage(anchor: Anchor, text: string): Promise<boolean>;
   /** Jumps to a table of contents entry this reader reported. */
   goToEntry(entry: TocEntry): Promise<void>;
   /** Turns to the next (1) or previous (-1) page. */

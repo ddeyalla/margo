@@ -8,12 +8,13 @@ import { useUnsentText } from "@/lib/client/unsent";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
 import { isParked, parkedFirst } from "@/lib/shared/parked";
 import { repairDiagrams } from "./mermaid";
-import type { BookId, ImageAttachment, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
+import type { BookId, ImageAttachment, ProviderId, QuotedPassage, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
 
-/** What the reader wrote in the composer: words, images, or both. */
+/** What the reader wrote in the composer: words, images, quoted passages, or any of them together. */
 export interface MessageDraft {
   text: string;
   attachments: ImageAttachment[];
+  quotes: QuotedPassage[];
 }
 
 const ids = (draft: MessageDraft) => draft.attachments.map((attachment) => attachment.id);
@@ -207,11 +208,11 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
 
   /** Starts a thread with no passage, placed where the reader is. */
   const ask = useStableCallback((draft: MessageDraft, place: QuestionPlace | null, provider: ProviderId) => {
-    send({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), place });
+    send({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), quotes: draft.quotes, place });
   });
 
   const reply = useStableCallback((draft: MessageDraft, provider: ProviderId) => {
-    if (activeId) send({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft) });
+    if (activeId) send({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft), quotes: draft.quotes });
   });
 
   /** Sends the queued message now: the one held back because the answer before it failed. */

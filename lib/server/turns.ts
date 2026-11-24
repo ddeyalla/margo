@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { MAX_IMAGES_PER_MESSAGE } from "@/lib/shared/attachments";
-import type { BookId, BookState, ChatMessage, Compaction, ImageAttachment, LibraryBook, ProviderId, Thread, TurnUsage } from "@/lib/shared/types";
+import { MAX_QUOTES_PER_MESSAGE, quoteMessage } from "@/lib/shared/quotes";
+import type { BookFormat, BookId, BookState, ChatMessage, Compaction, ImageAttachment, LibraryBook, ProviderId, Thread, TurnUsage } from "@/lib/shared/types";
 import { readAttachment } from "./attachments";
 import { getConfig } from "./config";
 import { passageThread } from "./passage";
 import { hold, readBookState, updateBookState } from "./store";
 import { imageMessage } from "./tutor/prompt";
-import { isObject, MAX_MESSAGE, parseAnchor, parseAttachmentIds, shortText } from "./validate";
+import { isObject, MAX_MESSAGE, parseAnchor, parseAttachmentIds, parseQuotes, shortText } from "./validate";
 
 /** What a chat request asks for, already validated. A new thread arrives built, with the reader's first message. */
 export type TurnRequest =
@@ -23,15 +24,22 @@ const readAttachments = async (value: unknown, bookId: BookId, dataDir: string):
   return images.flatMap((image) => (image ? [image.attachment] : []));
 };
 
-/** The reader's typed message with its images. Images sent without words ask the tutor to explain them. */
-const userMessage = async (body: Record<string, unknown>, bookId: BookId, dataDir: string): Promise<ChatMessage | string> => {
-  const attachments = await readAttachments(body.attachments, bookId, dataDir);
+/**
+ * The reader's typed message with its images and quoted passages. Images or passages sent without words ask the
+ * tutor to explain them.
+ */
+const userMessage = async (body: Record<string, unknown>, book: { id: BookId; format: BookFormat }, dataDir: string): Promise<ChatMessage | string> => {
+  const quotes = parseQuotes(body.quotes, book.format, MAX_QUOTES_PER_MESSAGE);
+  if (!quotes) return `Quote up to ${MAX_QUOTES_PER_MESSAGE} passages of this book in a message.`;
+  const attachments = await readAttachments(body.attachments, book.id, dataDir);
   if (typeof attachments === "string") return attachments;
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (text.length > MAX_MESSAGE) return "This message is too long.";
-  if (!text && !attachments.length) return "Write a message or attach an image.";
-  const message: ChatMessage = { role: "user", content: text || imageMessage(attachments.length), createdAt: new Date().toISOString() };
+  if (!text && !attachments.length && !quotes.length) return "Write a message or attach an image.";
+  const fallback = attachments.length ? imageMessage(attachments.length) : quoteMessage(quotes.length);
+  const message: ChatMessage = { role: "user", content: text || fallback, createdAt: new Date().toISOString() };
   if (attachments.length) message.attachments = attachments;
+  if (quotes.length) message.quotes = quotes;
   return message;
 };
 
@@ -45,7 +53,7 @@ const generalThread = async (
   const place = isObject(body.place) ? body.place : null;
   const anchor = place && parseAnchor(place.anchor, book.format);
   if (body.place !== null && !anchor) return "Invalid place.";
-  const message = await userMessage(body, book.id, dataDir);
+  const message = await userMessage(body, book, dataDir);
   if (typeof message === "string") return message;
   return {
     kind: "general",
@@ -73,7 +81,7 @@ export const parseTurnRequest = async (
   if (typeof body.threadId !== "string") return "Invalid thread.";
   if (body.kind === "retry") return { kind: "retry", threadId: body.threadId };
   if (body.kind === "reply") {
-    const message = await userMessage(body, book.id, dataDir);
+    const message = await userMessage(body, book, dataDir);
     return typeof message === "string" ? message : { kind: "reply", threadId: body.threadId, message };
   }
   return "Unknown request.";

@@ -1,6 +1,7 @@
 import { placeLabel } from "@/lib/shared/place";
+import { firstQuoteNumber } from "@/lib/shared/quotes";
 import { isSixthReply } from "@/lib/shared/work";
-import type { Thread, TutorAction, TypedAction } from "@/lib/shared/types";
+import type { ChatMessage, QuotedPassage, Thread, TutorAction, TypedAction } from "@/lib/shared/types";
 import type { TutorImage, TutorMessage, TutorTurn } from "./types";
 
 export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who is reading a book. They select a passage, or share an image such as a figure, a screenshot or a photo of their working, and ask you about it. Some questions come with no passage at all.
@@ -16,7 +17,8 @@ export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who 
 - Write in Markdown. Use a list or a small table only when it makes the answer clearer.
 - When a structure is easier to see than to read, such as a process, a cycle, a hierarchy, how parts connect or events in order, draw it as a Mermaid diagram in a \`\`\`mermaid fence: a flowchart, sequenceDiagram, stateDiagram-v2, mindmap or timeline. The chat is narrow, so lay a flowchart top to bottom (flowchart TD) and keep labels to a few words. Keep it small, about a dozen nodes at most, and still explain it in words. Put double quotes around any label that holds brackets, parentheses or other punctuation. Most answers need no diagram: never draw one for a single idea or something a short list says as well. Never write SVG or HTML.
 - Write math as LaTeX between double dollar signs: $$E = mc^2$$ within a sentence, or on lines of its own for a displayed equation. A single $ is a dollar sign.
-- Put code in a fenced block that names its language.`;
+- Put code in a fenced block that names its language.
+- The reader may quote passages of the book into a message. Each comes numbered, as <passage n="2">. Whenever something you say rests on a quoted passage, link the few words that say it to that passage, as a Markdown link to #cite- and its number: "the author [treats memory as rebuilt, not stored](#cite-2)". Cite every such claim, with plain words and no brackets inside the link, and only numbers you were given. Never cite the selected passage this way, and never write "as you can see above": the link takes the reader there.`;
 
 /** What the reader's message says in the chat for each toolbar action. */
 export const ACTION_MESSAGES: Record<Exclude<TutorAction, TypedAction>, string> = {
@@ -101,6 +103,18 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
     .join("\n");
 };
 
+/** The passages a message quotes, numbered from `first` across the thread, for the tutor to read and cite. Empty for none. */
+export const quotedPassages = (quotes: readonly QuotedPassage[], first: number): string =>
+  quotes.length
+    ? [
+        quotes.length === 1 ? "The passage I'm quoting:" : "The passages I'm quoting:",
+        ...quotes.map((quote, i) => {
+          const where = placeLabel(quote.chapterTitle, quote.anchor);
+          return `<passage n="${first + i}"${where ? ` where="${where.replace(/"/g, "'")}"` : ""}>\n${quote.text}\n</passage>`;
+        }),
+      ].join("\n")
+    : "";
+
 /** How a summary of folded turns reads to the tutor, after the passage and the reader's first message. */
 export const summaryNote = (summary: string) =>
   `Our conversation has gone on for a while. Here is a summary of it up to the messages that follow, written for you:\n<summary>\n${summary}\n</summary>`;
@@ -115,10 +129,24 @@ export const summaryNote = (summary: string) =>
 export const buildTurn = (book: BookLabel, thread: Thread, model: string | null, images: ReadonlyMap<string, Buffer>): TutorTurn => {
   const { compaction } = thread;
   const sent = compaction ? [thread.messages[0], ...thread.messages.slice(compaction.keepFrom)] : thread.messages;
+  /* Passages keep their thread-wide numbers, so a citation means the same passage before and after a summary. */
+  const quoted = (message: ChatMessage) => quotedPassages(message.quotes ?? [], firstQuoteNumber(thread.messages, thread.messages.indexOf(message)));
+  /* The summary keeps the passages quoted in the turns it folds, so the tutor can still read and cite them. */
+  const folded = compaction ? thread.messages.slice(1, compaction.keepFrom) : [];
+  const foldedQuotes = folded.map(quoted).filter(Boolean).join("\n\n");
+  const opening = () =>
+    [
+      contextMessage(book, thread),
+      quoted(thread.messages[0]),
+      compaction ? summaryNote(compaction.summary) : "",
+      foldedQuotes ? `Passages quoted in the summarized turns:\n${foldedQuotes}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
   return {
   system: TUTOR_SYSTEM,
   messages: sent.reduce<TutorMessage[]>((merged, message, index) => {
-    const base = index === 0 ? contextMessage(book, thread) + (compaction ? `\n\n${summaryNote(compaction.summary)}` : "") : message.content;
+    const base = index === 0 ? opening() : [quoted(message), message.content].filter(Boolean).join("\n\n");
     const content = index === sent.length - 1 && isSixthReply(thread) ? `${base}\n\n${SIXTH_REPLY_NOTE}` : base;
     const attached = (message.attachments ?? []).flatMap((attachment): TutorImage[] => {
       const bytes = images.get(attachment.id);

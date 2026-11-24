@@ -1,12 +1,14 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import { useStore } from "@/components/ui/store";
 import clsx from "clsx";
 import { ArrowUp, ImagePlus, Square } from "lucide-react";
 import { IMAGE_TYPES } from "@/lib/shared/attachments";
 import { useUnsentText } from "@/lib/client/unsent";
 import { insertAtCaret } from "@/lib/shared/dictation";
 import { DraftImages } from "./Images";
+import { DraftQuotes, type QuoteDraft } from "./Quotes";
 import { DictationNote, MicButton } from "./MicButton";
 import { useDictation } from "./useDictation";
 import type { ImageDraft } from "./useImageDraft";
@@ -22,6 +24,8 @@ const MAX_LINES = 8;
  * and Enter then queues the message to go after it.
  * Images come in by paste, by the attach button, or by a drop the panel
  * forwards to `images`; a message may be images alone.
+ * Passages quoted from the book wait above the words as chips, each removed
+ * whole, and go with the message.
  */
 export function Composer({
   placeholder,
@@ -29,6 +33,7 @@ export function Composer({
   sending,
   waiting,
   images,
+  quotes,
   onSend,
   onStop,
 }: {
@@ -39,6 +44,7 @@ export function Composer({
   /** A message already waits to be sent; nothing new is taken until it goes or is cancelled. */
   waiting: boolean;
   images: ImageDraft;
+  quotes: QuoteDraft;
   onSend(draft: MessageDraft): void;
   onStop(): void;
 }) {
@@ -56,8 +62,10 @@ export function Composer({
     caret.current = next.caret;
     setText(next.value);
   });
-  useUnsentText(text.trim().length > 0);
-  const hasContent = text.trim().length > 0 || images.ready.length > 0;
+  const quoted = useStore(quotes, (list) => list);
+  useUnsentText(text.trim().length > 0 || quoted.length > 0);
+  const hasContent = text.trim().length > 0 || images.ready.length > 0 || quoted.length > 0;
+  const unquote = (index: number) => quotes.set(quotes.get().filter((_, i) => i !== index));
   const canSend = !disabledReason && !waiting && !images.uploading && !images.failed && hasContent;
   const problem = images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;
 
@@ -81,14 +89,16 @@ export function Composer({
 
   const send = () => {
     if (!canSend) return;
-    onSend({ text: text.trim(), attachments: images.ready });
+    onSend({ text: text.trim(), attachments: images.ready, quotes: quoted });
     setText("");
     images.clear();
+    quotes.set([]);
   };
 
   return (
     <div className="shrink-0 px-3 pb-3 pt-1">
       <div className="rounded-xl bg-panel-raised shadow-raised ring-1 ring-inset ring-line transition-shadow duration-[var(--duration-base)] focus-within:ring-line-strong">
+        {quoted.length ? <DraftQuotes quotes={quoted} onRemove={unquote} /> : null}
         {images.images.length ? <DraftImages images={images.images} onRemove={images.remove} /> : null}
         {problem ? (
           <p role="alert" className="px-3.5 pt-2 text-[11px] leading-relaxed text-danger">
@@ -112,6 +122,13 @@ export function Composer({
             images.add(files);
           }}
           onKeyDown={(event) => {
+            /* Backspace at the very start takes the last quoted passage away whole, as it would a character. */
+            const input = event.currentTarget;
+            if (event.key === "Backspace" && quoted.length && input.selectionStart === 0 && input.selectionEnd === 0) {
+              event.preventDefault();
+              unquote(quoted.length - 1);
+              return;
+            }
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               send();

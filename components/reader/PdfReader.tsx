@@ -6,7 +6,8 @@ import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy, RenderTask
 import { normalizeText, trimAfter, trimBefore } from "@/lib/shared/context";
 import { tailExcerpt } from "@/lib/shared/resume";
 import { IconButton } from "@/components/ui";
-import type { Highlight, Position, SelectionContext } from "@/lib/shared/types";
+import { samePassage } from "@/lib/shared/quotes";
+import type { Anchor, Highlight, Position, SelectionContext } from "@/lib/shared/types";
 import { blockText, selectedRange, viewportRect } from "./dom";
 import { openFailure } from "./errors";
 import {
@@ -81,6 +82,17 @@ const emptyEngine = (): Engine => ({
 
 /** Scroll position updates between page or chapter changes are sent at most this often; the resting position always is. */
 const POSITION_THROTTLE_MS = 250;
+/** How long finding a quoted passage waits for its page to give up its text. */
+const TEXT_WAIT_MS = 3000;
+
+/** Polls `read` until it gives a value or `ms` pass. */
+const waitFor = async <T,>(read: () => T | undefined, ms: number): Promise<T | undefined> => {
+  for (const end = Date.now() + ms; ; ) {
+    const value = read();
+    if (value !== undefined || Date.now() >= end) return value;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+};
 /** A move within the page smaller than this share of it waits for the resting position. */
 const POSITION_STEP = 0.01;
 
@@ -250,24 +262,34 @@ export function PdfReader({
     };
   }, []);
 
+  const goToAnchor = async (anchor: Anchor) => {
+    const scroller = scrollRef.current;
+    const slot = anchor.kind === "pdf" ? engineRef.current.slots[anchor.page - 1] : null;
+    if (!scroller || !slot || anchor.kind !== "pdf") return;
+    if (engineRef.current.isPaged()) {
+      scroller.scrollTo({ top: slot.sheet.offsetTop, behavior: "smooth" });
+      return;
+    }
+    /* A page far from the one shown hasn't drawn, so its text is read here to place the anchor within it. */
+    const length = (await engineRef.current.textOf(anchor.page))?.length;
+    const within = length ? (anchor.start / length) * slot.el.offsetHeight : 0;
+    scroller.scrollTo({ top: Math.max(0, slot.el.offsetTop + within - scroller.clientHeight / 3), behavior: "smooth" });
+  };
+
   useImperativeHandle(ref, () => ({
     getSelection: readSelection,
     clearSelection() {
       if (ownRange()) document.getSelection()?.removeAllRanges();
       onSelectionChange(null);
     },
-    async goTo(anchor) {
-      const scroller = scrollRef.current;
-      const slot = anchor.kind === "pdf" ? engineRef.current.slots[anchor.page - 1] : null;
-      if (!scroller || !slot || anchor.kind !== "pdf") return;
-      if (engineRef.current.isPaged()) {
-        scroller.scrollTo({ top: slot.sheet.offsetTop, behavior: "smooth" });
-        return;
-      }
-      /* A page far from the one shown hasn't drawn, so its text is read here to place the anchor within it. */
-      const length = (await engineRef.current.textOf(anchor.page))?.length;
-      const within = length ? (anchor.start / length) * slot.el.offsetHeight : 0;
-      scroller.scrollTo({ top: Math.max(0, slot.el.offsetTop + within - scroller.clientHeight / 3), behavior: "smooth" });
+    goTo: goToAnchor,
+    async findPassage(anchor, text) {
+      if (anchor.kind !== "pdf" || !engineRef.current.slots[anchor.page - 1]) return false;
+      await goToAnchor(anchor);
+      /* A page's text is read when the page first renders, which landing on it starts. */
+      const pageText = await waitFor(() => engineRef.current.texts.get(anchor.page), TEXT_WAIT_MS);
+      /* A page that never gave up its text can't be checked; the page is there, so take it as found. */
+      return pageText === undefined || samePassage(pageText.slice(anchor.start, anchor.end), text);
     },
     async goToEntry(entry) {
       const scroller = scrollRef.current;
