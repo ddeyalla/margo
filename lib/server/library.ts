@@ -382,6 +382,10 @@ export const readLibrary = (root: string = getConfig().booksDir, dataDir: string
   return scan.library;
 };
 
+/** The library as a scan of the last few seconds saw it, or read now when there is none: for calls made on every keystroke. */
+export const recentLibrary = (root: string = getConfig().booksDir, dataDir: string = getConfig().dataDir): Promise<ScannedLibrary> =>
+  freshScan(root, dataDir)?.library ?? readLibrary(root, dataDir);
+
 /** Every EPUB and PDF under `root`, read from disk now, with the ids library.json in `dataDir` gives them. */
 export const scanLibrary = async (root: string = getConfig().booksDir, dataDir: string = getConfig().dataDir): Promise<LibraryBook[]> => [
   ...(await readLibrary(root, dataDir)).books,

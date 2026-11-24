@@ -19,6 +19,13 @@ const nextConfig: NextConfig = {
       "./node_modules/pdfjs-dist/cmaps/**",
       "./node_modules/pdfjs-dist/wasm/**",
     ],
+    /* Search reads PDF text with the same pdf.js as covers. */
+    "/api/search": [
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "./node_modules/pdfjs-dist/standard_fonts/**",
+      "./node_modules/pdfjs-dist/cmaps/**",
+      "./node_modules/pdfjs-dist/wasm/**",
+    ],
   },
   /* No Next badge in the corner while running `npm run dev`; error overlays still show. */
   devIndicators: false,
