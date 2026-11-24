@@ -47,6 +47,13 @@ describe("diagram fences", () => {
     expect(diagramFences(text).map((fence) => fence.source)).toEqual(["graph TD\n  A-->B", "pie"]);
   });
 
+  it("reads fences with CRLF line endings and inside list items", () => {
+    expect(diagramFences("```mermaid\r\ngraph TD\r\n  A-->B\r\n```\r\n")[0]?.source).toBe("graph TD\n  A-->B");
+    const listed = "- Step\n\n  ```mermaid\n  graph TD\n    A-->B\n  ```\n- Next";
+    expect(diagramFences(listed)[0]?.source).toBe("graph TD\n  A-->B");
+    expect(replaceDiagram(listed, 0, "graph TD\n  A-->C")).toBe("- Step\n\n  ```mermaid\n  graph TD\n    A-->C\n  ```\n- Next");
+  });
+
   it("ignores a fence that never closes", () => {
     expect(diagramFences("```mermaid\ngraph TD\n  A-->")).toEqual([]);
   });
@@ -65,6 +72,8 @@ describe("repairing a diagram", () => {
     expect(repairedSource(`Here:\n\n\`\`\`mermaid\n${FIXED}\n\`\`\`\n`)).toBe(FIXED);
     expect(repairedSource(`  ${FIXED}  `)).toBe(FIXED);
     expect(repairedSource("   ")).toBeNull();
+    /* An unclosed fence would cut the rest of the answer apart once saved into it. */
+    expect(repairedSource("```mermaid\ngraph TD")).toBeNull();
   });
 
   it("gives up when the tutor fails", async () => {
@@ -117,13 +126,13 @@ describe("POST /api/books/[bookId]/diagrams", () => {
     expect(tutor.sent).toHaveLength(1);
   });
 
-  it("keeps the answer when the tutor's reply is empty, and doesn't try again", async () => {
+  it("keeps the answer and its one chance when the tutor sends no fix back", async () => {
     tutor.reply = "";
     const content = `\`\`\`mermaid\n${BROKEN}\n\`\`\``;
     await updateBookState(bookId, (state) => ({ ...state, threads: [answer(content)] }));
     const response = await post({ threadId: "t1", createdAt: answerAt, broken: [{ index: 0, error: "Parse error" }] });
     expect((await response.json()).content).toBe(content);
-    expect(await stored()).toMatchObject({ content, diagramsRepaired: true });
+    expect((await stored()).diagramsRepaired).toBeUndefined();
   });
 
   it("refuses a request that names no broken diagram or an answer that isn't there", async () => {

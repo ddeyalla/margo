@@ -5,11 +5,14 @@ export const DIAGRAM_SYSTEM = `You fix Mermaid diagrams that failed to parse. Ke
 export const repairRequest = (source: string, error: string) =>
   `This Mermaid diagram failed to parse.\n\n\`\`\`mermaid\n${source}\n\`\`\`\n\nThe parser said:\n\n${error}`;
 
-/** The diagram in a repair reply: the inside of its first fence, or the whole reply when it wrote no fence. */
+/**
+ * The diagram in a repair reply: the inside of its first fence, or the whole reply when it wrote no fence. null when
+ * that still holds a fence line, which would cut the answer's later blocks apart once saved into it.
+ */
 export const repairedSource = (reply: string): string | null => {
   const fenced = /^ {0,3}(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n {0,3}\1[`~]*[ \t]*$/m.exec(reply);
   const source = (fenced ? fenced[2] : reply).trim();
-  return source || null;
+  return source && !/^ {0,3}(`{3,}|~{3,})/m.test(source) ? source : null;
 };
 
 /** Asks the tutor, on a session of its own, for a fixed version of a diagram. null when it fails or writes nothing. */

@@ -17,7 +17,8 @@ const findAnswer = (messages: ChatMessage[], createdAt: string) =>
 /**
  * Sends each diagram in an answer that the reader's browser could not parse back to the thread's tutor once, with
  * the parser's error, and saves the answer with the fixes in place. The browser parses, since Mermaid needs a DOM.
- * An answer is repaired at most once: a fix that still fails stays as it is and shows as code.
+ * An answer is repaired at most once: a fix that still fails stays as it is and shows as code. A request that gets no
+ * fix back saves nothing, so a failed tutor or a closed window doesn't use that chance up.
  * Body: { threadId, createdAt, broken: [{ index, error }] }, where index counts the answer's Mermaid fences.
  * Answers with the answer's text.
  */
@@ -48,6 +49,9 @@ export const POST = withBook(async ({ book, request }) => {
       return source ? { index, from: fence.source, source } : null;
     }),
   );
+
+  /* Nothing came back (the reader left, or the tutor failed): the answer keeps its one chance for a later finish. */
+  if (request.signal.aborted || fixes.every((fix) => !fix)) return Response.json({ content: answer.content });
 
   let content = answer.content;
   await updateBookState(book.id, (current) => ({

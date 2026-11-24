@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useId, useState } from "react";
-import { renderDiagram } from "./mermaid";
+import { drawnDiagram, renderDiagram } from "./mermaid";
 
 /** Saves a diagram's source to the reader's notes, where the answer allows it. */
 export const SaveDiagram = createContext<((source: string) => void) | null>(null);
@@ -12,7 +12,11 @@ type Drawn = { source: string; svg: string } | { source: string; failed: true };
 export function Diagram({ source, codeClass }: { source: string; codeClass: string }) {
   const id = `diagram-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const save = useContext(SaveDiagram);
-  const [drawn, setDrawn] = useState<Drawn | null>(null);
+  /* A diagram drawn before shows on the first frame; the server has no document, so it starts as code there. */
+  const [drawn, setDrawn] = useState<Drawn | null>(() => {
+    const svg = typeof document === "undefined" ? undefined : drawnDiagram(source);
+    return svg ? { source, svg } : null;
+  });
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {

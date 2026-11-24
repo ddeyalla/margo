@@ -52,13 +52,25 @@ export const diagramError = async (source: string): Promise<string | null> => {
   }
 };
 
+/* Drawn diagrams by theme and source, so an answer that finishes streaming, or a thread opened again, shows its diagrams
+   at once instead of as code while they redraw. */
+const drawn = new Map<string, string>();
+const MAX_DRAWN = 100;
+
+/** A diagram drawn before in this theme, or undefined. */
+export const drawnDiagram = (source: string) => drawn.get(`${document.documentElement.dataset.theme}\n${source}`);
+
 /** The diagram as SVG markup. Throws when it doesn't parse. */
 export const renderDiagram = async (id: string, source: string): Promise<string> => {
+  const cached = drawnDiagram(source);
+  if (cached) return cached;
   const mermaid = await load();
   configure(mermaid);
   /* Parsed first: rendering a bad diagram leaves Mermaid's error graphic in the page. */
   await mermaid.parse(source);
   const { svg } = await mermaid.render(id, source);
+  if (drawn.size >= MAX_DRAWN) drawn.delete(drawn.keys().next().value!);
+  drawn.set(`${document.documentElement.dataset.theme}\n${source}`, svg);
   return svg;
 };
 
