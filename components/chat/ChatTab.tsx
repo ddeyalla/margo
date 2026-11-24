@@ -8,7 +8,8 @@ import { JUST_TELL_ME, MAX_HINTS, workState } from "@/lib/shared/work";
 import { placeLabel } from "@/lib/shared/place";
 import { threadLabel } from "@/lib/shared/threads";
 import type { ParkedThread } from "@/lib/shared/parked";
-import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread } from "@/lib/shared/types";
+import { firstQuoteNumber, threadQuotes } from "@/lib/shared/quotes";
+import type { Anchor, BookId, GeneralThread, ImageAttachment, QuotedPassage, Thread } from "@/lib/shared/types";
 import { Composer } from "./Composer";
 import { UsageRow } from "./UsageRow";
 import { DropArea, Lightbox, MessageImages } from "./Images";
@@ -16,6 +17,7 @@ import type { PassagePlace } from "@/components/annotations/useAnnotations";
 import { diagramMarkdown } from "@/lib/shared/diagrams";
 import { SaveDiagram } from "./Diagram";
 import { Markdown, StreamingMarkdown } from "./Markdown";
+import { AnswerSources, CitationsContext, MessageQuotes, type Citations, type QuoteDraft } from "./Quotes";
 import { useImageDraft } from "./useImageDraft";
 import { awaitsAnswer, useCompacting, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type QueuedMessage, type Tutor } from "./useTutor";
 
@@ -54,6 +56,8 @@ export function ChatTab({
   onReply,
   onRetry,
   onSaveNote,
+  quotes,
+  onFindQuote,
 }: {
   /** The tab is on screen: selected, in an open panel. */
   shown: boolean;
@@ -71,6 +75,10 @@ export function ChatTab({
   onRetry(): void;
   /** Adds a note on a passage. */
   onSaveNote(passage: PassagePlace, body: string): void;
+  /** Passages quoted into the composer, waiting to be sent. */
+  quotes: QuoteDraft;
+  /** Goes to a quoted passage; resolves false when the book no longer has it there. */
+  onFindQuote(quote: QuotedPassage): Promise<boolean>;
 }) {
   const { active, failure } = tutor;
   /* Decided in the render that first shows the tab, so the rows never paint in place before they rise. The tab
@@ -91,26 +99,35 @@ export function ChatTab({
       active.kind === "passage"
         ? (source: string) => onSaveNote({ anchor: active.anchor, text: active.quote, chapterTitle: active.chapterTitle }, diagramMarkdown(source))
         : null;
+    /* Citations in any thread lead to the passages quoted into it, and can be kept as notes on them. */
+    const citations: Citations = {
+      quotes: threadQuotes(active.messages),
+      find: onFindQuote,
+      save: (quote, body) => onSaveNote({ anchor: quote.anchor, text: quote.text, chapterTitle: quote.chapterTitle }, body),
+    };
     return (
-      <SaveDiagram value={saveDiagram}>
-        <ThreadView
-          key={active.id}
-          bookId={tutor.bookId}
-          thread={active}
-          live={tutor.live}
-          sending={tutor.sending}
-          failure={failure}
-          queued={tutor.queued}
-          onSendQueued={tutor.sendQueued}
-          onCancelQueued={tutor.cancelQueued}
-          unavailable={unavailable}
-          onBack={() => tutor.open(null)}
-          onJump={() => active.anchor && onJump(active.anchor)}
-          onReply={onReply}
-          onRetry={onRetry}
-          onStop={tutor.stop}
-        />
-      </SaveDiagram>
+      <CitationsContext value={citations}>
+        <SaveDiagram value={saveDiagram}>
+          <ThreadView
+            key={active.id}
+            bookId={tutor.bookId}
+            thread={active}
+            live={tutor.live}
+            sending={tutor.sending}
+            failure={failure}
+            queued={tutor.queued}
+            onSendQueued={tutor.sendQueued}
+            onCancelQueued={tutor.cancelQueued}
+            unavailable={unavailable}
+            onBack={() => tutor.open(null)}
+            onJump={() => active.anchor && onJump(active.anchor)}
+            onReply={onReply}
+            onRetry={onRetry}
+            onStop={tutor.stop}
+            quotes={quotes}
+          />
+        </SaveDiagram>
+      </CitationsContext>
     );
   }
   return (
@@ -123,6 +140,7 @@ export function ChatTab({
       onAsk={onAsk}
       onSendParked={onSendParked}
       onRetry={onRetry}
+      quotes={quotes}
     />
   );
 }
@@ -137,6 +155,7 @@ function Threads({
   onAsk,
   onSendParked,
   onRetry,
+  quotes,
 }: {
   tutor: Tutor;
   /** The rows are making their first entrance. */
@@ -147,6 +166,7 @@ function Threads({
   onAsk(draft: MessageDraft): void;
   onSendParked(id: string): void;
   onRetry(): void;
+  quotes: QuoteDraft;
 }) {
   const { failure } = tutor;
   const images = useImageDraft(tutor.bookId);
@@ -192,6 +212,7 @@ function Threads({
         sending={tutor.sending}
         waiting={tutor.queued !== null}
         images={images}
+        quotes={quotes}
         onSend={onAsk}
         onStop={tutor.stop}
       />
@@ -341,6 +362,7 @@ function ThreadView({
   onReply,
   onRetry,
   onStop,
+  quotes,
 }: {
   bookId: BookId;
   thread: Thread;
@@ -358,6 +380,7 @@ function ThreadView({
   onReply(draft: MessageDraft): void;
   onRetry(): void;
   onStop(): void;
+  quotes: QuoteDraft;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -428,6 +451,7 @@ function ThreadView({
             ) : null,
             message.role === "user" ? (
               <div key={index} className={clsx("flex flex-col items-end gap-1.5 pl-8", index >= firstSent && "animate-rise")}>
+                {message.quotes?.length ? <MessageQuotes quotes={message.quotes} first={firstQuoteNumber(thread.messages, index)} /> : null}
                 {message.attachments?.length ? <MessageImages bookId={bookId} images={message.attachments} onOpen={setViewing} /> : null}
                 <p className="min-w-0 whitespace-pre-wrap break-words rounded-[14px] rounded-br-[5px] bg-panel-raised px-3.5 shadow-chip py-2.5 text-body text-paper">
                   {message.content}
@@ -436,6 +460,7 @@ function ThreadView({
             ) : (
               <div key={index}>
                 <Markdown text={message.content} />
+                <AnswerSources text={message.content} />
                 {message.partial ? <p className="mt-1.5 text-[11px] text-dim">Stopped before the answer finished.</p> : null}
               </div>
             ),
@@ -462,11 +487,11 @@ function ThreadView({
           <Button
             size="sm"
             disabled={busy || hintsUsed >= MAX_HINTS}
-            onClick={() => onReply({ text: `Hint ${hintsUsed + 1}`, attachments: [] })}
+            onClick={() => onReply({ text: `Hint ${hintsUsed + 1}`, attachments: [], quotes: [] })}
           >
             Hint
           </Button>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onReply({ text: JUST_TELL_ME, attachments: [] })}>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onReply({ text: JUST_TELL_ME, attachments: [], quotes: [] })}>
             Just tell me
           </Button>
         </div>
@@ -486,6 +511,7 @@ function ThreadView({
         sending={sending}
         waiting={queued !== null}
         images={images}
+        quotes={quotes}
         onSend={onReply}
         onStop={onStop}
       />
@@ -549,7 +575,8 @@ function QueuedNote({
   onCancel(): void;
 }) {
   const images = queued.attachments.length;
-  const words = queued.text || `${images} image${images === 1 ? "" : "s"}`;
+  const passages = queued.quotes.length;
+  const words = queued.text || (images ? `${images} image${images === 1 ? "" : "s"}` : `${passages} quoted passage${passages === 1 ? "" : "s"}`);
   const link =
     "press shrink-0 rounded-xs px-1 text-fog underline decoration-dim underline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-paper";
   return (

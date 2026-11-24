@@ -231,14 +231,40 @@ Done when a review session can tell a lucky guess from a held fact in one glance
 A tutor answer that rests on a passage should be able to point at it, and a reader should
 be able to hand the tutor a quote without retyping it.
 
-- [ ] Quote a highlight into the composer as one atomic chip, not pasted text that can be
+- [x] Quote a highlight into the composer as one atomic chip, not pasted text that can be
       half-deleted. The anchor travels with it (`Anchor`, `lib/shared/types.ts:18`), so the
-      tutor sees the passage, not a copy of it.
-- [ ] Every claim the tutor makes from a quoted passage carries a link back to it. Hit the
-      link, land on the paragraph.
-- [ ] Citations survive the thread being reread later; they resolve from the anchor, so a
-      moved or re-imported book either finds the passage or says it can't.
-- [ ] "Save to notes" on a citation, matching Phase 22.
+      tutor sees the passage, not a copy of it. "Quote" sits on the highlight menu in the
+      book and on each row of the Highlights tab. Chips wait above the words, up to 5 a
+      message; × or Backspace at the start of the box takes one away whole. The message
+      stores them as `quotes` (`QuotedPassage`), shown on the sent message as numbered
+      chips that lead back to the passage.
+- [x] Every claim the tutor makes from a quoted passage carries a link back to it. Hit the
+      link, land on the paragraph. Passages are numbered across the thread and reach the
+      tutor as `<passage n="2">`; the prompt asks it to link the words that rest on one to
+      `#cite-2`. The link renders as dotted words with a superscript number, and the
+      passages an answer cites are listed under it. A number the thread has no passage for
+      stays plain words. After a summary, folded turns' passages go with the summary, so
+      numbers never move.
+- [x] Citations survive the thread being reread later; they resolve from the anchor, so a
+      moved or re-imported book either finds the passage or says it can't. Each reader's
+      `findPassage` goes to the anchor and compares the text there with the quoted text
+      (letters and digits only, so spacing and hyphenation don't matter). An anchor that
+      doesn't resolve, or lands on other text, gets a toast and a "Not found" mark, with
+      the quoted text still showing.
+- [x] "Save to notes" on a citation, matching Phase 22. Each cited passage under an answer
+      has the button; it adds a note on that passage through `annotations.addNote`, quoting
+      what the tutor said rests on it.
+
+Tried **2026-11-24** with Claude Code on two test books. On a one-screen EPUB, two
+highlights quoted into one question got an answer that linked one claim to each passage,
+and Save to notes wrote the note under its passage in the notes folder. After a reload both
+links still resolved as found. With one quote's stored text changed to stand in for another
+edition, that link said it couldn't find the passage and the other still found its own. On
+a four-page PDF, with a hand-written cited thread on a highlight from page 3, the link
+jumped from page 1 to the highlighted line and read as found, even though the line wraps
+mid-word; with its text changed it said it couldn't find it. The run caught one bug: the
+EPUB range comes from the book's frame, so `instanceof Range` was false and every passage
+read as missing.
 
 Done when no answer needs the phrase "as you can see above".
 

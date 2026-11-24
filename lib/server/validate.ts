@@ -1,4 +1,4 @@
-import type { Anchor, BookFormat, Position } from "@/lib/shared/types";
+import type { Anchor, BookFormat, Position, QuotedPassage } from "@/lib/shared/types";
 
 /* Hand-written checks for what the browser sends. Each returns the value in
    its exact shape, or null, so nothing unchecked reaches the store. */
@@ -50,4 +50,18 @@ export const parseAnchor = (value: unknown, format: BookFormat): Anchor | null =
     return { kind: "pdf", page: value.page, start: value.start, end: value.end };
   }
   return null;
+};
+
+/** Up to `max` passages the reader quoted, each with an anchor in this book's format; null for anything else. */
+export const parseQuotes = (value: unknown, format: BookFormat, max: number): QuotedPassage[] | null => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > max) return null;
+  const quotes: QuotedPassage[] = [];
+  for (const item of value) {
+    const anchor = isObject(item) ? parseAnchor(item.anchor, format) : null;
+    const text = isObject(item) ? shortText(item.text, MAX_QUOTE) : null;
+    if (!isObject(item) || !anchor || !text) return null;
+    quotes.push({ anchor, text, chapterTitle: shortText(item.chapterTitle, 500) });
+  }
+  return quotes;
 };

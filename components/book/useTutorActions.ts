@@ -74,7 +74,7 @@ export function useTutorActions({
       };
       tutor.start("recap", selection, null, provider);
     } else {
-      askAnywhere({ text: "Give me a short recap of what came before my place in this chapter. Say nothing about what comes after it.", attachments: [] });
+      askAnywhere({ text: "Give me a short recap of what came before my place in this chapter. Say nothing about what comes after it.", attachments: [], quotes: [] });
     }
   };
 
