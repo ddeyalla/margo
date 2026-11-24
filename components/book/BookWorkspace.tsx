@@ -15,6 +15,7 @@ import { useTutor, type MessageDraft } from "@/components/chat/useTutor";
 import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/reader/SelectionToolbar";
+import { useBookSearch } from "@/components/search/useBookSearch";
 import type { OpenFailure } from "@/components/reader/errors";
 import type { ReaderHandle, ReaderMeta, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
 import { createStore, useStableCallback } from "@/components/ui/store";
@@ -96,6 +97,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
     highlights: annotations.highlights,
     notes: annotations.notes,
   });
+  const search = useBookSearch(book, navigate);
   const { on: spotlight, end: endSpotlight, toggle: toggleSpotlight } = useSpotlight(panel, book.format === "epub" && !error, dismissNotice);
   const noticeExit = useNoticeExit(notice, spotlight || reviewing);
   const [toast, setToast] = useToast();
@@ -199,6 +201,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
       },
     },
     { code: "KeyF", shift: true, skipInText: true, run: toggleSpotlight },
+    { code: "KeyK", shift: false, run: search.open },
   ];
   useShortcuts({
     shortcuts,
@@ -258,6 +261,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
       savePosition(next);
       setMenu(null);
       placeMoved();
+      search.placed();
     },
     onInteract: dismissNotice,
     onError: (failure) => {
@@ -291,6 +295,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
         panelId={PANEL_ID}
         panelOpen={panel.open}
         onTogglePanel={panel.toggle}
+        onSearch={search.open}
       />
       <Resizable
         controller={panel.layout}
@@ -432,6 +437,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
           onClose={closeMenu}
         />
       ) : null}
+      {search.dialog}
     </div>
   );
 }

@@ -315,23 +315,53 @@ Cheap first layer, and the expensive one only if the cheap one fails on real que
 for the chunking: `anything`'s segment-aware chunker, which keeps every chunk pointed at a place
 in the book. Reference, not code — that repo is GPL-3.0.
 
-- [ ] **BM25 over the whole library, before any embeddings.** Book text, highlights, notes and
+- [x] **BM25 over the whole library, before any embeddings.** Book text, highlights, notes and
       cards in one index. No model, no download, no network. It answers exact terms and names,
-      which is most of what you search for in your own books.
-- [ ] **Chunk on the anchors we already have**, not on fixed windows: EPUB CFI
+      which is most of what you search for in your own books. `lib/shared/search.ts` scores
+      every source at once, so a term's rarity is judged across the library and a note ranks
+      on the same scale as book text. Case and accents fold; no stemming. The last word, while
+      it is still being typed, also matches as a prefix. Highlights, notes and cards are read
+      from each book's state at query time (cached by the state file's mtime), not stored in
+      the index, because they change with every edit.
+- [x] **Chunk on the anchors we already have**, not on fixed windows: EPUB CFI
       (`lib/shared/cfi.ts`), PDF page plus character range
       (`Anchor` in `lib/shared/types.ts:18`). A result that can't jump to its place is a
       truncated quote. Target ~300 tokens, 20 % overlap, as a starting point.
-- [ ] **Derived, never authored.** The index lives in `DATA_DIR`, keyed by book id, and rebuilt
+      `lib/server/search/book-text.ts` reads EPUB blocks (paragraphs, headings, list items)
+      and gives each the CFI foliate itself would make: the spine step from the package
+      document and the path in the section, built by foliate's own `epubcfi.js` on an XML
+      parse (`@xmldom/xmldom`). A jsdom test resolves every one back to its block with
+      foliate's `toRange`, with and without bold starts. PDF blocks are lines, each with its
+      character range in `pageText`. Chunks are ~300 terms of whole blocks, never cross a
+      section or page, and repeat up to 20 % of the previous chunk. A result jumps to the
+      block in its chunk with the most of the query, not to the chunk's start.
+- [x] **Derived, never authored.** The index lives in `DATA_DIR`, keyed by book id, and rebuilt
       from the book file when its fingerprint changes (`size`, `mtimeMs`, `ino`, `sha256` are
       already tracked by the library index in `docs/plans/stable-book-ids.md`). Deleting it costs
-      a rebuild and nothing else.
-- [ ] **One box, opened by a key, over everything.** Results grouped by book then chapter, each
+      a rebuild and nothing else. `DATA_DIR/search/<id>.json`, fingerprinted by `size` and
+      `mtimeMs` plus a format version (not `sha256`, which stays null until the background
+      hash runs). One background builder per data folder reads stale books one at a time, so
+      the first search answers at once from saved notes and says how many books are still
+      being read. Indexes of books the library no longer knows are deleted on the next run.
+- [x] **One box, opened by a key, over everything.** Results grouped by book then chapter, each
       line showing the matching words in place, Enter jumps to the anchor and closes the panel.
-- [ ] **Vectors only behind a gate.** First measure the BM25 misses: 20 real queries with the
+      ⌘K on the library and in a book, also a Search button in both headers
+      (`components/search`). A result in another book opens it at `?at=<anchor>`; the jump
+      waits for the reader's first place, so the saved place doesn't land over it. A PDF jump
+      now reads an undrawn page's text first, so it lands on the line, not the page top.
+- [x] **Vectors only behind a gate.** First measure the BM25 misses: 20 real queries with the
       passage you wanted each to find. Add embeddings only for the ones keyword search can't
       reach. Local model in the same shape as the speech model (Phase 9): downloaded once,
       listed in a `models` folder, no key needed.
+      *Measured 2026-11-24, no embeddings added:* **3 of 20 missed** (top 5, and the same at top
+      10), 0 passages unfound. The 20 passages were picked at random, one each from 20 of the 59
+      books in the real library (a copy of the data folder). Claude wrote the queries from the gist
+      of each passage, so they lean on the passage's own words more than yours would; a real miss
+      rate is likely higher. The misses: "objection turned into a question" (the text says
+      *concern* and *query*: a vocabulary gap, the one only vectors fix); "life is only suffering"
+      (exact words, but common ones, ranked #48: a phrase or proximity boost would fix it);
+      "reader bored stops reading copy" (#26: *reader*/*reading*, *stops*/*stop*: stemming would
+      fix it). Rerun with `node scripts/search-misses.mjs <queries.json> --data <DATA_DIR>`.
 - [ ] If vectors land: hybrid = BM25 + vector, merged by reciprocal rank fusion, which needs no
       reranker. Say the *similarity*, higher is better, and test that ordering on five queries
       before shipping. `anything` stores sqlite-vec's distance (lower is better) and then filters
