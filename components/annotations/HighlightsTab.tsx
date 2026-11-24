@@ -1,6 +1,6 @@
 "use client";
 
-import { Highlighter, NotebookPen, Trash2 } from "lucide-react";
+import { Highlighter, NotebookPen, Quote, Trash2 } from "lucide-react";
 import { EmptyState, IconButton, Kbd } from "@/components/ui";
 import { formatShortDate, newestFirst, UNTITLED_SECTION } from "@/lib/shared/annotations";
 import { placeLabel } from "@/lib/shared/place";
@@ -16,6 +16,7 @@ export function HighlightsTab({
   onJump,
   onRemove,
   onOpenNote,
+  onQuote,
 }: {
   highlights: Highlight[];
   notes: Note[];
@@ -23,6 +24,8 @@ export function HighlightsTab({
   onJump(anchor: Anchor): void;
   onRemove(id: string): void;
   onOpenNote(noteId: string): void;
+  /** Puts a highlight into the chat's composer. */
+  onQuote(highlight: Highlight): void;
 }) {
   if (!highlights.length) {
     return (
@@ -76,6 +79,14 @@ export function HighlightsTab({
                     className="opacity-0 group-hover/item:opacity-100 focus-visible:opacity-100"
                   >
                     <Trash2 />
+                  </IconButton>
+                  <IconButton
+                    label="Quote in the chat"
+                    size="sm"
+                    onClick={() => onQuote(highlight)}
+                    className="opacity-0 group-hover/item:opacity-100 focus-visible:opacity-100"
+                  >
+                    <Quote />
                   </IconButton>
                   {noteId ? (
                     <IconButton label="Open its note" size="sm" onClick={() => onOpenNote(noteId)}>

@@ -231,14 +231,40 @@ Done when a review session can tell a lucky guess from a held fact in one glance
 A tutor answer that rests on a passage should be able to point at it, and a reader should
 be able to hand the tutor a quote without retyping it.
 
-- [ ] Quote a highlight into the composer as one atomic chip, not pasted text that can be
+- [x] Quote a highlight into the composer as one atomic chip, not pasted text that can be
       half-deleted. The anchor travels with it (`Anchor`, `lib/shared/types.ts:18`), so the
-      tutor sees the passage, not a copy of it.
-- [ ] Every claim the tutor makes from a quoted passage carries a link back to it. Hit the
-      link, land on the paragraph.
-- [ ] Citations survive the thread being reread later; they resolve from the anchor, so a
-      moved or re-imported book either finds the passage or says it can't.
-- [ ] "Save to notes" on a citation, matching Phase 22.
+      tutor sees the passage, not a copy of it. "Quote" sits on the highlight menu in the
+      book and on each row of the Highlights tab. Chips wait above the words, up to 5 a
+      message; × or Backspace at the start of the box takes one away whole. The message
+      stores them as `quotes` (`QuotedPassage`), shown on the sent message as numbered
+      chips that lead back to the passage.
+- [x] Every claim the tutor makes from a quoted passage carries a link back to it. Hit the
+      link, land on the paragraph. Passages are numbered across the thread and reach the
+      tutor as `<passage n="2">`; the prompt asks it to link the words that rest on one to
+      `#cite-2`. The link renders as dotted words with a superscript number, and the
+      passages an answer cites are listed under it. A number the thread has no passage for
+      stays plain words. After a summary, folded turns' passages go with the summary, so
+      numbers never move.
+- [x] Citations survive the thread being reread later; they resolve from the anchor, so a
+      moved or re-imported book either finds the passage or says it can't. Each reader's
+      `findPassage` goes to the anchor and compares the text there with the quoted text
+      (letters and digits only, so spacing and hyphenation don't matter). An anchor that
+      doesn't resolve, or lands on other text, gets a toast and a "Not found" mark, with
+      the quoted text still showing.
+- [x] "Save to notes" on a citation, matching Phase 22. Each cited passage under an answer
+      has the button; it adds a note on that passage through `annotations.addNote`, quoting
+      what the tutor said rests on it.
+
+Tried **2026-11-24** with Claude Code on two test books. On a one-screen EPUB, two
+highlights quoted into one question got an answer that linked one claim to each passage,
+and Save to notes wrote the note under its passage in the notes folder. After a reload both
+links still resolved as found. With one quote's stored text changed to stand in for another
+edition, that link said it couldn't find the passage and the other still found its own. On
+a four-page PDF, with a hand-written cited thread on a highlight from page 3, the link
+jumped from page 1 to the highlighted line and read as found, even though the line wraps
+mid-word; with its text changed it said it couldn't find it. The run caught one bug: the
+EPUB range comes from the book's frame, so `instanceof Range` was false and every passage
+read as missing.
 
 Done when no answer needs the phrase "as you can see above".
 
@@ -289,23 +315,53 @@ Cheap first layer, and the expensive one only if the cheap one fails on real que
 for the chunking: `anything`'s segment-aware chunker, which keeps every chunk pointed at a place
 in the book. Reference, not code — that repo is GPL-3.0.
 
-- [ ] **BM25 over the whole library, before any embeddings.** Book text, highlights, notes and
+- [x] **BM25 over the whole library, before any embeddings.** Book text, highlights, notes and
       cards in one index. No model, no download, no network. It answers exact terms and names,
-      which is most of what you search for in your own books.
-- [ ] **Chunk on the anchors we already have**, not on fixed windows: EPUB CFI
+      which is most of what you search for in your own books. `lib/shared/search.ts` scores
+      every source at once, so a term's rarity is judged across the library and a note ranks
+      on the same scale as book text. Case and accents fold; no stemming. The last word, while
+      it is still being typed, also matches as a prefix. Highlights, notes and cards are read
+      from each book's state at query time (cached by the state file's mtime), not stored in
+      the index, because they change with every edit.
+- [x] **Chunk on the anchors we already have**, not on fixed windows: EPUB CFI
       (`lib/shared/cfi.ts`), PDF page plus character range
       (`Anchor` in `lib/shared/types.ts:18`). A result that can't jump to its place is a
       truncated quote. Target ~300 tokens, 20 % overlap, as a starting point.
-- [ ] **Derived, never authored.** The index lives in `DATA_DIR`, keyed by book id, and rebuilt
+      `lib/server/search/book-text.ts` reads EPUB blocks (paragraphs, headings, list items)
+      and gives each the CFI foliate itself would make: the spine step from the package
+      document and the path in the section, built by foliate's own `epubcfi.js` on an XML
+      parse (`@xmldom/xmldom`). A jsdom test resolves every one back to its block with
+      foliate's `toRange`, with and without bold starts. PDF blocks are lines, each with its
+      character range in `pageText`. Chunks are ~300 terms of whole blocks, never cross a
+      section or page, and repeat up to 20 % of the previous chunk. A result jumps to the
+      block in its chunk with the most of the query, not to the chunk's start.
+- [x] **Derived, never authored.** The index lives in `DATA_DIR`, keyed by book id, and rebuilt
       from the book file when its fingerprint changes (`size`, `mtimeMs`, `ino`, `sha256` are
       already tracked by the library index in `docs/plans/stable-book-ids.md`). Deleting it costs
-      a rebuild and nothing else.
-- [ ] **One box, opened by a key, over everything.** Results grouped by book then chapter, each
+      a rebuild and nothing else. `DATA_DIR/search/<id>.json`, fingerprinted by `size` and
+      `mtimeMs` plus a format version (not `sha256`, which stays null until the background
+      hash runs). One background builder per data folder reads stale books one at a time, so
+      the first search answers at once from saved notes and says how many books are still
+      being read. Indexes of books the library no longer knows are deleted on the next run.
+- [x] **One box, opened by a key, over everything.** Results grouped by book then chapter, each
       line showing the matching words in place, Enter jumps to the anchor and closes the panel.
-- [ ] **Vectors only behind a gate.** First measure the BM25 misses: 20 real queries with the
+      ⌘K on the library and in a book, also a Search button in both headers
+      (`components/search`). A result in another book opens it at `?at=<anchor>`; the jump
+      waits for the reader's first place, so the saved place doesn't land over it. A PDF jump
+      now reads an undrawn page's text first, so it lands on the line, not the page top.
+- [x] **Vectors only behind a gate.** First measure the BM25 misses: 20 real queries with the
       passage you wanted each to find. Add embeddings only for the ones keyword search can't
       reach. Local model in the same shape as the speech model (Phase 9): downloaded once,
       listed in a `models` folder, no key needed.
+      *Measured 2026-11-24, no embeddings added:* **3 of 20 missed** (top 5, and the same at top
+      10), 0 passages unfound. The 20 passages were picked at random, one each from 20 of the 59
+      books in the real library (a copy of the data folder). Claude wrote the queries from the gist
+      of each passage, so they lean on the passage's own words more than yours would; a real miss
+      rate is likely higher. The misses: "objection turned into a question" (the text says
+      *concern* and *query*: a vocabulary gap, the one only vectors fix); "life is only suffering"
+      (exact words, but common ones, ranked #48: a phrase or proximity boost would fix it);
+      "reader bored stops reading copy" (#26: *reader*/*reading*, *stops*/*stop*: stemming would
+      fix it). Rerun with `node scripts/search-misses.mjs <queries.json> --data <DATA_DIR>`.
 - [ ] If vectors land: hybrid = BM25 + vector, merged by reciprocal rank fusion, which needs no
       reranker. Say the *similarity*, higher is better, and test that ordering on five queries
       before shipping. `anything` stores sqlite-vec's distance (lower is better) and then filters

@@ -3,8 +3,9 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, BookOpen, Focus, Moon, PanelRight, Sun, SunMoon, TableOfContents } from "lucide-react";
+import { ArrowLeft, BookOpen, Focus, Moon, PanelRight, Search, Sun, SunMoon, TableOfContents } from "lucide-react";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
+import { SEARCH_SHORTCUT } from "@/components/search/SearchDialog";
 import { IconButton, Segmented } from "@/components/ui";
 import type { AppSettings, BookFormat, ProviderId, ProviderInfo, ReadingFont, ReadingMode, ReadingTheme } from "@/lib/shared/types";
 import { useChapter, type PlaceStore } from "./place";
@@ -47,6 +48,7 @@ export function BookHeader({
   panelId,
   panelOpen,
   onTogglePanel,
+  onSearch,
 }: {
   title: string;
   spot: PlaceStore;
@@ -68,6 +70,7 @@ export function BookHeader({
   panelId: string;
   panelOpen: boolean;
   onTogglePanel(): void;
+  onSearch(): void;
 }) {
   const tocOpen = settings.chaptersOpen;
   return (
@@ -96,6 +99,9 @@ export function BookHeader({
         </h1>
         <ChapterLabel spot={spot} />
       </div>
+      <IconButton label={`Search the library (${SEARCH_SHORTCUT})`} onClick={onSearch}>
+        <Search />
+      </IconButton>
       <div className="shrink-0">
         <ProviderPicker providers={providers} current={provider} onSelect={onProvider} models={models} onModel={onModel} />
       </div>

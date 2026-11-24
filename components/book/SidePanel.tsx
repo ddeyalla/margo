@@ -8,9 +8,10 @@ import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
 import { CardsTab } from "@/components/cards/CardsTab";
 import type { CardsApi } from "@/components/cards/useCards";
 import { ChatTab } from "@/components/chat/ChatTab";
+import type { QuoteDraft } from "@/components/chat/Quotes";
 import { usePill } from "@/components/ui/pill";
 import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
-import type { Anchor, PanelTab } from "@/lib/shared/types";
+import type { Anchor, Highlight, PanelTab, QuotedPassage } from "@/lib/shared/types";
 
 /* New content fades in after a pointer choice only; a keyboard switch, used far more often, is instant. */
 const panelClass =
@@ -39,6 +40,9 @@ export const SidePanel = memo(function SidePanel({
   noteFocus,
   onNoteDraft,
   onOpenNote,
+  quotes,
+  onFindQuote,
+  onQuote,
   cards,
   onReview,
   panelOpen,
@@ -57,6 +61,11 @@ export const SidePanel = memo(function SidePanel({
   noteFocus: { id: string; at: number } | null;
   onNoteDraft(draft: NoteDraft | null): void;
   onOpenNote(noteId: string): void;
+  /** Passages quoted into the chat's composer. */
+  quotes: QuoteDraft;
+  onFindQuote(quote: QuotedPassage): Promise<boolean>;
+  /** Quotes a highlight into the chat's composer. */
+  onQuote(highlight: Highlight): void;
   cards: CardsApi;
   onReview(): void;
   /** The panel is expanded, so its tab can be seen. */
@@ -92,7 +101,7 @@ export const SidePanel = memo(function SidePanel({
         </TabsList>
       </div>
       <TabsPanel value="chat" className={panelClass}>
-        <ChatTab shown={panelOpen && tab === "chat"} keyed={keyed} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} onSaveNote={annotations.addNote} />
+        <ChatTab shown={panelOpen && tab === "chat"} keyed={keyed} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} onSaveNote={annotations.addNote} quotes={quotes} onFindQuote={onFindQuote} />
       </TabsPanel>
       <TabsPanel value="notes" className={panelClass}>
         <NotesTab
@@ -121,6 +130,7 @@ export const SidePanel = memo(function SidePanel({
           onJump={onJump}
           onRemove={annotations.removeHighlight}
           onOpenNote={onOpenNote}
+          onQuote={onQuote}
         />
       </TabsPanel>
       <TabsPanel value="cards" className={panelClass}>

@@ -7,6 +7,7 @@ import { FolderForm } from "@/components/library/FolderForm";
 import { FoldersControl } from "@/components/library/FoldersControl";
 import { MissingBooks } from "@/components/library/MissingBooks";
 import { RefreshOnReturn } from "@/components/library/RefreshOnReturn";
+import { LibrarySearch } from "@/components/search/LibrarySearch";
 import { EmptyState } from "@/components/ui";
 import { ThemeControl } from "@/components/ui/theme";
 import { BooksFolderMissing, getFolders } from "@/lib/server/config";
@@ -88,7 +89,7 @@ async function Library() {
 
   return (
     <>
-      <Heading folders={foldersControl()}>
+      <Heading folders={foldersControl()} search={<LibrarySearch />}>
         {plural(books.length, "book")} in {plural(shelves.size, "folder")}
       </Heading>
       <BookList shelves={sorted} recent={recent} />
@@ -122,12 +123,13 @@ function FolderSetup() {
   );
 }
 
-function Heading({ children, folders }: { children?: React.ReactNode; folders?: React.ReactNode }) {
+function Heading({ children, folders, search }: { children?: React.ReactNode; folders?: React.ReactNode; search?: React.ReactNode }) {
   return (
     <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-display text-paper">Library</h1>
       {children ? <span className="mt-1.5 text-label text-dim tabular-nums">{children}</span> : null}
       <div className="ml-auto flex items-center gap-2">
+        {search}
         <Link href="/notes" className="inline-flex h-7 items-center gap-1.5 rounded-sm bg-panel-raised px-2.5 text-label font-medium text-paper shadow-chip hover:bg-panel-hover">
           <NotebookPen aria-hidden className="size-3.5" />
           Notes

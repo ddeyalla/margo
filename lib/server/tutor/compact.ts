@@ -1,5 +1,6 @@
 import type { ChatMessage, Thread, TurnUsage } from "@/lib/shared/types";
-import { contextMessage, type BookLabel } from "./prompt";
+import { firstQuoteNumber } from "@/lib/shared/quotes";
+import { contextMessage, quotedPassages, type BookLabel } from "./prompt";
 import type { Provider, TutorTurn } from "./types";
 
 /**
@@ -48,15 +49,20 @@ export const COMPACT_SYSTEM = `You keep the notes for a tutoring conversation ab
 
 Write short plain notes in the order things happened. No preamble.`;
 
-const transcriptLine = (message: ChatMessage): string => {
+const transcriptLine = (message: ChatMessage, firstQuote: number): string => {
   const images = message.attachments?.length ? `[The reader shared ${message.attachments.length === 1 ? "an image" : `${message.attachments.length} images`}.]\n` : "";
-  return `${message.role === "user" ? "Reader" : "Tutor"}:\n${images}${message.content}`;
+  const quotes = message.quotes?.length ? `${quotedPassages(message.quotes, firstQuote)}\n` : "";
+  return `${message.role === "user" ? "Reader" : "Tutor"}:\n${images}${quotes}${message.content}`;
 };
 
 /** What the summarizer is asked: the passage, the summary so far, and the turns to fold in, up to `keepFrom`. */
 export const summaryRequest = (book: BookLabel, thread: Thread, keepFrom: number): string => {
   const previous = thread.compaction;
-  const turns = thread.messages.slice(previous?.keepFrom ?? 1, keepFrom).map(transcriptLine).join("\n\n");
+  const from = previous?.keepFrom ?? 1;
+  const turns = thread.messages
+    .slice(from, keepFrom)
+    .map((message, i) => transcriptLine(message, firstQuoteNumber(thread.messages, from + i)))
+    .join("\n\n");
   return [
     `The passage and the reader's first message:\n<start>\n${contextMessage(book, thread)}\n</start>`,
     previous ? `The summary so far:\n<summary>\n${previous.summary}\n</summary>` : null,

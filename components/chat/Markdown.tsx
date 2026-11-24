@@ -6,7 +6,9 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { citedNumber } from "@/lib/shared/quotes";
 import { Diagram } from "./Diagram";
+import { CitationLink } from "./Quotes";
 import { settledStarts } from "./settled";
 
 type Tag = keyof JSX.IntrinsicElements;
@@ -44,6 +46,17 @@ function Pre(props: JSX.IntrinsicElements["pre"] & ExtraProps) {
   return source === null ? <StyledPre {...props} /> : <Diagram source={source} codeClass={preClass} />;
 }
 
+const StyledLink = styled("a", "text-paper underline decoration-dim underline-offset-2 transition-colors hover:decoration-paper", {
+  target: "_blank",
+  rel: "noreferrer noopener",
+});
+
+/* A link to "#cite-N" is the tutor citing a passage the reader quoted; any other opens in the browser. */
+function Link(props: JSX.IntrinsicElements["a"] & ExtraProps) {
+  const number = citedNumber(props.href);
+  return number === null ? <StyledLink {...props} /> : <CitationLink number={number}>{props.children}</CitationLink>;
+}
+
 /* Raw HTML in a reply stays text (no rehype-raw), and react-markdown drops unsafe link protocols. */
 const components: Components = {
   p: styled("p", "my-2 first:mt-0 last:mb-0"),
@@ -55,10 +68,7 @@ const components: Components = {
   ol: styled("ol", "my-2 list-decimal space-y-1 pl-5 marker:text-dim"),
   li: styled("li", "pl-0.5"),
   strong: styled("strong", "font-semibold text-paper"),
-  a: styled("a", "text-paper underline decoration-dim underline-offset-2 transition-colors hover:decoration-paper", {
-    target: "_blank",
-    rel: "noreferrer noopener",
-  }),
+  a: Link,
   blockquote: styled("blockquote", "my-2 border-l-2 border-line-strong pl-3 text-fog"),
   hr: styled("hr", "my-4 border-line"),
   pre: Pre,
