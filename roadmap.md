@@ -255,13 +255,16 @@ be able to hand the tutor a quote without retyping it.
       has the button; it adds a note on that passage through `annotations.addNote`, quoting
       what the tutor said rests on it.
 
-Tried **2026-11-24** on a small test EPUB with Claude Code: two highlights quoted into one
-question. The answer linked one claim to each passage, both links landed on their
-paragraphs, and Save to notes wrote the note under its passage in the notes folder. After
-a reload the links still worked; with one quote's stored text changed to stand in for
-another edition, that link said it couldn't find the passage, and the other still found
-its own. That run caught one bug: the EPUB range comes from the book's frame, so
-`instanceof Range` was false and every passage read as missing.
+Tried **2026-11-24** with Claude Code on two test books. On a one-screen EPUB, two
+highlights quoted into one question got an answer that linked one claim to each passage,
+and Save to notes wrote the note under its passage in the notes folder. After a reload both
+links still resolved as found. With one quote's stored text changed to stand in for another
+edition, that link said it couldn't find the passage and the other still found its own. On
+a four-page PDF, with a hand-written cited thread on a highlight from page 3, the link
+jumped from page 1 to the highlighted line and read as found, even though the line wraps
+mid-word; with its text changed it said it couldn't find it. The run caught one bug: the
+EPUB range comes from the book's frame, so `instanceof Range` was false and every passage
+read as missing.
 
 Done when no answer needs the phrase "as you can see above".
 
