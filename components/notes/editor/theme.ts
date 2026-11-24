@@ -1,0 +1,90 @@
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
+import { tags as t } from "@lezer/highlight";
+
+/* Code inside a note's fences gets the same classes rehype-highlight gives code in chat, so both read from the
+   .hljs-* rules and --code-* colours in globals.css. Markdown's own marks are dimmed; live preview hides them. */
+const highlight = HighlightStyle.define([
+  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword, t.modifier, t.bool, t.null, t.self], class: "hljs-keyword" },
+  { tag: [t.string, t.special(t.string), t.regexp, t.character, t.escape], class: "hljs-string" },
+  { tag: [t.number, t.integer, t.float, t.atom, t.unit], class: "hljs-number" },
+  { tag: [t.attributeName, t.propertyName], class: "hljs-attr" },
+  { tag: [t.function(t.variableName), t.function(t.propertyName), t.className, t.typeName, t.tagName, t.namespace, t.macroName, t.labelName], class: "hljs-title" },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment, t.meta, t.annotation], class: "hljs-comment" },
+  { tag: [t.processingInstruction, t.contentSeparator], class: "cm-md-mark" },
+  { tag: t.url, class: "cm-md-url" },
+  { tag: t.monospace, class: "cm-md-code" },
+  { tag: t.emphasis, class: "cm-md-em" },
+  { tag: t.strong, class: "cm-md-strong" },
+  { tag: t.strikethrough, class: "cm-md-strike" },
+  { tag: t.link, class: "cm-md-link" },
+]);
+
+export const codeHighlighting = syntaxHighlighting(highlight);
+
+/** The editor's look, from the app's colour and type tokens. `compact` is the size of a note in the side panel. */
+export const editorTheme = (compact: boolean) =>
+  EditorView.theme({
+    "&": { color: "var(--color-paper)", backgroundColor: "transparent", fontSize: compact ? "13px" : "15px" },
+    "&.cm-focused": { outline: "none" },
+    ".cm-scroller": { fontFamily: "var(--font-sans)", lineHeight: compact ? "1.55" : "1.65", overflow: "auto" },
+    ".cm-content": { padding: compact ? "8px 0" : "4px 0 24px", caretColor: "var(--color-paper)" },
+    ".cm-line": { padding: compact ? "0 12px" : "0 2px" },
+    ".cm-cursor": { borderLeftColor: "var(--color-paper)" },
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "var(--color-tint-strong) !important" },
+    ".cm-placeholder": { color: "var(--color-dim)" },
+    ".cm-md-mark, .cm-md-url": { color: "var(--color-dim)" },
+    ".cm-md-code": { fontFamily: "var(--font-mono)", fontSize: "0.88em" },
+    ".cm-md-em": { fontStyle: "italic" },
+    ".cm-md-strong": { fontWeight: "600" },
+    ".cm-md-strike": { textDecoration: "line-through", color: "var(--color-fog)" },
+    ".cm-md-link": { color: "var(--color-paper)", textDecoration: "underline", textDecorationColor: "var(--color-dim)", textUnderlineOffset: "2px" },
+    ".cm-inline-code": { backgroundColor: "var(--color-tint)", borderRadius: "3px", padding: "1px 4px", fontFamily: "var(--font-mono)", fontSize: "0.88em" },
+    ".cm-h1": { fontSize: "1.6em", fontWeight: "700", lineHeight: "1.3", paddingTop: "0.6em !important" },
+    ".cm-h2": { fontSize: "1.35em", fontWeight: "650", lineHeight: "1.3", paddingTop: "0.5em !important" },
+    ".cm-h3": { fontSize: "1.15em", fontWeight: "600", paddingTop: "0.4em !important" },
+    ".cm-h4, .cm-h5, .cm-h6": { fontWeight: "600", color: "var(--color-fog)" },
+    ".cm-quote": { borderLeft: "2px solid var(--color-line-strong)", paddingLeft: compact ? "12px" : "14px", color: "var(--color-fog)" },
+    ".cm-codeblock": { backgroundColor: "var(--color-tint)", fontFamily: "var(--font-mono)", fontSize: "0.85em", color: "var(--color-fog)" },
+    ".cm-codeblock-first": { borderTopLeftRadius: "6px", borderTopRightRadius: "6px", paddingTop: "4px !important" },
+    ".cm-codeblock-last": { borderBottomLeftRadius: "6px", borderBottomRightRadius: "6px", paddingBottom: "4px !important" },
+    ".cm-task-done": { color: "var(--color-dim)", textDecoration: "line-through" },
+    ".cm-bullet": { color: "var(--color-dim)", display: "inline-block", width: "1ch" },
+    ".cm-checkbox": { verticalAlign: "-2px", margin: "0 6px 0 0", accentColor: "var(--color-highlight-strong)", cursor: "pointer", width: "14px", height: "14px" },
+    ".cm-wikilink": { color: "var(--color-paper)", textDecoration: "underline", textDecorationColor: "var(--color-highlight-strong)", textUnderlineOffset: "2px", cursor: "pointer" },
+    ".cm-wikilink-missing": { textDecorationStyle: "dashed", color: "var(--color-fog)" },
+    ".cm-tag": { color: "var(--color-highlight-strong)" },
+    ".cm-hr": { display: "block", borderTop: "1px solid var(--color-line-strong)", margin: "0.8em 0" },
+    ".cm-math-inline": { padding: "0 2px" },
+    ".cm-math-block": { display: "block", padding: "6px 0", overflowX: "auto", textAlign: "center" },
+    ".cm-math-error": { color: "var(--color-dim)", fontFamily: "var(--font-mono)", fontSize: "0.85em" },
+    ".cm-image": { display: "block", maxWidth: "100%", maxHeight: "480px", borderRadius: "6px", margin: "6px 0" },
+    ".cm-embed": {
+      display: "block",
+      margin: "6px 0",
+      padding: "8px 12px",
+      borderLeft: "3px solid var(--color-highlight-strong)",
+      backgroundColor: "var(--color-tint)",
+      borderRadius: "0 6px 6px 0",
+      whiteSpace: "pre-wrap",
+      fontFamily: "var(--font-reading)",
+      fontSize: "0.95em",
+      color: "var(--color-prose)",
+    },
+    ".cm-embed-source": { display: "block", marginTop: "4px", fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-dim)" },
+    ".cm-embed-source a": { color: "inherit", textDecoration: "underline", cursor: "pointer" },
+    ".cm-tooltip.cm-tooltip-autocomplete": {
+      backgroundColor: "var(--color-panel-raised)",
+      border: "1px solid var(--color-line)",
+      borderRadius: "8px",
+      boxShadow: "0 8px 24px rgb(0 0 0 / 0.25)",
+      padding: "4px",
+      fontFamily: "var(--font-sans)",
+    },
+    ".cm-tooltip-autocomplete > ul": { maxHeight: "18em", fontFamily: "var(--font-sans) !important" },
+    ".cm-tooltip-autocomplete > ul > li": { borderRadius: "5px", padding: "4px 8px !important", color: "var(--color-paper)", lineHeight: "1.4" },
+    ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--color-tint-strong)", color: "var(--color-paper)" },
+    ".cm-completionDetail": { color: "var(--color-dim)", fontStyle: "normal", marginLeft: "8px" },
+    ".cm-completionInfo": { backgroundColor: "var(--color-panel-raised)", border: "1px solid var(--color-line)", borderRadius: "8px", color: "var(--color-fog)", maxWidth: "320px", whiteSpace: "pre-wrap" },
+    ".cm-completionIcon": { display: "none" },
+  });

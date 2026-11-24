@@ -354,14 +354,38 @@ never needed. An earlier deliberately broken diagram came back fixed in 3.4 s.
 Replace the textarea with a live-preview Markdown editor (CodeMirror 6): formatting shows
 inline, raw syntax shows on the line being edited. Not a clone of Obsidian.
 
-- [ ] Standalone notes are real `.md` files in the notes folder. The app edits them in
+- [x] Standalone notes are real `.md` files in the notes folder. The app edits them in
       place and picks up changes made in Obsidian.
-- [ ] The app never overwrites a file that changed on disk since it loaded it. On a
+      *Notes page at `/notes` (linked from the library). It lists every `.md` in the
+      folder and its subfolders, skipping hidden folders such as `.obsidian` and `.trash`.
+      An open note checks the disk every 2.5 s while the window is in front, and on focus.
+      An outside change shows up at once unless there is unsaved text.*
+- [x] The app never overwrites a file that changed on disk since it loaded it. On a
       conflict it keeps both.
-- [ ] Notes on a highlight stay in the app's data and keep mirroring to the vault. That
+      *A save carries the SHA-256 of the bytes it was based on. The server re-reads the
+      file inside the file's queue. If the file changed or was deleted, the file is left
+      alone and the app's text goes to `Note (conflict 2026-11-24 14.32).md` beside it. The
+      editor then shows the disk version, with a banner linking to the copy. New notes and
+      copies are created with an exclusive open, so they never replace a file.
+      `lib/server/notes-folder.ts` holds this, kept generic for Phase 23's `.excalidraw`
+      files. Tests: `tests/notes-files.test.ts` (server) and `tests/note-session.test.ts`
+      (editor side).*
+- [x] Notes on a highlight stay in the app's data and keep mirroring to the vault. That
       per-book file stays app-owned, with a "generated, don't edit" header.
-- [ ] `[[wikilinks]]`, a backlinks list, `/` commands, `#tags`, checklists, pasted images.
-- [ ] Highlight quotes embed by block id. Code blocks with highlighting, KaTeX math.
+      *The header is an Obsidian callout under the frontmatter, so it shows in reading view.
+      The notes page lists these files apart and refuses to edit them. A link to one opens
+      the book. The side panel's note editor is the same CodeMirror editor, compact.*
+- [x] `[[wikilinks]]`, a backlinks list, `/` commands, `#tags`, checklists, pasted images.
+      *Links resolve as Obsidian does: same folder first, then the shortest path. Clicking a
+      link to a missing note creates it. Pasted or dropped images go where
+      `.obsidian/app.json` `attachmentFolderPath` says, otherwise `attachments/`. They are
+      linked `![[Pasted image …]]`, or as a Markdown link when `useMarkdownLinks` is on.
+      Not done: renaming or deleting notes, and updating links when a note is renamed.*
+- [x] Highlight quotes embed by block id. Code blocks with highlighting, KaTeX math.
+      *`![[Book#^h-1a2b3c4d]]` shows the quote, read from the book's file, with a link that
+      opens the book. "/Embed a highlight" lists every highlight. Headings and other
+      `^block` ids embed too. Code uses the chat's `.hljs-*` classes through a CodeMirror
+      highlight style. Math is `$$…$$` only, as in chat, drawn by KaTeX.*
 
 ## Phase 23 — Whiteboard · L
 
