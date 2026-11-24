@@ -12,6 +12,9 @@ import type { Anchor, BookId, GeneralThread, ImageAttachment, Thread } from "@/l
 import { Composer } from "./Composer";
 import { UsageRow } from "./UsageRow";
 import { DropArea, Lightbox, MessageImages } from "./Images";
+import type { PassagePlace } from "@/components/annotations/useAnnotations";
+import { diagramMarkdown } from "@/lib/shared/diagrams";
+import { SaveDiagram } from "./Diagram";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { useImageDraft } from "./useImageDraft";
 import { awaitsAnswer, useCompacting, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type QueuedMessage, type Tutor } from "./useTutor";
@@ -50,6 +53,7 @@ export function ChatTab({
   onSendParked,
   onReply,
   onRetry,
+  onSaveNote,
 }: {
   /** The tab is on screen: selected, in an open panel. */
   shown: boolean;
@@ -65,6 +69,8 @@ export function ChatTab({
   onSendParked(id: string): void;
   onReply(draft: MessageDraft): void;
   onRetry(): void;
+  /** Adds a note on a passage. */
+  onSaveNote(passage: PassagePlace, body: string): void;
 }) {
   const { active, failure } = tutor;
   /* Decided in the render that first shows the tab, so the rows never paint in place before they rise. The tab
@@ -80,24 +86,31 @@ export function ChatTab({
     if (entrance !== "waiting") shownVisits.add(tutor.live);
   }, [entrance, tutor.live]);
   if (active) {
+    /* A diagram in a thread about a passage can be saved as a note on that passage. */
+    const saveDiagram =
+      active.kind === "passage"
+        ? (source: string) => onSaveNote({ anchor: active.anchor, text: active.quote, chapterTitle: active.chapterTitle }, diagramMarkdown(source))
+        : null;
     return (
-      <ThreadView
-        key={active.id}
-        bookId={tutor.bookId}
-        thread={active}
-        live={tutor.live}
-        sending={tutor.sending}
-        failure={failure}
-        queued={tutor.queued}
-        onSendQueued={tutor.sendQueued}
-        onCancelQueued={tutor.cancelQueued}
-        unavailable={unavailable}
-        onBack={() => tutor.open(null)}
-        onJump={() => active.anchor && onJump(active.anchor)}
-        onReply={onReply}
-        onRetry={onRetry}
-        onStop={tutor.stop}
-      />
+      <SaveDiagram value={saveDiagram}>
+        <ThreadView
+          key={active.id}
+          bookId={tutor.bookId}
+          thread={active}
+          live={tutor.live}
+          sending={tutor.sending}
+          failure={failure}
+          queued={tutor.queued}
+          onSendQueued={tutor.sendQueued}
+          onCancelQueued={tutor.cancelQueued}
+          unavailable={unavailable}
+          onBack={() => tutor.open(null)}
+          onJump={() => active.anchor && onJump(active.anchor)}
+          onReply={onReply}
+          onRetry={onRetry}
+          onStop={tutor.stop}
+        />
+      </SaveDiagram>
     );
   }
   return (

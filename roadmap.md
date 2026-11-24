@@ -324,17 +324,26 @@ lands on the exact paragraph.
 The tutor gets text formats it can write well. Highest value for the effort, so it goes
 first of this group. `components/chat/Markdown.tsx` and `lib/server/tutor/prompt.ts`.
 
-- [ ] Render Mermaid fences (flowchart, sequence, state, mind map, timeline) as SVG in
-      chat, in strict mode.
-- [ ] The prompt says when a diagram is worth it. No raw SVG from the model.
-- [ ] A Mermaid block that doesn't parse goes back once with the error, like bad card
-      JSON. If it still fails, show the source as code.
-- [ ] KaTeX math and syntax-highlighted code blocks in the same renderer.
-- [ ] "Save to notes" on a diagram drops the Mermaid block into a note. Obsidian renders
-      it there.
+- [x] Render Mermaid fences (flowchart, sequence, state, mind map, timeline) as SVG in
+      chat, in strict mode. Mermaid loads only when an answer has a diagram
+      (`components/chat/mermaid.ts`), takes the app's theme colours, and draws at its own
+      size: a wide diagram scrolls rather than shrinking its labels out of reach.
+- [x] The prompt says when a diagram is worth it, to lay flowcharts top to bottom for the
+      narrow chat, and to quote labels with punctuation. No raw SVG from the model.
+- [x] A Mermaid block that doesn't parse goes back once with the error, like bad card
+      JSON. If it still fails, show the source as code. Mermaid needs a DOM, so the browser
+      parses a finished answer and posts the broken blocks to
+      `/api/books/[bookId]/diagrams`, which asks the tutor on a session of its own and
+      saves the fix; `diagramsRepaired` on the answer keeps it to once.
+- [x] KaTeX math and syntax-highlighted code blocks in the same renderer. Math only
+      between double dollars, so "$5 or $10" stays text. Code is highlighted only when its
+      fence names a language.
+- [x] "Save to notes" on a diagram drops the Mermaid block into a note on the thread's
+      passage. Obsidian renders it there. Threads with no passage have no button.
 
 Check on 20 real questions first: how often the first Mermaid parses, and whether the
-tutor draws only when it helps.
+tutor draws only when it helps. **Not yet run:** two live questions on Sonnet 5.5 so far
+(one diagram parsed first time; one deliberately broken diagram came back fixed in 3.4 s).
 
 ## Phase 22 — Notes editor · M
 

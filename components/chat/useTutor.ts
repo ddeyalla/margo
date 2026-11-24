@@ -7,6 +7,7 @@ import { streamChat } from "@/lib/client/chat";
 import { useUnsentText } from "@/lib/client/unsent";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
 import { isParked, parkedFirst } from "@/lib/shared/parked";
+import { repairDiagrams } from "./mermaid";
 import type { BookId, ImageAttachment, ProviderId, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
 
 /** What the reader wrote in the composer: words, images, or both. */
@@ -85,6 +86,21 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       current.some((t) => t.id === thread.id) ? current.map((t) => (t.id === thread.id ? thread : t)) : [...current, thread],
     );
 
+  /** Swaps in the answer's text once its broken diagrams come back fixed. The rest of the thread is left as it is now. */
+  const fixDiagrams = async (thread: Thread) => {
+    const answer = thread.messages.at(-1);
+    if (!answer) return;
+    const content = await repairDiagrams(bookId, thread.id, answer);
+    if (content === null) return;
+    setThreads((current) =>
+      current.map((t) =>
+        t.id === thread.id
+          ? { ...t, messages: t.messages.map((m) => (m.role === "assistant" && m.createdAt === answer.createdAt ? { ...m, content, diagramsRepaired: true } : m)) }
+          : t,
+      ),
+    );
+  };
+
   /** Reads the threads again from the server, for a turn whose outcome the client never saw. */
   const reload = async () => {
     try {
@@ -135,6 +151,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
           finished = true;
           thread = event.thread;
           upsert(thread);
+          void fixDiagrams(thread);
         }
       }
       if (!finished) error ??= "The connection to the tutor dropped before the answer finished.";

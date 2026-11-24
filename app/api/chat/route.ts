@@ -3,15 +3,13 @@ import { findBook } from "@/lib/server/library";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
 import { openTurn, parseTurnRequest } from "@/lib/server/turns";
-import { CODEX_DEFAULT_MODEL } from "@/lib/server/tutor/codex";
 import { COMPACT_AT, foldPoint, sentTokens, writeSummary } from "@/lib/server/tutor/compact";
 import { buildTurn } from "@/lib/server/tutor/prompt";
-import { PROVIDERS, isProviderId } from "@/lib/server/tutor/providers";
+import { PROVIDERS, isProviderId, modelFor } from "@/lib/server/tutor/providers";
 import type { TutorTurn } from "@/lib/server/tutor/types";
 import { bookNotFound, readObject } from "@/lib/server/with-book";
-import type { ChatStreamEvent, ProviderId, TurnUsage } from "@/lib/shared/types";
+import type { ChatStreamEvent, TurnUsage } from "@/lib/shared/types";
 
-const DEFAULT_MODELS: Partial<Record<ProviderId, string>> = { codex: CODEX_DEFAULT_MODEL };
 
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
 
@@ -35,7 +33,7 @@ export async function POST(request: Request) {
 
   const [state, settings] = await Promise.all([readBookState(found.book.id), readSettings()]);
   const label = { title: state.meta?.title ?? found.book.fileTitle, author: state.meta?.author ?? found.book.fileAuthor };
-  const model = settings.models[providerId] ?? DEFAULT_MODELS[providerId] ?? null;
+  const model = modelFor(settings.models, providerId);
 
   const turn = await openTurn(found.book.id, parsed, providerId);
   if (typeof turn === "string") return badRequest(turn);

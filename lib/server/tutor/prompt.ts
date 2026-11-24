@@ -13,7 +13,10 @@ export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who 
 - Ask at most one question in a reply.
 - When you go beyond what the book says, say so plainly, for example "Beyond the book: ...".
 - If the passage or image is ambiguous or the question is unclear, say what you are assuming.
-- Write in Markdown. Use a list or a small table only when it makes the answer clearer.`;
+- Write in Markdown. Use a list or a small table only when it makes the answer clearer.
+- When a structure is easier to see than to read, such as a process, a cycle, a hierarchy, how parts connect or events in order, draw it as a Mermaid diagram in a \`\`\`mermaid fence: a flowchart, sequenceDiagram, stateDiagram-v2, mindmap or timeline. The chat is narrow, so lay a flowchart top to bottom (flowchart TD) and keep labels to a few words. Keep it small, about a dozen nodes at most, and still explain it in words. Put double quotes around any label that holds brackets, parentheses or other punctuation. Most answers need no diagram: never draw one for a single idea or something a short list says as well. Never write SVG or HTML.
+- Write math as LaTeX between double dollar signs: $$E = mc^2$$ within a sentence, or on lines of its own for a displayed equation. A single $ is a dollar sign.
+- Put code in a fenced block that names its language.`;
 
 /** What the reader's message says in the chat for each toolbar action. */
 export const ACTION_MESSAGES: Record<Exclude<TutorAction, TypedAction>, string> = {

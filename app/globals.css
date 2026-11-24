@@ -113,6 +113,12 @@
   --elevation-chip: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.25);
   /* For a control docked in a panel, like the composer: its blur stays inside a 12px gutter, so an overflow-hidden parent never cuts it off. No ring, the control draws its own. */
   --elevation-raised: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px -1px rgba(0, 0, 0, 0.25);
+  /* Code in chat: muted hues that stay above 4.5:1 on the code block. */
+  --code-keyword: #c4a7e7;
+  --code-string: #a6d189;
+  --code-number: #ef9f76;
+  --code-title: #8caaee;
+  --code-comment: #8a8a8a;
 }
 
 [data-theme="light"] {
@@ -142,6 +148,11 @@
   --elevation-canvas: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.06);
   --elevation-chip: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.08);
   --elevation-raised: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.06);
+  --code-keyword: #7c3aed;
+  --code-string: #3f7d20;
+  --code-number: #b4440f;
+  --code-title: #1d5fbf;
+  --code-comment: #6b6b74;
 }
 
 /* Book text colours only the EPUB's frame reads, so no utility needs them.
@@ -529,4 +540,48 @@
   &.selecting .endOfContent {
     top: 0;
   }
+}
+
+/* Syntax colours for highlighted code in chat (rehype-highlight's classes). Everything else keeps the block's text colour. */
+.hljs-keyword,
+.hljs-built_in,
+.hljs-literal,
+.hljs-selector-tag,
+.hljs-meta .hljs-keyword {
+  color: var(--code-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-symbol {
+  color: var(--code-string);
+}
+.hljs-number,
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable {
+  color: var(--code-number);
+}
+.hljs-title,
+.hljs-section,
+.hljs-type,
+.hljs-name {
+  color: var(--code-title);
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-meta,
+.hljs-deletion {
+  color: var(--code-comment);
+}
+.hljs-comment {
+  font-style: italic;
+}
+
+/* Display math scrolls on its own rather than widening the chat. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
 }
