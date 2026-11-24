@@ -323,10 +323,19 @@ in the book. Reference, not code — that repo is GPL-3.0.
       (`components/search`). A result in another book opens it at `?at=<anchor>`; the jump
       waits for the reader's first place, so the saved place doesn't land over it. A PDF jump
       now reads an undrawn page's text first, so it lands on the line, not the page top.
-- [ ] **Vectors only behind a gate.** First measure the BM25 misses: 20 real queries with the
+- [x] **Vectors only behind a gate.** First measure the BM25 misses: 20 real queries with the
       passage you wanted each to find. Add embeddings only for the ones keyword search can't
       reach. Local model in the same shape as the speech model (Phase 9): downloaded once,
       listed in a `models` folder, no key needed.
+      *Measured 2026-11-24, no embeddings added:* **3 of 20 missed** (top 5, and the same at top
+      10), 0 passages unfound. The 20 passages were picked at random, one each from 20 of the 59
+      books in the real library (a copy of the data folder). Claude wrote the queries from the gist
+      of each passage, so they lean on the passage's own words more than yours would; a real miss
+      rate is likely higher. The misses: "objection turned into a question" (the text says
+      *concern* and *query*: a vocabulary gap, the one only vectors fix); "life is only suffering"
+      (exact words, but common ones, ranked #48: a phrase or proximity boost would fix it);
+      "reader bored stops reading copy" (#26: *reader*/*reading*, *stops*/*stop*: stemming would
+      fix it). Rerun with `node scripts/search-misses.mjs <queries.json> --data <DATA_DIR>`.
 - [ ] If vectors land: hybrid = BM25 + vector, merged by reciprocal rank fusion, which needs no
       reranker. Say the *similarity*, higher is better, and test that ordering on five queries
       before shipping. `anything` stores sqlite-vec's distance (lower is better) and then filters
