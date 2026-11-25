@@ -11,8 +11,10 @@ import { blockText, insidePre, selectedRange, textAround, viewportRect } from ".
 import { openFailure } from "./errors";
 import { addFixations, removeFixations, skipFixations } from "./fixations";
 import { cssFamily } from "./fonts";
+import type { FoliateTTS } from "./narrator";
+import { READ_ALONG, ReadAlong } from "./readAlong";
 import { mergeLineBoxes, type Box } from "./rects";
-import { blockAt, blockOf, installSpotlight, markBlock, READING_LINE, removeSpotlight } from "./spotlight";
+import { blockAtReadingLine, blockOf, installSpotlight, markBlock, removeSpotlight } from "./spotlight";
 import { epubToc, wholeChapterSections, type FoliateTocItem } from "./toc";
 import type { PageNumber, ReaderProps, TocEntry } from "./types";
 
@@ -30,6 +32,9 @@ interface FoliateRenderer extends HTMLElement {
   heads: Element[] | null;
   next(): Promise<void>;
   prev(): Promise<void>;
+  nextSection(): Promise<void>;
+  /** Turns to the page or scrolls to the place that shows `anchor`. */
+  scrollToAnchor(anchor: Range, select?: boolean): Promise<void>;
   render(): void;
   setStyles(css: string): void;
   getContents(): { doc: Document; index: number }[];
@@ -53,7 +58,19 @@ interface FoliateView extends HTMLElement {
   addAnnotation(annotation: { value: string }): Promise<unknown>;
   deleteAnnotation(annotation: { value: string }): Promise<unknown>;
   getProgressOf(index: number, range: Range): { tocItem?: FoliateTocItem | null };
+  /** The open section's TTS, made by `initTTS` and made again only for a new section. */
+  tts: FoliateTTS | null;
+  initTTS(granularity: "word" | "sentence", highlight: (range: Range) => void): Promise<void>;
 }
+
+/** Read-along, once the reader has it open. Paused, the last word read stays lit. */
+export interface ReadAloud {
+  playing: boolean;
+  rate: number;
+  /** The chosen voice's voiceURI, or null for the default on-device voice. */
+  voice: string | null;
+}
+
 
 interface OverlayerModule {
   Overlayer: { highlight(rects: Iterable<Box>, options?: { color?: string }): SVGGElement };
@@ -129,6 +146,8 @@ const GESTURE_GAP_MS = 400;
 const COLUMN_WIDTH = "570px";
 /** Keys that move through the book. */
 const NAV_KEYS = new Set(["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+/** Pages mode's top and foot margin while the read-along controls are open: their height and offset, and a little air. */
+const PAGE_MARGIN_UNDER_CONTROLS = "64px";
 /** Panes at least this wide show two columns side by side in Pages mode. */
 const TWO_COLUMNS_FROM = 1040;
 
@@ -216,6 +235,7 @@ pre { background-color: ${token("--prose-wash")} !important; padding: 0.9em 1.1e
 img { background-color: ${token("--prose-image")} !important; border-radius: 4px; }
 hr { border: 0 !important; height: 1px; background-color: ${token("--prose-rule")} !important; }
 ::selection { background: ${token("--color-select-soft")}; }
+::highlight(${READ_ALONG}) { background-color: ${token("--color-read-along")}; }
 `;
 };
 
@@ -228,6 +248,8 @@ export function EpubReader({
   boldStarts,
   font,
   spotlight,
+  readAloud,
+  onReadAloudStop,
   onInteract,
   onReady,
   onSelectionChange,
@@ -243,6 +265,10 @@ export function EpubReader({
   font: ReadingFont;
   /** Dims all but the paragraph at the reading line. Colours only, so the place holds. */
   spotlight: boolean;
+  /** Reads the book aloud, lighting each word; null while read-along is closed. */
+  readAloud: ReadAloud | null;
+  /** Read-along stopped by itself: the book ended, the voice failed, or the reader moved to another chapter. */
+  onReadAloudStop(): void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
@@ -262,6 +288,11 @@ export function EpubReader({
   /* Turns to the next or previous section, ignoring presses while a turn is under way. */
   const turnRef = useRef<((direction: 1 | -1) => void) | null>(null);
   const [atSectionEnd, setAtSectionEnd] = useState(false);
+  /* The book whose first section is on screen, so read-along and its page margin wait for it. */
+  const [readyBook, setReadyBook] = useState<string | null>(null);
+  const ready = readyBook === bookId;
+  /* Read-along: the voice, the word it has reached, and whether it is reading now. Made once the page mounts. */
+  const readAlongRef = useRef<ReadAlong | null>(null);
 
   const chapterOf = (item: FoliateTocItem | null | undefined) => (item && tocRef.current.get(item)) ?? null;
 
@@ -297,9 +328,11 @@ export function EpubReader({
       onSelectionChange(null);
     },
     async goTo(anchor) {
+      readAlongRef.current?.interrupt();
       if (anchor.kind === "epub") await viewRef.current?.goTo(anchor.cfi);
     },
     async findPassage(anchor, text) {
+      readAlongRef.current?.interrupt();
       const view = viewRef.current;
       if (anchor.kind !== "epub" || !view) return false;
       const landed = await view.goTo(anchor.cfi);
@@ -314,6 +347,7 @@ export function EpubReader({
       }
     },
     async goToEntry(entry) {
+      readAlongRef.current?.interrupt();
       if (entry.target.kind === "epub") await viewRef.current?.goTo(entry.target.href);
     },
     turnPage(direction) {
@@ -321,6 +355,7 @@ export function EpubReader({
       void (direction === 1 ? renderer?.next() : renderer?.prev());
     },
     seek(fraction) {
+      readAlongRef.current?.interrupt();
       if (openRef.current) void viewRef.current?.goToFraction(fraction);
     },
     showHighlight(highlight, made) {
@@ -378,16 +413,51 @@ export function EpubReader({
   const refreshSpot = useEffectEvent(() => {
     const renderer = openRef.current ? viewRef.current?.renderer : null;
     const host = hostRef.current;
-    if (!renderer || !host || !spotlightNow() || pinnedRef.current) return;
-    /* The reading line, in the page's coordinates, then in each section's own frame. */
-    const area = host.getBoundingClientRect();
-    const px = area.left + area.width * (pagedRef.current ? 0.3 : 0.5);
-    const py = area.top + area.height * READING_LINE;
-    for (const { doc } of renderer.getContents()) {
-      const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
-      if (frame) markBlock(doc, blockAt(doc, px - frame.left, py - frame.top));
-    }
+    /* While a voice reads, the light stays on the paragraph being read. */
+    if (!renderer || !host || !spotlightNow() || pinnedRef.current || readAlongRef.current?.reading) return;
+    for (const { doc } of renderer.getContents()) markBlock(doc, blockAtReadingLine(doc, host, pagedRef.current));
   });
+
+  /* Read-along for this page, made once its view can exist. */
+  const emitReadAloudStop = useEffectEvent(onReadAloudStop);
+  useEffect(() => {
+    const readAlong = new ReadAlong({
+      view: () => (openRef.current ? viewRef.current : null),
+      section: () => sectionRef.current,
+      host: () => hostRef.current,
+      paged: () => pagedRef.current,
+      spotlight: () => spotlightNow(),
+      blockAtReadingLine: (doc) => (hostRef.current ? blockAtReadingLine(doc, hostRef.current, pagedRef.current) : null),
+      stopped: () => emitReadAloudStop(),
+    });
+    readAlongRef.current = readAlong;
+    return () => {
+      readAlong.close();
+      readAlongRef.current = null;
+    };
+  }, []);
+
+  /* Opening plays from the paragraph in view; a new speed or voice goes on from the word it had reached. */
+  const playing = readAloud?.playing ?? false;
+  const open = readAloud !== null;
+  const rate = readAloud?.rate ?? 1;
+  const voice = readAloud?.voice ?? null;
+  /* In Pages mode the controls float over the page's foot, so the page keeps its last line clear of them. foliate
+     lays the page out again and returns to the passage. */
+  useEffect(() => {
+    const renderer = ready && openRef.current ? viewRef.current?.renderer : null;
+    if (!renderer) return;
+    if (open && mode === "pages") renderer.setAttribute("margin", PAGE_MARGIN_UNDER_CONTROLS);
+    else renderer.removeAttribute("margin");
+  }, [ready, open, mode]);
+
+  /* A play asked for while the book is still opening runs once its first section is on screen. */
+  useEffect(() => {
+    const readAlong = readAlongRef.current;
+    if (!open) readAlong?.close();
+    else if (!playing) readAlong?.pause();
+    else if (ready) void readAlong?.play(rate, voice);
+  }, [ready, open, playing, rate, voice]);
 
   /* Turning it on or off, or new colours, restyles every section on screen. */
   useEffect(() => {
@@ -398,6 +468,8 @@ export function EpubReader({
       if (spotlight) installSpotlight(doc, spotColors());
       else removeSpotlight(doc);
     }
+    const reading = readAlongRef.current?.block();
+    if (spotlight && reading?.ownerDocument) markBlock(reading.ownerDocument, reading);
     refreshSpot();
   }, [spotlight, theme]);
 
@@ -434,6 +506,8 @@ export function EpubReader({
   useEffect(() => {
     const view = openRef.current ? viewRef.current : null;
     if (!view) return;
+    /* Marking rewrites the text read-along walks, so its words are found again from the page. */
+    readAlongRef.current?.forget();
     for (const { doc } of view.renderer.getContents()) {
       if (boldStarts) addFixations(doc);
       else removeFixations(doc);
@@ -517,6 +591,7 @@ export function EpubReader({
       if (boldStartsNow()) addFixations(doc);
       if (spotlightNow()) installSpotlight(doc, spotColors());
       sectionRef.current = { doc, index };
+      readAlongRef.current?.sectionLoaded();
       emitSelectionRect();
       doc.addEventListener("pointerdown", () => {
         pointerDown = true;
@@ -658,12 +733,14 @@ export function EpubReader({
       wholeChaptersRef.current = wholeChapterSections(entries, sections.map((s) => s.linear !== "no"));
       emitReady({ title: metaText(metadata?.title), author: metaText(metadata?.author), toc: [...tocRef.current.values()] });
       await view.init({ lastLocation: initialCfi(), showTextStart: true });
+      if (!disposed) setReadyBook(bookId);
     })().catch((error: unknown) => {
       if (!disposed) emitError(openFailure("epub", error));
     });
 
     return () => {
       disposed = true;
+      readAlongRef.current?.close();
       cancelAnimationFrame(frame);
       clearTimeout(settle);
       columns.disconnect();
@@ -679,7 +756,7 @@ export function EpubReader({
   return (
     <div className="relative size-full bg-page">
       <div ref={hostRef} className="size-full" />
-      {atSectionEnd ? (
+      {atSectionEnd && !readAloud ? (
         <button
           type="button"
           onClick={() => {
