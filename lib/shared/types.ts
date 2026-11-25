@@ -247,6 +247,22 @@ export interface Cue {
   lastRating: Rating | null;
 }
 
+/**
+ * What the reader said before they saw an answer: how sure they were, from 0 to 100, and what they were thinking.
+ * Either can be skipped, which is stored as null.
+ */
+export interface Stance {
+  confidence: number | null;
+  thinking: string | null;
+}
+
+/** One rating of a card set, kept so confidence can be read back: a right answer at 30 % is not one at 100 %. */
+export interface ReviewRecord extends Stance {
+  at: string;
+  cueId: string;
+  rating: Rating;
+}
+
 /** The cards made from one passage: one fact, a few ways to recall it, one schedule. */
 export interface CardSet {
   id: string;
@@ -261,6 +277,8 @@ export interface CardSet {
   /** The study day of the set's first rating, which counts against that day's new limit. */
   introducedOn: string | null;
   createdAt: string;
+  /** The latest ratings, oldest first, at most `HISTORY_LIMIT`. Absent on sets saved before it was kept. */
+  history?: ReviewRecord[];
 }
 
 export interface BookState {

@@ -215,14 +215,39 @@ answer and a free-text thinking field on every instrument; `shared/25-confidence
 is the argument, and it holds: *wrong + high confidence is the strongest signal you can
 receive — a committed misconception.*
 
-- [ ] Every card rating and quiz answer stores two extra things: a confidence of 0–100,
+- [x] Every card rating and quiz answer stores two extra things: a confidence of 0–100,
       and what the reader was thinking when they answered. Both optional, never required.
-- [ ] One step each: a rail, and one line of text. Skipping is a first-class answer.
+      *Each rating now goes into the set's `history` (`ReviewRecord`: time, cue, rating,
+      confidence or null, thinking or null), the newest 50 kept. Quizzes don't exist yet;
+      Phase 17 asks the same two things with the same `StanceInput`.*
+- [x] One step each: a rail, and one line of text. Skipping is a first-class answer.
+      *Both sit under the question, before the answer shows, so the answer can't colour
+      them. The rail starts at "Skipped" and has a Skip link once moved; Enter in the line
+      shows the answer, and the rail leaves Space and 1–4 to the sheet.*
 - [ ] Retention (Phase 18) reads them: a card answered right at 30 % is not the same as one
       answered right at 100 %, and a card answered wrong at 100 % is worth resurfacing
       sooner.
-- [ ] Card generation (Phase 2's prompt) reads them: a cue that keeps drawing a confident
+      *Resurfacing is done: a cue last answered wrong while sure (70 % or more) is picked
+      6 times as often as an untried one, against 4 for a plain Again. The retention
+      weighting is Phase 18's and is ticked there.*
+- [x] Card generation (Phase 2's prompt) reads them: a cue that keeps drawing a confident
       wrong answer is a bad cue, not a bad reader.
+      *Twice wrong while sure marks a cue in the Cards tab, with "Ask for a better card".
+      The request lists that cue with its count and the reader's last thinking line, and
+      `prompt.md` says to ask for the fact from a side where that wrong answer can't come
+      up.*
+
+Labels (`lib/shared/confidence.ts`): right at 70 % or more is **held**, 40–69 **unsure**,
+under 40 a **lucky guess**; wrong at 70 % or more is **confidently wrong**, under 70 a
+**known gap**. The end of a review session counts each and lists the lucky and the
+confidently wrong questions; each card in the Cards tab shows its last label.
+
+Tried **2026-11-25** with Claude Code on Sonnet 5.5, on *Continuous Discovery Habits*,
+against scratch data. A seeded card with two confident wrong answers showed the flag. In
+review, that cue came up, the rail at 85 % and a thinking line went in before the answer,
+Good saved both into `history`, and the end screen read "1 held". "Ask for a better card"
+came back with one new card asking which group decided what to build, set against the
+project manager the reader had confused it with.
 
 Done when a review session can tell a lucky guess from a held fact in one glance.
 

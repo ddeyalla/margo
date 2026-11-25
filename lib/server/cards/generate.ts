@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { Cue } from "@/lib/shared/types";
+import { lastRecord, misconceptions } from "@/lib/shared/confidence";
+import type { CardSet } from "@/lib/shared/types";
 import type { BookLabel } from "../tutor/prompt";
 import type { Provider, TutorMessage } from "../tutor/types";
 import { parseCardReply, type CardReply } from "./reply";
@@ -17,8 +18,23 @@ export interface CardSource {
 let system: string | null = null;
 const cardSystem = () => (system ??= readFileSync(path.join(/*turbopackIgnore: true*/ process.cwd(), "lib/server/cards/prompt.md"), "utf8"));
 
-export const cardRequest = (book: BookLabel, source: CardSource, existing: Cue[]): string =>
-  [
+/**
+ * The cues the passage already has, one per line. A cue that drew confident wrong answers says so, with what the
+ * reader was thinking the last time: that is evidence the question misleads, not that the reader is careless.
+ */
+const existingCues = (set: CardSet): string =>
+  set.cues
+    .map((cue) => {
+      const wrong = misconceptions(set, cue.id);
+      if (!wrong) return `- ${cue.question}`;
+      const thinking = lastRecord(set, cue.id)?.thinking;
+      return `- ${cue.question}\n  (Answered wrong while sure ${wrong === 1 ? "once" : `${wrong} times`}.${thinking ? ` Last time the reader was thinking: "${thinking}"` : ""})`;
+    })
+    .join("\n");
+
+export const cardRequest = (book: BookLabel, source: CardSource, existing: CardSet | null): string => {
+  const misled = existing?.cues.some((cue) => misconceptions(existing, cue.id) > 0) ?? false;
+  return [
     `Book: ${book.title}${book.author ? `, by ${book.author}` : ""}`,
     source.chapterTitle ? `Where: ${source.chapterTitle}` : null,
     "",
@@ -31,12 +47,17 @@ export const cardRequest = (book: BookLabel, source: CardSource, existing: Cue[]
     "Text just after the selection:",
     `<after>\n${source.after || "(end of the section)"}\n</after>`,
     "",
-    existing.length
-      ? `The reader already has these cards on this passage. Add only cards that start somewhere new, for the same fact. If these already cover it, return no cards.\n${existing.map((cue) => `- ${cue.question}`).join("\n")}\n\nMake flashcards for this passage.`
+    existing?.cues.length
+      ? `The reader already has these cards on this passage. Add only cards that start somewhere new, for the same fact. If these already cover it, return no cards.\n${existingCues(existing)}\n\n${
+          misled
+            ? "A card the reader answered wrong while sure is a bad cue, not a bad reader: its wording leads to a wrong answer that feels right. Write one card that asks for the same fact from somewhere that can't be misread that way, even if the others already cover the fact.\n\n"
+            : ""
+        }Make flashcards for this passage.`
       : "Make flashcards for this passage.",
   ]
     .filter((line) => line !== null)
     .join("\n");
+};
 
 const collect = async (provider: Provider, messages: TutorMessage[], model: string | null, signal: AbortSignal): Promise<string> => {
   let text = "";

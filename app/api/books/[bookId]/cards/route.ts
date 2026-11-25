@@ -10,6 +10,7 @@ import { readBody, withBook } from "@/lib/server/with-book";
 import { addCards, changeCards, type CardChange } from "@/lib/shared/cards";
 import { sameAnchor } from "@/lib/shared/annotations";
 import { trimAfter, trimBefore } from "@/lib/shared/context";
+import { cleanStance, isConfidence } from "@/lib/shared/confidence";
 import { isRating } from "@/lib/shared/types";
 
 const MAX_FIELD = 2_000;
@@ -43,7 +44,7 @@ export const POST = withBook(async ({ book, request }) => {
 
   const [state, settings] = await Promise.all([readBookState(book.id), readSettings()]);
   const label = { title: state.meta?.title ?? book.fileTitle, author: state.meta?.author ?? book.fileAuthor };
-  const existing = state.cardSets.find((set) => sameAnchor(set.anchor, anchor))?.cues ?? [];
+  const existing = state.cardSets.find((set) => sameAnchor(set.anchor, anchor)) ?? null;
   const model = modelFor(settings.models, providerId);
 
   let reply;
@@ -85,9 +86,13 @@ const parseChange = (body: unknown, method: "PATCH" | "DELETE"): CardChange | st
     return { op: "edit-cue", setId, cueId: body.cueId, question, answer };
   }
   if (body.op === "review" && isRating(body.rating) && Number.isInteger(body.reps)) {
-    return { op: "review", setId, cueId: body.cueId, rating: body.rating, reps: body.reps as number };
+    const confidence = body.confidence ?? null;
+    const thinking = body.thinking ?? null;
+    if (confidence !== null && !isConfidence(confidence)) return "confidence is a whole number from 0 to 100, or null.";
+    if (thinking !== null && typeof thinking !== "string") return "thinking is a line of text, or null.";
+    return { op: "review", setId, cueId: body.cueId, rating: body.rating, reps: body.reps as number, ...cleanStance(confidence, thinking) };
   }
-  return 'PATCH takes { op: "edit-cue", setId, cueId, question, answer } or { op: "review", setId, cueId, rating, reps }.';
+  return 'PATCH takes { op: "edit-cue", setId, cueId, question, answer } or { op: "review", setId, cueId, rating, reps, confidence?, thinking? }.';
 };
 
 /** Edits a card or records a review (PATCH), or deletes a card or a set (DELETE). Answers with every card set. */
