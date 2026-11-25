@@ -23,7 +23,7 @@ import { useResolvedTheme } from "@/components/ui/theme";
 import { patchBookState } from "@/lib/client/api";
 import { hasUnsentText } from "@/lib/client/unsent";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
-import type { Anchor, BookFormat, BookId, BookState, Highlight, PanelTab, QuotedPassage, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
+import type { Anchor, BookFormat, BookId, BookState, CardSet, Highlight, PanelTab, QuotedPassage, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { BookHeader, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
 import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
@@ -168,6 +168,11 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
     showTab("cards");
     void cards.make(selection, provider);
   };
+
+  /* A card that misleads the reader goes back to the tutor with its passage; the request says which cue misled. */
+  const remakeCards = useStableCallback((set: CardSet) =>
+    makeCards({ text: set.quote, before: "", after: "", anchor: set.anchor, chapterTitle: set.chapterTitle, rect: { top: 0, left: 0, width: 0, height: 0 } }),
+  );
 
   const openNote = useStableCallback((noteId: string) => {
     showTab("notes");
@@ -397,6 +402,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
             onQuote={quoteHighlight}
             cards={cards}
             onReview={startReview}
+            onRemakeCards={provider ? remakeCards : null}
             panelOpen={panel.open}
           />
         </ResizablePanel>

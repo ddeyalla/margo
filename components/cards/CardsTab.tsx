@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpenText, Pencil, Play, Trash2, X } from "lucide-react";
+import { BookOpenText, Pencil, Play, RefreshCw, Trash2, X } from "lucide-react";
 import { Button, EmptyState, IconButton, Spinner } from "@/components/ui";
 import { ChapterSections } from "@/components/annotations/ChapterSections";
 import { UNTITLED_SECTION } from "@/lib/shared/annotations";
@@ -9,6 +9,8 @@ import { placeLabel } from "@/lib/shared/place";
 import { intervalLabel, isDue, reviewQueue } from "@/lib/shared/schedule";
 import { useUnsentText } from "@/lib/client/unsent";
 import type { Anchor, CardSet, Cue } from "@/lib/shared/types";
+import { SIGNAL_LABELS, isMisleading, lastRecord, misconceptions, recordSignal } from "@/lib/shared/confidence";
+import { SIGNAL_TONE } from "./Stance";
 import type { CardsApi } from "./useCards";
 
 const fieldClass =
@@ -53,8 +55,31 @@ function CueEditor({ cue, onSave, onCancel }: { cue: Cue; onSave(question: strin
   );
 }
 
+/** How the cue was last answered, when the reader said how sure they were: "Lucky guess · 30 %". */
+function LastAnswer({ set, cue }: { set: CardSet; cue: Cue }) {
+  const last = lastRecord(set, cue.id);
+  const signal = last && recordSignal(last);
+  if (!last || !signal) return null;
+  return (
+    <p className={`mt-0.5 text-[11px] tabular-nums ${SIGNAL_TONE[signal]}`} title={last.thinking ? `You were thinking: ${last.thinking}` : undefined}>
+      {SIGNAL_LABELS[signal]} · {last.confidence} %
+    </p>
+  );
+}
+
 /** Card sets by chapter in reading order, with the review button and any cards still being written. */
-export function CardsTab({ cards, onReview, onJump }: { cards: CardsApi; onReview(): void; onJump(anchor: Anchor): void }) {
+export function CardsTab({
+  cards,
+  onReview,
+  onJump,
+  onRemake,
+}: {
+  cards: CardsApi;
+  onReview(): void;
+  onJump(anchor: Anchor): void;
+  /** Asks the tutor for a better card on the set's passage; null when there is no tutor to ask. */
+  onRemake: ((set: CardSet) => void) | null;
+}) {
   const [editing, setEditing] = useState<string | null>(null);
   const now = new Date();
   const ready = reviewQueue(cards.sets, now).length;
@@ -151,6 +176,18 @@ export function CardsTab({ cards, onReview, onJump }: { cards: CardsApi; onRevie
                     <li key={cue.id} className="group/cue relative pr-14">
                       <p className="text-[13px] leading-snug text-paper">{cue.question}</p>
                       <p className="mt-0.5 text-label leading-snug text-dim">{cue.answer}</p>
+                      <LastAnswer set={set} cue={cue} />
+                      {isMisleading(set, cue.id) ? (
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] leading-snug text-danger">
+                          <span>Answered wrong while sure {misconceptions(set, cue.id)} times. The question may be what misleads.</span>
+                          {onRemake ? (
+                            <button type="button" onClick={() => onRemake(set)} className="press inline-flex items-center gap-1 font-medium underline-offset-2 hover:underline">
+                              <RefreshCw aria-hidden className="size-3" />
+                              Ask for a better card
+                            </button>
+                          ) : null}
+                        </p>
+                      ) : null}
                       <div className="absolute right-0 top-0 flex gap-0.5 opacity-0 group-hover/cue:opacity-100 focus-within:opacity-100">
                         <IconButton label="Edit card" size="sm" onClick={() => setEditing(cue.id)}>
                           <Pencil />

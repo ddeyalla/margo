@@ -11,7 +11,7 @@ import { ChatTab } from "@/components/chat/ChatTab";
 import type { QuoteDraft } from "@/components/chat/Quotes";
 import { usePill } from "@/components/ui/pill";
 import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
-import type { Anchor, Highlight, PanelTab, QuotedPassage } from "@/lib/shared/types";
+import type { Anchor, CardSet, Highlight, PanelTab, QuotedPassage } from "@/lib/shared/types";
 
 /* New content fades in after a pointer choice only; a keyboard switch, used far more often, is instant. */
 const panelClass =
@@ -45,6 +45,7 @@ export const SidePanel = memo(function SidePanel({
   onQuote,
   cards,
   onReview,
+  onRemakeCards,
   panelOpen,
 }: {
   tab: PanelTab;
@@ -68,6 +69,8 @@ export const SidePanel = memo(function SidePanel({
   onQuote(highlight: Highlight): void;
   cards: CardsApi;
   onReview(): void;
+  /** Asks the tutor for a better card on a set's passage, or null with no tutor to ask. */
+  onRemakeCards: ((set: CardSet) => void) | null;
   /** The panel is expanded, so its tab can be seen. */
   panelOpen: boolean;
 }) {
@@ -134,7 +137,7 @@ export const SidePanel = memo(function SidePanel({
         />
       </TabsPanel>
       <TabsPanel value="cards" className={panelClass}>
-        <CardsTab cards={cards} onReview={onReview} onJump={onJump} />
+        <CardsTab cards={cards} onReview={onReview} onJump={onJump} onRemake={onRemakeCards} />
       </TabsPanel>
     </Tabs>
   );

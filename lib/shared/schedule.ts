@@ -1,5 +1,6 @@
 import { fsrs, generatorParameters, Rating as FsrsRating, State, type Card, type Grade } from "ts-fsrs";
-import type { CardSet, Cue, Rating, Schedule, ScheduleState } from "./types";
+import { lastRecord, recordSignal } from "./confidence";
+import type { CardSet, Cue, Rating, Schedule, ScheduleState, Stance } from "./types";
 
 const scheduler = fsrs(
   generatorParameters({
@@ -112,11 +113,20 @@ export const intervalLabel = (from: Date, to: Date): string => {
 /** Relative odds of showing a cue, by its last rating: weaker cues come up more, none is ever left out. */
 const CUE_WEIGHTS: Record<Rating | "untried", number> = { again: 4, hard: 3, good: 2, easy: 1, untried: 3 };
 
+/** A cue last answered wrong with confidence holds a belief that is false: it comes up more than any other. */
+const MISCONCEPTION_WEIGHT = 6;
+
+const cueWeight = (set: CardSet, cue: Cue): number => {
+  const last = lastRecord(set, cue.id);
+  if (last && recordSignal(last) === "misconception") return MISCONCEPTION_WEIGHT;
+  return CUE_WEIGHTS[cue.lastRating ?? "untried"];
+};
+
 /** The cue to show next. `random` is in [0, 1), passed in so the choice can be tested. */
 export const pickCue = (set: CardSet, random: number): Cue => {
   const pinned = set.learningCueId && set.cues.find((cue) => cue.id === set.learningCueId);
   if (pinned) return pinned;
-  const weights = set.cues.map((cue) => CUE_WEIGHTS[cue.lastRating ?? "untried"]);
+  const weights = set.cues.map((cue) => cueWeight(set, cue));
   let target = random * weights.reduce((sum, w) => sum + w, 0);
   for (const [i, cue] of set.cues.entries()) {
     target -= weights[i];
@@ -125,12 +135,15 @@ export const pickCue = (set: CardSet, random: number): Cue => {
   return set.cues[set.cues.length - 1];
 };
 
-export interface Review {
+export interface Review extends Partial<Stance> {
   cueId: string;
   rating: Rating;
   /** The set's `schedule.reps` when the cue was shown. A stale or repeated rating carries an old count and is ignored. */
   reps: number;
 }
+
+/** Ratings a set keeps in its history; older ones fall off. Enough for any read of recent confidence. */
+export const HISTORY_LIMIT = 50;
 
 /** Applies one rating. Returns the set unchanged when the review is stale or names a cue the set no longer has. */
 export const applyReview = (set: CardSet, review: Review, now: Date): CardSet => {
@@ -142,6 +155,10 @@ export const applyReview = (set: CardSet, review: Review, now: Date): CardSet =>
     cues: set.cues.map((cue) => (cue.id === review.cueId ? { ...cue, lastRating: review.rating } : cue)),
     learningCueId: inLearning(schedule) ? review.cueId : null,
     introducedOn: set.introducedOn ?? studyDay(now),
+    history: [
+      ...(set.history ?? []),
+      { at: now.toISOString(), cueId: review.cueId, rating: review.rating, confidence: review.confidence ?? null, thinking: review.thinking ?? null },
+    ].slice(-HISTORY_LIMIT),
   };
 };
 

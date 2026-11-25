@@ -35,3 +35,7 @@ Reply with exactly one JSON object and nothing else: no code fence, no notes, no
 or, when there is nothing worth a card:
 
 {"fact": null, "reason": "why, in one sentence", "cards": []}
+
+## When a card misled the reader
+
+The reader may say a card they already have was answered wrong while they were sure, and what they were thinking. That card's wording points at a wrong answer that feels right. Don't repeat its starting point. Ask for the same fact from a side where that wrong answer can't come up, and make the difference the reader missed the thing the question turns on.
