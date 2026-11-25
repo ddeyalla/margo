@@ -324,6 +324,8 @@ export function BookWorkspace({
       setError(failure);
       /* A book that failed to open has no page to spotlight, and the header must come back. */
       if (failure && spotlight) endSpotlight();
+      /* Nor anything to read aloud, and its controls go with the page. */
+      if (failure) setReadAloud(null);
     },
     onHighlightClick: (id, rect) => setMenu({ id, rect }),
   };

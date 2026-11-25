@@ -1,4 +1,4 @@
-import { localVoices, Narrator, pickVoice, type FoliateTTS } from "./narrator";
+import { loadLocalVoices, Narrator, pickVoice, type FoliateTTS } from "./narrator";
 import { blockOf, litBlock, markBlock } from "./spotlight";
 
 /** The word being read is painted with this CSS highlight, in the section's own window. */
@@ -43,6 +43,8 @@ export class ReadAlong {
   #word: Range | null = null;
   /* The narrator is turning to the next section, so that section's load is not the reader moving by hand. */
   #advancing = false;
+  /* Each play request, so one overtaken while the voices load is dropped. */
+  #request = 0;
   /** A voice is reading now. */
   reading = false;
 
@@ -75,17 +77,27 @@ export class ReadAlong {
   }
 
   /** Starts, or goes on from the last word, at this speed and in this voice (a voiceURI, or null for the default). */
-  play(rate: number, voice: string | null) {
+  async play(rate: number, voice: string | null) {
     const section = this.#env.section();
     if (!this.#env.view() || !section) return;
-    this.#narrator.rate = rate;
-    this.#narrator.voice = pickVoice(localVoices(), voice, section.doc.documentElement.lang || navigator.language);
+    const request = ++this.#request;
     this.reading = true;
-    void this.#narrator.play(this.#startFrom(section.doc));
+    const chosen = pickVoice(await loadLocalVoices(), voice, section.doc.documentElement.lang || navigator.language);
+    /* Paused, closed or played again while the voices were being listed. */
+    if (request !== this.#request || !this.reading) return;
+    /* With no on-device voice there is nothing that may read the book: the browser's own pick could be remote. */
+    if (!chosen) {
+      this.reading = false;
+      return this.#env.stopped();
+    }
+    this.#narrator.rate = rate;
+    this.#narrator.voice = chosen;
+    await this.#narrator.play(this.#startFrom(section.doc));
   }
 
   /** Stops the voice and leaves the word lit. */
   pause() {
+    this.#request += 1;
     this.reading = false;
     this.#narrator.pause();
   }

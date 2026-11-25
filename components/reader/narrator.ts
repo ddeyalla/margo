@@ -15,6 +15,24 @@ export interface FoliateTTS {
 export const localVoices = (): SpeechSynthesisVoice[] =>
   typeof speechSynthesis === "undefined" ? [] : speechSynthesis.getVoices().filter((voice) => voice.localService);
 
+/**
+ * The on-device voices once the browser has listed them. Chromium lists none until it has asked the system,
+ * then fires voiceschanged; a machine with no voices never fires it, so the wait gives up after `timeoutMs`.
+ */
+export const loadLocalVoices = (timeoutMs = 1500): Promise<SpeechSynthesisVoice[]> => {
+  if (typeof speechSynthesis === "undefined") return Promise.resolve([]);
+  if (speechSynthesis.getVoices().length) return Promise.resolve(localVoices());
+  return new Promise((resolve) => {
+    const done = () => {
+      speechSynthesis.removeEventListener("voiceschanged", done);
+      clearTimeout(timer);
+      resolve(localVoices());
+    };
+    const timer = setTimeout(done, timeoutMs);
+    speechSynthesis.addEventListener("voiceschanged", done);
+  });
+};
+
 /** The voice for a saved voiceURI, else this machine's default on-device voice for the language, else any. */
 export const pickVoice = (voices: SpeechSynthesisVoice[], uri: string | null, lang: string): SpeechSynthesisVoice | null => {
   const saved = uri ? voices.find((voice) => voice.voiceURI === uri) : undefined;
@@ -53,7 +71,7 @@ export class Narrator {
   /** Starts at `from`, or at the last word read when null. */
   async play(from: Range | null) {
     const generation = this.#silence();
-    const tts = await this.#hooks.tts();
+    const tts = await this.#tts();
     if (generation !== this.#generation) return;
     if (!tts) return this.#fail();
     let ssml: string | undefined;
@@ -78,6 +96,15 @@ export class Narrator {
     return this.#generation;
   }
 
+  /* A TTS that could not be made, the import of foliate's tts.js failing for one, is the same as none. */
+  async #tts() {
+    try {
+      return await this.#hooks.tts();
+    } catch {
+      return null;
+    }
+  }
+
   #fail() {
     this.#silence();
     this.#hooks.stopped("error");
@@ -94,12 +121,12 @@ export class Narrator {
   }
 
   #say(tts: FoliateTTS, { text, marks }: ReturnType<typeof ssmlToText>, generation: number) {
+    /* Never speak without an on-device voice: left unset, the browser picks its own, which may send the text away. */
+    if (typeof speechSynthesis === "undefined" || !this.voice?.localService) return this.#fail();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = this.rate;
-    if (this.voice) {
-      utterance.voice = this.voice;
-      utterance.lang = this.voice.lang;
-    }
+    utterance.voice = this.voice;
+    utterance.lang = this.voice.lang;
     /* The first word lights before its boundary arrives, so the highlight never lags the voice. */
     tts.setMark(marks[0].name);
     utterance.onboundary = (event) => {
@@ -120,13 +147,19 @@ export class Narrator {
 
   async #nextSection(generation: number) {
     this.#utterance = null;
-    const turned = await this.#hooks.nextSection();
+    let turned: boolean;
+    try {
+      turned = await this.#hooks.nextSection();
+    } catch {
+      if (generation === this.#generation) this.#fail();
+      return;
+    }
     if (generation !== this.#generation) return;
     if (!turned) {
       this.#silence();
       return this.#hooks.stopped("end");
     }
-    const tts = await this.#hooks.tts();
+    const tts = await this.#tts();
     if (generation !== this.#generation) return;
     if (!tts) return this.#fail();
     this.#speak(tts, tts.start(), generation);

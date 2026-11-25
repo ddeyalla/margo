@@ -288,6 +288,9 @@ export function EpubReader({
   /* Turns to the next or previous section, ignoring presses while a turn is under way. */
   const turnRef = useRef<((direction: 1 | -1) => void) | null>(null);
   const [atSectionEnd, setAtSectionEnd] = useState(false);
+  /* The book whose first section is on screen, so read-along and its page margin wait for it. */
+  const [readyBook, setReadyBook] = useState<string | null>(null);
+  const ready = readyBook === bookId;
   /* Read-along: the voice, the word it has reached, and whether it is reading now. Made once the page mounts. */
   const readAlongRef = useRef<ReadAlong | null>(null);
 
@@ -442,18 +445,19 @@ export function EpubReader({
   /* In Pages mode the controls float over the page's foot, so the page keeps its last line clear of them. foliate
      lays the page out again and returns to the passage. */
   useEffect(() => {
-    const renderer = openRef.current ? viewRef.current?.renderer : null;
+    const renderer = ready && openRef.current ? viewRef.current?.renderer : null;
     if (!renderer) return;
     if (open && mode === "pages") renderer.setAttribute("margin", PAGE_MARGIN_UNDER_CONTROLS);
     else renderer.removeAttribute("margin");
-  }, [open, mode]);
+  }, [ready, open, mode]);
 
+  /* A play asked for while the book is still opening runs once its first section is on screen. */
   useEffect(() => {
     const readAlong = readAlongRef.current;
     if (!open) readAlong?.close();
     else if (!playing) readAlong?.pause();
-    else readAlong?.play(rate, voice);
-  }, [open, playing, rate, voice]);
+    else if (ready) void readAlong?.play(rate, voice);
+  }, [ready, open, playing, rate, voice]);
 
   /* Turning it on or off, or new colours, restyles every section on screen. */
   useEffect(() => {
@@ -729,6 +733,7 @@ export function EpubReader({
       wholeChaptersRef.current = wholeChapterSections(entries, sections.map((s) => s.linear !== "no"));
       emitReady({ title: metaText(metadata?.title), author: metaText(metadata?.author), toc: [...tocRef.current.values()] });
       await view.init({ lastLocation: initialCfi(), showTextStart: true });
+      if (!disposed) setReadyBook(bookId);
     })().catch((error: unknown) => {
       if (!disposed) emitError(openFailure("epub", error));
     });

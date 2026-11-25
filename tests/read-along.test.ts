@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { addFixations, FIXATION_TAG } from "@/components/reader/fixations";
-import { pickVoice } from "@/components/reader/narrator";
+import { Narrator, pickVoice, type FoliateTTS } from "@/components/reader/narrator";
+import { ReadAlong } from "@/components/reader/readAlong";
 import { markAt, ssmlToText } from "@/components/reader/ssml";
 import { TTS } from "@/public/vendor/foliate-js/tts.js";
 import { textWalker } from "@/public/vendor/foliate-js/text-walker.js";
@@ -154,5 +155,97 @@ describe("pickVoice", () => {
   it("falls back to the default voice for a language it has none for", () => {
     expect(pickVoice(voices, null, "ja")?.name).toBe("Samantha");
     expect(pickVoice([], null, "en")).toBeNull();
+  });
+});
+
+/* The browser's speech engine, with these voices; speak() records what would have been said. */
+const fakeSpeech = (voices: SpeechSynthesisVoice[]) => {
+  const spoken: { text: string; voice: SpeechSynthesisVoice | null }[] = [];
+  vi.stubGlobal("speechSynthesis", {
+    getVoices: () => voices,
+    cancel: () => {},
+    speak: (u: { text: string; voice: SpeechSynthesisVoice | null }) => spoken.push({ text: u.text, voice: u.voice }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  });
+  vi.stubGlobal(
+    "SpeechSynthesisUtterance",
+    class {
+      text: string;
+      voice: SpeechSynthesisVoice | null = null;
+      constructor(text: string) {
+        this.text = text;
+      }
+    },
+  );
+  return spoken;
+};
+
+const sectionTTS = (): FoliateTTS => {
+  const { doc, tts } = section();
+  return Object.assign(tts, { doc }) as unknown as FoliateTTS;
+};
+
+describe("Narrator", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const local = { name: "Samantha", lang: "en-US", voiceURI: "samantha", localService: true, default: true } as SpeechSynthesisVoice;
+  const remote = { name: "Cloud", lang: "en-US", voiceURI: "cloud", localService: false, default: false } as SpeechSynthesisVoice;
+
+  it("speaks in the chosen on-device voice", async () => {
+    const spoken = fakeSpeech([local]);
+    const stopped = vi.fn();
+    const narrator = new Narrator({ tts: async () => sectionTTS(), nextSection: async () => false, stopped });
+    narrator.voice = local;
+    await narrator.play(null);
+    expect(spoken.map((s) => [s.text.trim(), s.voice])).toEqual([["Chapter one", local]]);
+    expect(stopped).not.toHaveBeenCalled();
+  });
+
+  it("never speaks without an on-device voice, so the browser cannot pick a network one", async () => {
+    const spoken = fakeSpeech([remote]);
+    const stopped = vi.fn();
+    const narrator = new Narrator({ tts: async () => sectionTTS(), nextSection: async () => false, stopped });
+    await narrator.play(null);
+    narrator.voice = remote;
+    await narrator.play(null);
+    expect(spoken).toEqual([]);
+    expect(stopped).toHaveBeenCalledTimes(2);
+    expect(stopped).toHaveBeenCalledWith("error");
+  });
+
+  it("stops with an error when the section's TTS cannot be made", async () => {
+    const spoken = fakeSpeech([local]);
+    const stopped = vi.fn();
+    const narrator = new Narrator({ tts: () => Promise.reject(new Error("import failed")), nextSection: async () => false, stopped });
+    narrator.voice = local;
+    await narrator.play(null);
+    expect(spoken).toEqual([]);
+    expect(stopped).toHaveBeenCalledWith("error");
+  });
+});
+
+describe("ReadAlong", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("refuses to play on a machine with only network voices, and says it stopped", async () => {
+    const spoken = fakeSpeech([{ name: "Cloud", lang: "en-US", voiceURI: "cloud", localService: false, default: true } as SpeechSynthesisVoice]);
+    const { doc } = section();
+    const initTTS = vi.fn();
+    const stopped = vi.fn();
+    const readAlong = new ReadAlong({
+      view: () => ({ book: { sections: [] }, lastLocation: null, renderer: { nextSection: async () => {}, scrollToAnchor: async () => {} }, tts: null, initTTS }),
+      section: () => ({ doc, index: 0 }),
+      host: () => null,
+      paged: () => false,
+      spotlight: () => false,
+      blockAtReadingLine: () => null,
+      stopped,
+    });
+    await readAlong.play(1, null);
+    expect(stopped).toHaveBeenCalledOnce();
+    expect(readAlong.reading).toBe(false);
+    expect(initTTS).not.toHaveBeenCalled();
+    expect(spoken).toEqual([]);
   });
 });

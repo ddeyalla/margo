@@ -69,7 +69,7 @@ export function ReadAloudBar({
       className="animate-rise absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full bg-panel-raised p-1 text-label text-fog shadow-float"
     >
       {none ? (
-        <span className="px-3 py-1.5">No on-device voices on this computer. Add one in System Settings › Accessibility › Spoken Content.</span>
+        <span className="px-3 py-1.5">No on-device voices on this computer. Add one in your system&rsquo;s speech settings (on a Mac, System Settings › Accessibility › Spoken Content).</span>
       ) : (
         <>
           <button

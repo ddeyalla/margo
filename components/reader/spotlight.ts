@@ -59,7 +59,9 @@ export const blockAtReadingLine = (doc: Document, host: HTMLElement, paged: bool
   const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
   if (!frame) return null;
   const area = host.getBoundingClientRect();
-  const x = area.left + area.width * (paged ? 0.3 : 0.5);
+  /* In Pages mode the first column is on the left, or on the right in a right-to-left book. */
+  const rtl = doc.defaultView?.getComputedStyle(doc.body ?? doc.documentElement).direction === "rtl";
+  const x = area.left + area.width * (paged ? (rtl ? 0.7 : 0.3) : 0.5);
   const y = area.top + area.height * READING_LINE;
   return blockAt(doc, x - frame.left, y - frame.top);
 };
