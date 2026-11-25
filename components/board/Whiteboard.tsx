@@ -202,6 +202,7 @@ export default function Whiteboard(props: WhiteboardProps) {
           if (result.state === "saved") {
             hash.current = result.hash;
             savedVersion.current = version;
+            failedVersion.current = null;
             setPath(result.path);
             setSave({ state: "saved" });
           } else {

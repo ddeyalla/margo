@@ -48,7 +48,7 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
         <h1 className="text-display text-paper">{course.name}</h1>
         <p className="text-callout leading-relaxed text-fog">{course.goal}</p>
         <RoadmapFacts roadmap={course} />
-        <p className="text-callout font-medium tabular-nums text-paper" title="Covered: chapters whose quiz you passed. Retained: predicted recall of this Course's cards and quiz questions today.">
+        <p className="text-callout font-medium tabular-nums text-paper" title="Covered: chapters whose quiz you passed. Retained: predicted recall of this Course's cards, quiz questions and redrawn whiteboards today.">
           {masteryLine(mastery)}
         </p>
         <p className="text-label tabular-nums text-dim">

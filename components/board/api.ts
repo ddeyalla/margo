@@ -12,8 +12,16 @@ const answer = async <T>(response: Response, doing: string): Promise<T> => {
 export const fetchBoard = async (bookId: BookId, chapter: string): Promise<OpenedBoard> =>
   answer<OpenedBoard>(await fetch(`${url(bookId)}?chapter=${encodeURIComponent(chapter)}`), "Opening the board");
 
-export const putBoard = async (bookId: BookId, body: { chapter: string; labels: string[]; text: string; baseHash: string | null }, keepalive = false): Promise<BoardSave> =>
-  answer<BoardSave>(await fetch(url(bookId), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive }), "Saving the board");
+/* Browsers refuse a keepalive request over 64 KB; a bigger board is sent plainly and may not outlive the page. */
+const KEEPALIVE_LIMIT = 60_000;
+
+export const putBoard = async (bookId: BookId, body: { chapter: string; labels: string[]; text: string; baseHash: string | null }, keepalive = false): Promise<BoardSave> => {
+  const json = JSON.stringify(body);
+  return answer<BoardSave>(
+    await fetch(url(bookId), { method: "PUT", headers: { "Content-Type": "application/json" }, body: json, keepalive: keepalive && json.length < KEEPALIVE_LIMIT }),
+    "Saving the board",
+  );
+};
 
 export type BoardRequest =
   | { op: "review" | "check"; chapter: string; labels: string[]; provider: ProviderId; scene: CompactScene; image: string | null }
