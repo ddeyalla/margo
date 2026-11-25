@@ -19,11 +19,11 @@ export default function BookPage({ params, searchParams }: PageProps<"/book/[boo
   );
 }
 
-/** `?quiz=<chapter>` opens that chapter's quiz over the book. */
+/** `?quiz=<chapter>` opens that chapter's quiz over the book; `?review=1` opens the review. */
 async function Book({ params, searchParams }: Pick<PageProps<"/book/[bookId]">, "params" | "searchParams">) {
   await connection();
   const { bookId } = await params;
-  const { quiz } = await searchParams;
+  const { quiz, review } = await searchParams;
   let found: FoundBook | null;
   try {
     found = await findBook(bookId);
@@ -42,6 +42,7 @@ async function Book({ params, searchParams }: Pick<PageProps<"/book/[bookId]">, 
       initialState={state}
       courses={courses}
       openQuiz={typeof quiz === "string" ? quiz : null}
+      openReview={review === "1"}
       settings={{
         provider: settings.provider,
         models: settings.models,

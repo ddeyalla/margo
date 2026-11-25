@@ -4,6 +4,7 @@ import Link from "next/link";
 import { BookOpen, FolderX, Library as LibraryIcon, NotebookPen } from "lucide-react";
 import { BookList, GRID, type Shelf, type ShelfBook } from "@/components/library/BookList";
 import { HomeCourses } from "@/components/courses/HomeCourses";
+import { TodayCard } from "@/components/courses/TodayCard";
 import { FolderForm } from "@/components/library/FolderForm";
 import { FoldersControl } from "@/components/library/FoldersControl";
 import { MissingBooks } from "@/components/library/MissingBooks";
@@ -170,6 +171,9 @@ export default function Home() {
       </header>
       <main className="mx-auto w-full max-w-[1180px] px-6 pb-24 pt-8">
         <RefreshOnReturn />
+        <Suspense fallback={null}>
+          <TodayCard />
+        </Suspense>
         <Suspense fallback={null}>
           <HomeCourses />
         </Suspense>
