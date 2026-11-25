@@ -289,3 +289,39 @@ export const searchLibrary = async (
     building,
   };
 };
+
+/** A book's text in reading order, each block with its chapter label from the table of contents. */
+export interface BookText {
+  chapters: string[];
+  blocks: { anchor: Anchor; text: string; chapter: string | null }[];
+}
+
+const asBookText = (stored: StoredText): BookText => ({
+  chapters: stored.chapters,
+  blocks: stored.blocks.map((block) => ({ anchor: block.a, text: block.t, chapter: stored.chapters[block.c] ?? null })),
+});
+
+/**
+ * A book's text, from its search file when that is current for the book file. With `extract`, a missing or stale
+ * file is read from the book now and stored, which can take seconds; without, it answers null instead.
+ */
+export const bookText = async (
+  id: BookId,
+  { extract, root = getConfig().booksDir, dataDir = getConfig().dataDir }: { extract: boolean; root?: string; dataDir?: string },
+): Promise<BookText | null> => {
+  const scan = await recentLibrary(root, dataDir);
+  const book = scan.books.find((candidate) => candidate.id === id);
+  const entry = scan.index[id];
+  if (!book || !entry) return null;
+  const fingerprint = fingerprintOf(entry);
+  const file = searchFile(dataDir, id);
+  let stored: unknown = null;
+  try {
+    stored = JSON.parse(await readFile(file, "utf8"));
+  } catch {}
+  if (isStored(stored, versionKey(fingerprint))) return asBookText(stored);
+  if (!extract) return null;
+  const fresh = await extractText(path.resolve(/*turbopackIgnore: true*/ root, book.relPath), book.format, fingerprint);
+  await serialized(file, () => writeFileAtomic(file, JSON.stringify(fresh)));
+  return asBookText(fresh);
+};

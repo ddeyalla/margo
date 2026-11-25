@@ -1,26 +1,10 @@
+import { firstObject } from "@/lib/shared/json";
+
 /** What the card prompt returned, checked. */
 export type CardReply = { fact: string; cards: { question: string; answer: string }[] } | { fact: null; reason: string };
 
 const MAX_CARDS = 3;
 const MAX_FIELD = 2_000;
-
-/** The first complete JSON object in the text, skipping any fence or notes around it. */
-const firstObject = (text: string): string | null => {
-  const start = text.indexOf("{");
-  if (start < 0) return null;
-  let depth = 0;
-  let inString = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) {
-      if (ch === "\\") i++;
-      else if (ch === '"') inString = false;
-    } else if (ch === '"') inString = true;
-    else if (ch === "{") depth++;
-    else if (ch === "}" && --depth === 0) return text.slice(start, i + 1);
-  }
-  return null;
-};
 
 const field = (value: unknown): string | null => {
   if (typeof value !== "string") return null;

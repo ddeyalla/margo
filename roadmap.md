@@ -297,14 +297,44 @@ Done when no answer needs the phrase "as you can see above".
 
 Start from home: say what you want to learn and get a plan.
 
-- [ ] A `Course`: name, goal, level, weekly time, ordered units. Each unit lists concepts
+- [x] A `Course`: name, goal, level, weekly time, ordered units. Each unit lists concepts
       and the books or chapters that cover them.
-- [ ] Home chat: the tutor asks about level, goal and time per week, then returns a
+      *`lib/shared/courses.ts`. Courses span books, so they live in `DATA_DIR/courses.json`
+      with the planning chats, not in any book's state. A chapter of a library book is
+      stored under that book's own table-of-contents label, the one the reader reports, so
+      Phase 17 can key quizzes on it. A chapter the tutor named that the book's contents
+      don't have is kept, marked "not found in your copy".*
+- [x] Home chat: the tutor asks about level, goal and time per week, then returns a
       structured roadmap (units, ordered book list with the chapters that matter, rough
       timeline). Edit it in the same chat, then approve to create the Course.
-- [ ] Match each listed book against the library. Present ones link to the reader;
+      *A box at the top of home opens `/plan` with what was typed. The tutor sees every
+      library book by id, title and author, and the chapter lists of up to 12 books most
+      like what the reader has said (all of them in a small library). It ends a roadmap
+      answer with a fenced `roadmap` JSON block; a block that doesn't parse goes back once
+      with the reason, like card JSON. Approving the latest roadmap creates the Course;
+      approving again after more edits updates the same Course.*
+- [x] Match each listed book against the library. Present ones link to the reader;
       missing ones show as "to find" with title, author and edition.
-- [ ] Course page: units, books and progress.
+      *By the id the tutor was given, else by title (letter pairs, subtitle ignored, 0.85 or
+      more). Chapters match exactly, then by prefix, then by closest name (0.75 or more).
+      The lookup links in "Open: where the books come from" are not added; that section is
+      still to discuss.*
+- [x] Course page: units, books and progress.
+      *`/course/[id]`: each unit's concepts and chapters, every book with how far it has
+      been read, and books started out of those in the library. Progress by chapter comes
+      with Phase 17's quizzes. "Change the plan" goes back to the chat; "Remove course"
+      deletes only the Course.*
+
+Tried **2026-11-25** with Claude Code on Sonnet 5.5, on scratch copies of four books. A
+single message giving the level, goal and weekly time got a six-unit roadmap in the first
+answer, from *Continuous Discovery Habits* and *The Mom Test*, and every one of its 33
+chapters matched the books' own labels. Asking to add *Inspired* as a short last unit came
+back as a whole new roadmap with a seventh unit of its nine discovery chapters, all found.
+Approving it opened the Course page, and home listed the Course. A seeded Course with a
+book not in the library showed it as "To find" with author and edition, and removing it
+worked. The run caught two bugs: Chrome's `scrollIntoView` now returns a promise, which
+the chat's effect handed back to React, and the reader's message was saved before the
+library was read, so a failure there left an unanswered message.
 
 ## Phase 17 — Chapter quizzes · M
 
