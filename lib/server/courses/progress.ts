@@ -1,4 +1,5 @@
 import { courseSteps, type Course, type CourseContext } from "@/lib/shared/courses";
+import { courseMastery, type BookEvidence, type Mastery } from "@/lib/shared/mastery";
 import { isPassed, stepKey } from "@/lib/shared/quiz";
 import type { BookId } from "@/lib/shared/types";
 import { readBookState } from "../store";
@@ -41,4 +42,16 @@ export const coursesForBook = async (bookId: BookId): Promise<CourseContext[]> =
   const { courses } = await readCourses().catch(() => ({ courses: [] as Course[] }));
   const reading = courses.filter((course) => courseSteps(course).some((step) => step.bookId === bookId));
   return Promise.all(reading.map(async (course) => ({ id: course.id, name: course.name, steps: courseSteps(course), passed: [...(await passedSteps(course))] })));
+};
+
+/** Coverage and retention of a Course as of `now`, read from its books' cards and quizzes. */
+export const masteryOf = async (course: Pick<Course, "books" | "units">, now = new Date()): Promise<Mastery> => {
+  const ids = [...new Set(courseSteps(course).map((step) => step.bookId))];
+  const states = await Promise.all(ids.map((id) => readBookState(id).catch(() => null)));
+  const books = new Map<BookId, BookEvidence>();
+  ids.forEach((id, i) => {
+    const state = states[i];
+    if (state) books.set(id, { cardSets: state.cardSets, quizzes: state.quizzes });
+  });
+  return courseMastery(course, books, now);
 };

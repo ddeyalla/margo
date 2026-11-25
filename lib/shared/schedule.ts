@@ -193,3 +193,24 @@ export const nextLearningAt = (sets: CardSet[], now: Date): Date | null => {
     .sort((a, b) => a.getTime() - b.getTime());
   return upcoming[0] ?? null;
 };
+
+/**
+ * How likely the reader is to recall a set now, from 0 to 1, by FSRS's forgetting curve with the same parameters
+ * that schedule it. Null for a set never rated: it has no memory to predict yet.
+ */
+export const recallAt = (s: Schedule, now: Date): number | null => {
+  if (s.state === "new" || !s.lastReview || s.stability <= 0) return null;
+  const recall = scheduler.get_retrievability(toCard(s), now, false);
+  return Number.isFinite(recall) ? Math.min(1, Math.max(0, recall)) : null;
+};
+
+/**
+ * A schedule rebuilt from right and wrong answers, oldest first, as if each were a rating: right as Good, wrong as
+ * Again. Quiz questions keep no schedule of their own; this gives them one at read time, so they fade like cards.
+ */
+export const replaySchedule = (answers: readonly { at: string; correct: boolean }[]): Schedule | null => {
+  if (!answers.length) return null;
+  let card = toCard(newSchedule(new Date(answers[0].at)));
+  for (const answer of answers) card = scheduler.next(card, new Date(answer.at), answer.correct ? FsrsRating.Good : FsrsRating.Again).card;
+  return fromCard(card);
+};

@@ -36,6 +36,7 @@ import { OpenFailed, PageTurn, SpotlightExit } from "./ReaderChrome";
 import { ReadingFooter } from "./ReadingFooter";
 import { SidePanel } from "./SidePanel";
 import { TOC_WIDTH, TocDrawer, useTocDocked } from "./TocDrawer";
+import { useActivity } from "./useActivity";
 import { useBookSettings, type BookSettings } from "./useBookSettings";
 import { useOpeningNotice } from "./useOpeningNotice";
 import { usePositionSaver } from "./usePositionSaver";
@@ -103,6 +104,7 @@ export function BookWorkspace({
   const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, courses, spot, toc, provider });
   const [reviewing, setReviewing] = useState(false);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
+  useActivity(book.id, quizChapter ? "quiz" : reviewing ? "review" : "reading", spot);
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);

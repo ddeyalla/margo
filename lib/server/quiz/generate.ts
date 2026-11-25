@@ -93,6 +93,7 @@ export const writeQuiz = async (
   }
   return {
     chapter,
+    labels: [...new Set([chapter, ...labels])],
     questions: draft.map((q) => {
       const block = blocks[q.block - 1];
       return { id: randomUUID(), kind: q.kind, question: q.question, answer: q.answer, anchor: block.anchor, quote: block.text.slice(0, 600) };

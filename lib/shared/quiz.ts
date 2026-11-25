@@ -31,6 +31,8 @@ export interface QuizAttempt {
 export interface ChapterQuiz {
   /** The chapter's label in the book's table of contents. */
   chapter: string;
+  /** The labels of the chapter and every entry nested under it, as the reader's contents had them. Absent on quizzes saved before it was kept. */
+  labels?: string[];
   questions: QuizQuestion[];
   createdAt: string;
   attempts: QuizAttempt[];
