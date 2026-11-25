@@ -46,6 +46,14 @@ import { useSpotlight } from "./useSpotlight";
 import { useTutorActions } from "./useTutorActions";
 import { PANEL_ID, useTutorPanel } from "./useTutorPanel";
 
+/** A sheet opened from a link leaves the link once closed, so a reload opens the book. */
+const dropParam = (name: string) => {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(name)) return;
+  url.searchParams.delete(name);
+  window.history.replaceState(window.history.state, "", url);
+};
+
 export interface WorkspaceBook {
   id: BookId;
   format: BookFormat;
@@ -59,6 +67,7 @@ export function BookWorkspace({
   settings: saved,
   courses,
   openQuiz,
+  openReview = false,
 }: {
   book: WorkspaceBook;
   initialState: BookState;
@@ -67,6 +76,8 @@ export function BookWorkspace({
   courses: CourseContext[];
   /** A chapter whose quiz to open over the book at once. */
   openQuiz: string | null;
+  /** Open the review at once, as Today's button asks. */
+  openReview?: boolean;
 }) {
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
@@ -102,7 +113,7 @@ export function BookWorkspace({
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
   const cards = useCards(book.id, initialState.cardSets);
   const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, courses, spot, toc, provider });
-  const [reviewing, setReviewing] = useState(false);
+  const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
   useActivity(book.id, quizChapter ? "quiz" : reviewing ? "review" : "reading", spot);
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
@@ -254,12 +265,11 @@ export function BookWorkspace({
   const jumpTo = useCallback((anchor: Anchor) => navigate((reader) => reader.goTo(anchor)), [navigate]);
   const closeQuiz = useCallback(() => {
     setQuizChapter(null);
-    /* A quiz opened from a link leaves the link, so a reload opens the book. */
-    const url = new URL(window.location.href);
-    if (url.searchParams.has("quiz")) {
-      url.searchParams.delete("quiz");
-      window.history.replaceState(window.history.state, "", url);
-    }
+    dropParam("quiz");
+  }, []);
+  const closeReview = useCallback(() => {
+    setReviewing(false);
+    dropParam("review");
   }, []);
 
   /* A citation leads to its passage, or says the book no longer has it there. */
@@ -394,7 +404,7 @@ export function BookWorkspace({
                   }}
                 />
               ) : null}
-              {reviewing ? <ReviewSheet cards={cards} onClose={() => setReviewing(false)} onJump={jumpTo} /> : null}
+              {reviewing ? <ReviewSheet cards={cards} onClose={closeReview} onJump={jumpTo} /> : null}
               {quizzes.active && !reviewing && !quizChapter && !spotlight && !noticeExit.shown ? (
                 <QuizNotice
                   quizzes={quizzes}
@@ -406,7 +416,7 @@ export function BookWorkspace({
               ) : null}
               {quizChapter && !reviewing ? <QuizSheet quizzes={quizzes} chapter={quizChapter} onClose={closeQuiz} onJump={jumpTo} /> : null}
               {!tocDocked && !error ? (
-                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !spotlight} docked={false} onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !spotlight && !reviewing && !quizChapter} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
             </main>
           </div>
