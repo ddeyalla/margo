@@ -54,8 +54,21 @@ export const blockAt = (doc: Document, x: number, y: number): Element | null => 
   return null;
 };
 
+/** The paragraph at the reading line of `host`, the box the book is shown in, found in the section's own frame. */
+export const blockAtReadingLine = (doc: Document, host: HTMLElement, paged: boolean): Element | null => {
+  const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+  if (!frame) return null;
+  const area = host.getBoundingClientRect();
+  const x = area.left + area.width * (paged ? 0.3 : 0.5);
+  const y = area.top + area.height * READING_LINE;
+  return blockAt(doc, x - frame.left, y - frame.top);
+};
+
 /** The block a node sits in, for a selection or a click. */
 export const blockOf = (node: Node | null): Element | null => (node instanceof Element ? node : node?.parentElement)?.closest(BLOCKS) ?? null;
+
+/** The block the spotlight keeps bright now. */
+export const litBlock = (doc: Document): Element | null => doc.querySelector(`[${ON}]`);
 
 /** Marks one block as the bright one. */
 export const markBlock = (doc: Document, block: Element | null) => {

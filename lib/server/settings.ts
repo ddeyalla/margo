@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import { isPanelTab, isReadingFont, isReadingMode, isReadingTheme, type AppSettings, type SettingsChange } from "@/lib/shared/types";
+import { isPanelTab, isReadAloudRate, isReadAloudVoice, isReadingFont, isReadingMode, isReadingTheme, type AppSettings, type SettingsChange } from "@/lib/shared/types";
 import { getFolders, savedFolder } from "./config";
 import { readJson, updateJson } from "./store";
 import { isProviderId } from "./tutor/providers";
@@ -28,6 +28,8 @@ const normalize = (raw: unknown): AppSettings => {
     readingFont: isReadingFont(value.readingFont) ? value.readingFont : null,
     chaptersOpen: value.chaptersOpen === true,
     panelTab: isPanelTab(value.panelTab) ? value.panelTab : "chat",
+    readAloudVoice: isReadAloudVoice(value.readAloudVoice) ? value.readAloudVoice : null,
+    readAloudRate: isReadAloudRate(value.readAloudRate) ? value.readAloudRate : 1,
     booksDir: savedFolder(value.booksDir),
     notesDir: savedFolder(value.notesDir),
   };

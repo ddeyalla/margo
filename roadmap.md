@@ -147,8 +147,22 @@ you ask.
 
 ## Phase 11 — Read-along · M
 
-- [ ] The browser's speech voices read the book aloud, highlighting each word, with a
+- [x] The browser's speech voices read the book aloud, highlighting each word, with a
       speed control. EPUB first.
+      *How it works:* foliate's `tts.js` (through `view.initTTS`) splits the section into blocks
+      and gives each one as SSML with a mark before every word. Web Speech can't speak SSML, so
+      `components/reader/ssml.ts` turns a block into plain text plus a map from character offset
+      to mark. Each word `boundary` event's `charIndex` finds its mark, `setMark` returns the word's
+      Range, and the CSS Custom Highlight API paints it in the section's frame without touching the
+      DOM. Only on-device voices (`voice.localService`) are offered, so no audio leaves the machine.
+      The controls float at the foot of the book (header button or ⌘⇧S): play/pause, 0.75× to 2×,
+      and a voice picker. The voice and speed are saved in settings. Reading starts at the paragraph
+      in view, or the spotlight's paragraph, and turns the page when the word leaves the view. It
+      carries on into the next section and stops at the book's end, on a jump to another chapter,
+      and when the book closes. The spotlight follows the paragraph being read. Pause cancels the
+      voice and play resumes at the last word, since a paused utterance is unreliable in Chromium.
+      Word boundaries arrive from macOS voices in Electron 45 and in the desktop app's Chromium 156.
+      PDF is not covered yet.
 
 ## Phase 12 — Light and dark audit · S
 

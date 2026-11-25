@@ -3,14 +3,14 @@ import { checkFolder, readSettings, saveSettings } from "@/lib/server/settings";
 import { isProviderId } from "@/lib/server/tutor/providers";
 import { isObject } from "@/lib/server/validate";
 import { isTutorModel } from "@/lib/shared/models";
-import { isPanelTab, isReadingFont, isReadingMode, isReadingTheme, type SettingsChange } from "@/lib/shared/types";
+import { isPanelTab, isReadAloudRate, isReadAloudVoice, isReadingFont, isReadingMode, isReadingTheme, type SettingsChange } from "@/lib/shared/types";
 
 export async function GET() {
   await connection();
   return Response.json(await readSettings());
 }
 
-/** Saves the chosen tutor provider, each tutor's model, the PDF page colours, the reading mode, the EPUB page colours, bold starts, the reading font, whether the chapters column is open, the side panel tab, the books folder, the notes folder, or any of them. A folder must be an absolute path to a folder that exists; anything else is a 400. */
+/** Saves the chosen tutor provider, each tutor's model, the PDF page colours, the reading mode, the EPUB page colours, bold starts, the reading font, whether the chapters column is open, the side panel tab, the read-along voice and speed, the books folder, the notes folder, or any of them. A folder must be an absolute path to a folder that exists; anything else is a 400. */
 export async function PATCH(request: Request) {
   const body: unknown = await request.json().catch(() => null);
   const change: SettingsChange = {};
@@ -22,6 +22,8 @@ export async function PATCH(request: Request) {
   if (isObject(body) && isReadingFont(body.readingFont)) change.readingFont = body.readingFont;
   if (isObject(body) && typeof body.chaptersOpen === "boolean") change.chaptersOpen = body.chaptersOpen;
   if (isObject(body) && isPanelTab(body.panelTab)) change.panelTab = body.panelTab;
+  if (isObject(body) && "readAloudVoice" in body && isReadAloudVoice(body.readAloudVoice)) change.readAloudVoice = body.readAloudVoice;
+  if (isObject(body) && isReadAloudRate(body.readAloudRate)) change.readAloudRate = body.readAloudRate;
   /* { models: { claude: "claude-sonnet-5-5" } } chooses a tutor's model; null goes back to its default. */
   if (isObject(body) && isObject(body.models)) {
     const models = { ...(await readSettings()).models };
@@ -44,7 +46,7 @@ export async function PATCH(request: Request) {
     return Response.json(
       {
         error:
-          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { models: { <provider>: \"<model id>\" | null } }, { pdfPage: \"auto\" | \"dark\" | \"light\" }, { readingMode: \"scroll\" | \"pages\" }, { epubPage: \"auto\" | \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false }, { panelTab: \"chat\" | \"notes\" | \"highlights\" | \"cards\" }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
+          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { models: { <provider>: \"<model id>\" | null } }, { pdfPage: \"auto\" | \"dark\" | \"light\" }, { readingMode: \"scroll\" | \"pages\" }, { epubPage: \"auto\" | \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false }, { panelTab: \"chat\" | \"notes\" | \"highlights\" | \"cards\" }, { readAloudVoice: \"<voiceURI>\" | null }, { readAloudRate: 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2 }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
       },
       { status: 400 },
     );

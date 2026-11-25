@@ -28,10 +28,11 @@ import { hasUnsentText } from "@/lib/client/unsent";
 import type { CourseContext } from "@/lib/shared/courses";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
 import type { Anchor, BookFormat, BookId, BookState, CardSet, Highlight, PanelTab, QuotedPassage, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
-import { BookHeader, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
+import { BookHeader, READ_ALOUD_SHORTCUT, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
 import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
 import type { PlaceStore, ReadingSpot } from "./place";
+import { ReadAloudBar } from "./ReadAloudBar";
 import { OpenFailed, PageTurn, SpotlightExit } from "./ReaderChrome";
 import { ReadingFooter } from "./ReadingFooter";
 import { SidePanel } from "./SidePanel";
@@ -133,6 +134,14 @@ export function BookWorkspace({
   const search = useBookSearch(book, navigate);
   const { on: spotlight, end: endSpotlight, toggle: toggleSpotlight } = useSpotlight(panel, book.format === "epub" && !error, dismissNotice);
   const noticeExit = useNoticeExit(notice, spotlight || reviewing);
+  /* Read-along, null while its controls are closed. Its voice and speed are settings, remembered for every book. */
+  const [readAloud, setReadAloud] = useState<{ playing: boolean } | null>(null);
+  const toggleReadAloud = useCallback(() => {
+    if (book.format !== "epub" || error) return;
+    dismissNotice();
+    setReadAloud((current) => (current ? null : { playing: true }));
+  }, [book.format, error, dismissNotice]);
+  const pauseReadAloud = useCallback(() => setReadAloud((current) => current && { playing: false }), []);
   const [toast, setToast] = useToast();
   /* Passages quoted into the chat's composer, waiting for the reader's next message. */
   const [quoteDraft] = useState(createQuoteDraft);
@@ -239,6 +248,7 @@ export function BookWorkspace({
       },
     },
     { code: "KeyF", shift: true, skipInText: true, run: toggleSpotlight },
+    { code: "KeyS", shift: true, skipInText: true, run: toggleReadAloud },
     { code: "KeyK", shift: false, run: search.open },
   ];
   useShortcuts({
@@ -338,6 +348,8 @@ export function BookWorkspace({
         onModel={chooseModel}
         spotlight={spotlight}
         onSpotlight={toggleSpotlight}
+        readingAloud={!!readAloud}
+        onReadAloud={toggleReadAloud}
         panelId={PANEL_ID}
         panelOpen={panel.open}
         onTogglePanel={panel.toggle}
@@ -372,7 +384,31 @@ export function BookWorkspace({
               ) : (
                 <>
                   <div className="relative min-h-0 flex-1">
-                    {book.format === "epub" ? <EpubReader {...readerProps} theme={pageTheme(epubTheme)} boldStarts={settings.boldStarts} font={previewFont === undefined ? settings.readingFont : previewFont} spotlight={spotlight} /> : <PdfReader {...readerProps} />}
+                    {book.format === "epub" ? (
+                      <EpubReader
+                        {...readerProps}
+                        theme={pageTheme(epubTheme)}
+                        boldStarts={settings.boldStarts}
+                        font={previewFont === undefined ? settings.readingFont : previewFont}
+                        spotlight={spotlight}
+                        readAloud={readAloud && { playing: readAloud.playing, rate: settings.readAloudRate, voice: settings.readAloudVoice }}
+                        onReadAloudStop={pauseReadAloud}
+                      />
+                    ) : (
+                      <PdfReader {...readerProps} />
+                    )}
+                    {readAloud && book.format === "epub" ? (
+                      <ReadAloudBar
+                        playing={readAloud.playing}
+                        onPlaying={(playing) => setReadAloud({ playing })}
+                        rate={settings.readAloudRate}
+                        onRate={(rate) => choose("readAloudRate", rate)}
+                        voice={settings.readAloudVoice}
+                        onVoice={(voice) => choose("readAloudVoice", voice)}
+                        shortcut={READ_ALOUD_SHORTCUT}
+                        onClose={() => setReadAloud(null)}
+                      />
+                    ) : null}
                     {mode === "pages" ? (
                       <>
                         <PageTurn direction={-1} onTurn={turn} />
