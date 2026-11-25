@@ -1,3 +1,5 @@
+import type { ChapterQuiz } from "./quiz";
+
 export type BookFormat = "epub" | "pdf";
 
 /** sha1 of the book's path relative to BOOKS_DIR, hex. */
@@ -290,6 +292,8 @@ export interface BookState {
   highlights: Highlight[];
   notes: Note[];
   cardSets: CardSet[];
+  /** Chapter quizzes of the book's chapters in a Course, each with every attempt. */
+  quizzes: ChapterQuiz[];
   /** When the reader last moved through the book, an ISO time, or null if never or saved before this was kept. */
   lastReadAt: string | null;
 }
@@ -302,6 +306,7 @@ export const emptyBookState = (): BookState => ({
   highlights: [],
   notes: [],
   cardSets: [],
+  quizzes: [],
   lastReadAt: null,
 });
 

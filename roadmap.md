@@ -338,12 +338,46 @@ library was read, so a failure there left an unanswered message.
 
 ## Phase 17 — Chapter quizzes · M
 
-- [ ] A short quiz (5–8 questions, recall and "explain why") at the end of each chapter of
+- [x] A short quiz (5–8 questions, recall and "explain why") at the end of each chapter of
       a book in a Course. Passing it marks the chapter done and unlocks the next one.
-- [ ] Questions are written when the chapter is finished reading, in one batch, and stored.
-- [ ] Retake without limit. A missed question shows its answer and where in the chapter.
-- [ ] Books outside a Course are never gated.
-- [ ] Results feed retention (Phase 18).
+      *`lib/shared/quiz.ts`. A quiz belongs to a chapter of a book, keyed by its contents
+      label, and lives in the book's state, so two Courses reading the same chapter share
+      it. Passing needs 80 % (4 of 5 up to 7 of 8). Answers are self-graded after the answer
+      is shown, like card reviews, because model-graded free text is under "Not building";
+      each answer also asks "how sure" and "your answer, in a line" with Phase 14's
+      `StanceInput`. "Unlocks" is advice, not a wall: the book always opens, a chapter whose
+      step comes before is shown as locked on the Course page, and the book says once "in
+      this Course, this comes after …". The order runs across books, in the order the units
+      read them.*
+- [x] Questions are written when the chapter is finished reading, in one batch, and stored.
+      *Moving from inside a Course chapter (its entry or anything nested under it) to a later
+      contents entry starts writing its quiz in the background, from the chapter's own
+      extracted text (numbered blocks, thinned evenly past about 60k characters). Each
+      question carries the real start of the block the tutor cited. A reply that can't be
+      read goes back once with the reason. The book shows "Finished …, its quiz is being
+      written", then "Take quiz". A written quiz is never replaced.*
+- [x] Retake without limit. A missed question shows its answer and where in the chapter.
+      *The result lists each missed question with its answer and a link to its place;
+      Phase 14's signal summary ("1 held", "1 misconception") sits above it.*
+- [x] Books outside a Course are never gated.
+      *They get no quizzes, notices or locks at all.*
+- [x] Results feed retention (Phase 18).
+      *Every attempt keeps each answer with right or wrong, confidence and thinking, ready
+      for Phase 18 to read.*
+
+Tried **2026-11-25** with Claude Code on Sonnet 5.5, on the scratch Course from Phase 16.
+Opening *Continuous Discovery Habits* at Chapter One showed "this comes after
+Introduction", which also proved the reader's contents label is the one the Course stored.
+Moving to Chapter Two started the quiz on its own; it came back in under a minute with
+eight questions, three of them "why", each tied to the right passage. Six of eight right
+said "Not passed yet" and listed the two misses with their places; a retake at eight of
+eight passed, and the Course page then read "1 of 42 chapters passed", Chapter One
+passed, Chapter Two open, Chapter Three locked. `?quiz=` from the Course page opens the
+sheet, and a chapter with no quiz yet says so and offers to write it instead of waiting.
+Not checked live: a PDF book in a Course (its extracted chapter labels look right), and a
+quiz failing to write. Left as is: a Course listing both a chapter and a section nested in
+it (as with *The Mom Test*) gets overlapping quizzes, since the parent's quiz covers its
+sections too.
 
 ## Phase 18 — Mastery and daily learning · M
 

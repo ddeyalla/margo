@@ -2,13 +2,15 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { MessagesSquare } from "lucide-react";
+import { Check, Lock, MessagesSquare } from "lucide-react";
 import { DeleteCourse } from "@/components/courses/DeleteCourse";
 import { PageShell } from "@/components/courses/PageShell";
 import { CourseBookLine, RoadmapFacts } from "@/components/courses/RoadmapCard";
 import { Spinner } from "@/components/ui";
-import { readingProgress } from "@/lib/server/courses/progress";
+import { readingProgress, stepQuizzes, type StepQuiz } from "@/lib/server/courses/progress";
 import { readCourses } from "@/lib/server/courses/store";
+import { courseSteps } from "@/lib/shared/courses";
+import { stepKey, stepStates, type StepState } from "@/lib/shared/quiz";
 
 export default function CoursePage({ params }: PageProps<"/course/[id]">) {
   return (
@@ -26,7 +28,11 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
   const { courses } = await readCourses();
   const course = courses.find((c) => c.id === id);
   if (!course) notFound();
-  const progress = await readingProgress(course);
+  const [progress, quizzes] = await Promise.all([readingProgress(course), stepQuizzes(course)]);
+  const states = new Map(
+    stepStates(courseSteps(course), new Set([...quizzes].filter(([, quiz]) => quiz.passed).map(([key]) => key))).map((state) => [stepKey(state.bookId, state.chapter), state]),
+  );
+  const passedCount = [...states.values()].filter((state) => state.passed).length;
   const books = new Map(course.books.map((book) => [book.key, book]));
   const present = course.books.filter((book) => book.bookId);
   const started = present.filter((book) => progress.get(book.bookId!) !== null).length;
@@ -40,6 +46,7 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
         <p className="text-label tabular-nums text-dim">
           {started} of {present.length} {present.length === 1 ? "book" : "books"} started
           {course.books.length > present.length ? ` · ${course.books.length - present.length} to find` : null}
+          {states.size ? ` · ${passedCount} of ${states.size} ${states.size === 1 ? "chapter" : "chapters"} passed` : null}
         </p>
         <div className="mt-1 flex items-center gap-2">
           {course.planId ? (
@@ -72,9 +79,19 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
                     <p className="text-[13px] text-fog">{book?.title ?? reading.book}</p>
                     <ul className="flex flex-col gap-0.5 pl-3">
                       {reading.chapters.map((chapter, c) => (
-                        <li key={c} className={`text-label leading-snug ${chapter.inBook || !book?.bookId ? "text-prose/80" : "text-dim"}`}>
-                          {chapter.title}
-                          {!chapter.inBook && book?.bookId ? " (not found in your copy)" : null}
+                        <li key={c} className={`flex items-baseline gap-2 text-label leading-snug ${chapter.inBook || !book?.bookId ? "text-prose/80" : "text-dim"}`}>
+                          <span className="min-w-0">
+                            {chapter.title}
+                            {!chapter.inBook && book?.bookId ? " (not found in your copy)" : null}
+                          </span>
+                          {book?.bookId && chapter.inBook ? (
+                            <ChapterStatus
+                              bookId={book.bookId}
+                              chapter={chapter.title}
+                              state={states.get(stepKey(book.bookId, chapter.title))}
+                              quiz={quizzes.get(stepKey(book.bookId, chapter.title))}
+                            />
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -96,4 +113,32 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
       </section>
     </div>
   );
+}
+
+/** Where a Course chapter stands: passed, its quiz ready or being written, or waiting on the chapter before it. */
+function ChapterStatus({ bookId, chapter, state, quiz }: { bookId: string; chapter: string; state?: StepState; quiz?: StepQuiz }) {
+  if (!state) return null;
+  const href = `/book/${bookId}?quiz=${encodeURIComponent(chapter)}`;
+  if (state.passed)
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 text-live">
+        <Check aria-hidden className="size-3" />
+        Passed
+      </span>
+    );
+  if (quiz?.written)
+    return (
+      <Link href={href} className="press shrink-0 font-medium text-paper underline-offset-2 hover:underline">
+        Take quiz
+      </Link>
+    );
+  if (quiz?.writing) return <span className="shrink-0 text-dim">Quiz being written</span>;
+  if (state.locked)
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 text-dim" title={state.previous ? `Comes after “${state.previous.chapter}”` : undefined}>
+        <Lock aria-hidden className="size-3" />
+        After the one before
+      </span>
+    );
+  return <span className="shrink-0 text-dim">Quiz after reading</span>;
 }

@@ -8,6 +8,9 @@ import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { ReviewSheet } from "@/components/cards/ReviewSheet";
 import { useCards } from "@/components/cards/useCards";
+import { QuizNotice } from "@/components/quiz/QuizNotice";
+import { QuizSheet } from "@/components/quiz/QuizSheet";
+import { useQuizzes } from "@/components/quiz/useQuizzes";
 import { addQuote, createQuoteDraft } from "@/components/chat/Quotes";
 import { dictationBusy } from "@/components/chat/useDictation";
 import { useProviders } from "@/components/chat/useProviders";
@@ -22,6 +25,7 @@ import { createStore, useStableCallback } from "@/components/ui/store";
 import { useResolvedTheme } from "@/components/ui/theme";
 import { patchBookState } from "@/lib/client/api";
 import { hasUnsentText } from "@/lib/client/unsent";
+import type { CourseContext } from "@/lib/shared/courses";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
 import type { Anchor, BookFormat, BookId, BookState, CardSet, Highlight, PanelTab, QuotedPassage, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
 import { BookHeader, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
@@ -48,7 +52,21 @@ export interface WorkspaceBook {
   fileTitle: string;
 }
 
-export function BookWorkspace({ book, initialState, settings: saved }: { book: WorkspaceBook; initialState: BookState; settings: BookSettings }) {
+export function BookWorkspace({
+  book,
+  initialState,
+  settings: saved,
+  courses,
+  openQuiz,
+}: {
+  book: WorkspaceBook;
+  initialState: BookState;
+  settings: BookSettings;
+  /** The Courses that read this book, for its chapter quizzes. */
+  courses: CourseContext[];
+  /** A chapter whose quiz to open over the book at once. */
+  openQuiz: string | null;
+}) {
   const readerRef = useRef<ReaderHandle>(null);
   const toolbarRef = useRef<SelectionToolbarHandle>(null);
   const readerAreaRef = useRef<HTMLElement>(null);
@@ -82,7 +100,9 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
   const { providers, current: provider, choose: chooseProvider, models, chooseModel, unavailable } = useProviders(saved.provider, saved.models);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
   const cards = useCards(book.id, initialState.cardSets);
+  const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, courses, spot, toc, provider });
   const [reviewing, setReviewing] = useState(false);
+  const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -211,7 +231,7 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
   useShortcuts({
     shortcuts,
     /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
-    plainKeysOff: reviewing,
+    plainKeysOff: reviewing || !!quizChapter,
     /* The highlight menu goes first and alone, so the same press doesn't also dismiss the greeting or the spotlight. */
     closeFirst: menu ? closeMenu : null,
     /* Esc takes one thing away at a time: the selection, then the greeting, then the spotlight. */
@@ -230,6 +250,15 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
   const menuNote = menu ? annotations.notes.find((note) => note.highlightId === menu.id) : undefined;
 
   const jumpTo = useCallback((anchor: Anchor) => navigate((reader) => reader.goTo(anchor)), [navigate]);
+  const closeQuiz = useCallback(() => {
+    setQuizChapter(null);
+    /* A quiz opened from a link leaves the link, so a reload opens the book. */
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("quiz")) {
+      url.searchParams.delete("quiz");
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, []);
 
   /* A citation leads to its passage, or says the book no longer has it there. */
   const findQuote = useCallback(
@@ -364,6 +393,16 @@ export function BookWorkspace({ book, initialState, settings: saved }: { book: W
                 />
               ) : null}
               {reviewing ? <ReviewSheet cards={cards} onClose={() => setReviewing(false)} onJump={jumpTo} /> : null}
+              {quizzes.active && !reviewing && !quizChapter && !spotlight && !noticeExit.shown ? (
+                <QuizNotice
+                  quizzes={quizzes}
+                  onTake={(chapter) => {
+                    quizzes.dismissFinished();
+                    setQuizChapter(chapter);
+                  }}
+                />
+              ) : null}
+              {quizChapter && !reviewing ? <QuizSheet quizzes={quizzes} chapter={quizChapter} onClose={closeQuiz} onJump={jumpTo} /> : null}
               {!tocDocked && !error ? (
                 <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !spotlight} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}

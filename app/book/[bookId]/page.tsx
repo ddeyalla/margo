@@ -6,21 +6,24 @@ import { FolderX } from "lucide-react";
 import { BookWorkspace } from "@/components/book/BookWorkspace";
 import { EmptyState } from "@/components/ui";
 import { findBook, libraryProblem, type FoundBook } from "@/lib/server/library";
+import { coursesForBook } from "@/lib/server/courses/progress";
 import { bookRevision } from "@/lib/server/revision";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
 
-export default function BookPage({ params }: PageProps<"/book/[bookId]">) {
+export default function BookPage({ params, searchParams }: PageProps<"/book/[bookId]">) {
   return (
     <Suspense fallback={<BookSkeleton />}>
-      <Book params={params} />
+      <Book params={params} searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
+/** `?quiz=<chapter>` opens that chapter's quiz over the book. */
+async function Book({ params, searchParams }: Pick<PageProps<"/book/[bookId]">, "params" | "searchParams">) {
   await connection();
   const { bookId } = await params;
+  const { quiz } = await searchParams;
   let found: FoundBook | null;
   try {
     found = await findBook(bookId);
@@ -31,12 +34,14 @@ async function Book({ params }: Pick<PageProps<"/book/[bookId]">, "params">) {
   const { book } = found;
   /* Read before the state, so a write in between shows as a change instead of being missed. */
   const revision = await bookRevision(book.id);
-  const [state, settings] = await Promise.all([readBookState(book.id), readSettings()]);
+  const [state, settings, courses] = await Promise.all([readBookState(book.id), readSettings(), coursesForBook(book.id)]);
   return (
     <BookWorkspace
       key={revision}
       book={{ id: book.id, format: book.format, relPath: book.relPath, fileTitle: book.fileTitle }}
       initialState={state}
+      courses={courses}
+      openQuiz={typeof quiz === "string" ? quiz : null}
       settings={{
         provider: settings.provider,
         models: settings.models,
