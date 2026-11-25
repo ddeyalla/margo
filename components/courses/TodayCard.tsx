@@ -1,70 +1,114 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { ArrowRight, Flame, Snowflake } from "lucide-react";
-import { readToday, type TodayStart } from "@/lib/server/today";
+import { ArrowRight } from "lucide-react";
+import clsx from "clsx";
+import { readActivity } from "@/lib/server/activity";
+import { readToday, type Today } from "@/lib/server/today";
+import { dayTimes, emptyActivity, lastDays, learned, type DayTime } from "@/lib/shared/mastery";
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
-const startLink = (start: TodayStart) =>
-  start.kind === "review"
-    ? { href: `/book/${start.book.id}?review=1`, label: `Review ${plural(start.due, "card")}`, where: start.book.title }
-    : start.kind === "quiz"
-      ? { href: `/book/${start.book.id}?quiz=${encodeURIComponent(start.chapter)}`, label: "Take the quiz", where: start.chapter }
-      : { href: `/book/${start.book.id}`, label: "Keep reading", where: start.book.title };
+/** The one thing worth doing now, as a sentence and the button that starts it. */
+function nextStep({ start, current }: Today): { headline: React.ReactNode; action: { href: string; label: string } | null } {
+  const title = (text: string) => <span className="font-reading font-normal italic">{text}</span>;
+  if (start?.kind === "review") {
+    return {
+      headline: <>{plural(start.due, "card")} ready to review</>,
+      action: { href: `/book/${start.book.id}?review=1`, label: "Review now" },
+    };
+  }
+  if (start?.kind === "quiz") {
+    return {
+      headline: <>Ready for the quiz on {title(start.chapter)}</>,
+      action: { href: `/book/${start.book.id}?quiz=${encodeURIComponent(start.chapter)}`, label: "Take the quiz" },
+    };
+  }
+  if (start?.kind === "read") return { headline: <>Pick up {title(start.book.title)}</>, action: { href: `/book/${start.book.id}`, label: "Continue reading" } };
+  if (current) return { headline: <>You finished {title(current.title)}</>, action: null };
+  return { headline: <>Choose a book to start</>, action: null };
+}
+
+/** Seven dots, one a day, filled on the days something was learned. Today's is ringed. */
+function WeekDots({ days }: { days: DayTime[] }) {
+  const count = days.filter(learned).length;
+  return (
+    <span role="img" aria-label={`Learned on ${count} of the last ${days.length} days`} className="inline-flex items-center gap-1">
+      {days.map((day, index) => (
+        <span
+          key={day.day}
+          title={day.day}
+          className={clsx(
+            "size-[7px] rounded-full",
+            learned(day) ? "bg-paper" : "bg-tint-strong",
+            index === days.length - 1 && "ring-1 ring-fog ring-offset-1 ring-offset-ink",
+          )}
+        />
+      ))}
+    </span>
+  );
+}
 
 /**
- * The top of home: what is worth doing today, in one card. Cards due, the next chapter quiz, minutes left in the
- * book being read, the streak and today's minimum, and one button that starts the most useful of them. A library
- * that can't be read hides the card rather than failing home.
+ * The top of home: what to do now, in one sentence with one button, and a single line of where the day and week
+ * stand. Reviews come first, then a course quiz, then the book being read. A library that can't be read hides
+ * it rather than failing home.
  */
 export async function TodayCard() {
   await connection();
-  const today = await readToday().catch((error: unknown) => {
-    console.warn("Could not read today:", error);
-    return null;
-  });
+  const now = new Date();
+  const [today, activity] = await Promise.all([
+    readToday(now).catch((error: unknown) => {
+      console.warn("Could not read today:", error);
+      return null;
+    }),
+    readActivity().catch(emptyActivity),
+  ]);
   if (!today) return null;
-  const { streak, start } = today;
-  const link = start ? startLink(start) : null;
+  const { headline, action } = nextStep(today);
+  const { start, current, streak } = today;
+  const keepReading = start && start.kind !== "read" && current && current.minutesLeft !== 0 ? current : null;
+
   const facts = [
-    today.due ? `${plural(today.due, "card")} due` : "No cards due",
-    today.quiz ? `quiz ready: ${today.quiz.chapter}` : null,
-    today.current?.minutesLeft ? `about ${today.current.minutesLeft} min left in ${today.current.title}` : null,
+    streak.current ? `${streak.current}-day streak` : null,
+    streak.todayMet ? "today’s goal met" : `${Math.min(today.minutesToday, today.minimumMinutes)} of ${today.minimumMinutes} min today`,
+    start?.kind !== "review" && today.due ? `${plural(today.due, "card")} due` : null,
+    start?.kind === "read" && current?.minutesLeft ? `about ${current.minutesLeft} min left in this book` : null,
   ].filter(Boolean);
-  const minimum = streak.todayMet ? "Today’s minimum is met." : `${Math.min(today.minutesToday, today.minimumMinutes)} of ${today.minimumMinutes} min today, or one review session.`;
 
   return (
-    <section aria-label="Today" className="mb-4 flex flex-col gap-3 rounded-xl bg-panel px-4 py-3 shadow-canvas sm:flex-row sm:items-center">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-[15px] font-semibold text-paper">Today</h2>
-          <span className={`inline-flex items-center gap-1 text-label tabular-nums ${streak.current ? "text-fog" : "text-dim"}`}>
-            <Flame aria-hidden className={`size-3.5 ${streak.todayMet ? "text-accent" : ""}`} />
-            {streak.current ? `${plural(streak.current, "day")} streak` : "No streak yet"}
-            {streak.longest > streak.current ? ` · best ${streak.longest}` : null}
-          </span>
-          {streak.freezes ? (
-            <span className="inline-flex items-center gap-1 text-label tabular-nums text-dim" title="A freeze covers a missed day once this week's rest day is used. Earn one every seven days in a row.">
-              <Snowflake aria-hidden className="size-3.5" />
-              {plural(streak.freezes, "freeze")}
+    <section aria-label="Today" className="mb-12 flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <h2 className="text-display font-semibold text-paper [overflow-wrap:anywhere]">{headline}</h2>
+        <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-body tabular-nums text-dim">
+          <WeekDots days={dayTimes(activity, lastDays(now))} />
+          {facts.map((fact) => (
+            <span key={fact} className="before:mr-2.5 before:text-line-strong before:content-['·']">
+              {fact}
             </span>
-          ) : null}
-          <span className="text-label text-dim" title="One missed day a week doesn't break the streak.">
-            {streak.restLeft ? "rest day available" : "rest day used"}
-          </span>
-        </div>
-        <p className="text-label leading-relaxed text-fog [overflow-wrap:anywhere]">{facts.join(" · ")}</p>
-        <p className="text-label text-dim">{minimum}</p>
+          ))}
+        </p>
       </div>
-      {link ? (
-        <Link
-          href={link.href}
-          className="press inline-flex h-9 max-w-full shrink-0 items-center gap-2 self-start rounded-full bg-accent px-4 text-[13px] font-semibold text-on-accent hover:bg-accent/90 sm:self-center"
-          title={link.where}
-        >
-          <span className="truncate">{link.label}</span>
-          <ArrowRight aria-hidden className="size-4 shrink-0" />
-        </Link>
+      {action || keepReading ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {action ? (
+            <Link
+              href={action.href}
+              className="press inline-flex h-9 items-center gap-2 rounded-full bg-accent px-4 text-body font-semibold text-on-accent hover:bg-accent/90"
+            >
+              {action.label}
+              <ArrowRight aria-hidden className="size-4" />
+            </Link>
+          ) : null}
+          {keepReading ? (
+            <Link
+              href={`/book/${keepReading.id}`}
+              title={keepReading.title}
+              className="press inline-flex h-9 max-w-full items-center rounded-full px-4 text-body font-medium text-fog shadow-chip hover:bg-tint hover:text-paper"
+            >
+              <span className="truncate">Keep reading</span>
+            </Link>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

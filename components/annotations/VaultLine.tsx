@@ -8,7 +8,7 @@ export function VaultLine({ vault }: { vault: VaultStatus | null }) {
   if (!vault) return null;
   if (vault.state === "failed") {
     return (
-      <div role="alert" className="flex shrink-0 items-start gap-2 px-4 py-2.5 text-[11px] leading-relaxed text-dim">
+      <div role="alert" className="flex shrink-0 items-start gap-2 px-4 py-2.5 text-caption leading-relaxed text-dim">
         <CircleAlert className="mt-px size-3 shrink-0 text-warn" aria-hidden />
         <p className="min-w-0 [overflow-wrap:anywhere]">
           <span className="text-fog">Saved in the app, but not copied to your notes folder.</span> {vault.error}
@@ -19,7 +19,7 @@ export function VaultLine({ vault }: { vault: VaultStatus | null }) {
   return (
     <p
       title={vault.state === "written" ? vault.file : undefined}
-      className="flex shrink-0 items-center gap-2 px-4 py-2.5 text-[11px] text-dim"
+      className="flex shrink-0 items-center gap-2 px-4 py-2.5 text-caption text-dim"
     >
       <FileText className="size-3 shrink-0" aria-hidden />
       <span className="min-w-0 truncate">

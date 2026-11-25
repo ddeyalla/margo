@@ -38,7 +38,7 @@ export function Button({
         "press inline-flex select-none items-center justify-center font-medium transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out disabled:pointer-events-none disabled:opacity-40 [&>svg]:shrink-0",
         focusRing,
         buttonVariants[variant],
-        size === "sm" ? "h-7 gap-1.5 px-2.5 text-label [&>svg]:size-3.5" : "h-8 gap-2 px-3.5 text-[13px] [&>svg]:size-4",
+        size === "sm" ? "h-7 gap-1.5 px-2.5 text-label [&>svg]:size-3.5" : "h-8 gap-2 px-3.5 text-body [&>svg]:size-4",
         className,
       )}
       {...props}
@@ -78,7 +78,7 @@ export function EmptyState({ icon, title, body, children }: { icon?: ReactNode; 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
       {icon ? <div className="mb-2 flex size-11 items-center justify-center rounded-lg bg-panel text-dim shadow-chip [&>svg]:size-5">{icon}</div> : null}
-      <p className="text-[13px] font-semibold text-paper">{title}</p>
+      <p className="text-body font-semibold text-paper">{title}</p>
       {body ? <p className="max-w-[30ch] text-label leading-relaxed text-dim">{body}</p> : null}
       {children}
     </div>

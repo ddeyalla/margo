@@ -81,7 +81,7 @@ export function MicButton({ dictation, disabled = false, className }: { dictatio
 export function DictationNote({ dictation, className }: { dictation: Dictation; className?: string }) {
   const { phase, note, progress } = dictation;
   const button =
-    "press rounded-sm px-1.5 py-0.5 text-[11px] text-paper outline-none hover:bg-tint-strong focus-visible:outline-2 focus-visible:outline-accent";
+    "press rounded-sm px-1.5 py-0.5 text-caption text-paper outline-none hover:bg-tint-strong focus-visible:outline-2 focus-visible:outline-accent";
   let body: ReactNode = null;
   /* Recording and transcribing show on the button itself, so the field keeps its size. */
   if (phase === "consent") {
@@ -110,7 +110,7 @@ export function DictationNote({ dictation, className }: { dictation: Dictation; 
   } else if (note) body = note.text;
   if (!body) return null;
   return (
-    <p role="status" className={clsx("text-[11px] leading-relaxed", phase === "idle" && note?.error ? "text-danger" : "text-dim", className)}>
+    <p role="status" className={clsx("text-caption leading-relaxed", phase === "idle" && note?.error ? "text-danger" : "text-dim", className)}>
       {body}
     </p>
   );

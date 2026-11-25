@@ -122,14 +122,14 @@ function NoteCard({
       ) : null}
       <button type="button" onClick={onJump} title="Go to this passage" className="press flex w-full gap-2.5 pr-14 text-left">
         <span aria-hidden className="w-[3px] shrink-0 self-stretch rounded-full bg-highlight-strong/70" />
-        <span className="line-clamp-3 min-w-0 font-reading text-[12.5px] leading-relaxed text-fog transition-colors duration-[var(--duration-fast)] hover:text-prose">
+        <span className="line-clamp-3 min-w-0 font-reading text-body leading-relaxed text-fog transition-colors duration-[var(--duration-fast)] hover:text-prose">
           {note.quote}
         </span>
       </button>
       <div className="mt-2 pl-[13px]">
         <Markdown text={note.body} />
       </div>
-      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 pl-[13px] text-[11px] text-dim">
+      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 pl-[13px] text-caption text-dim">
         {note.tags.map((tag) => (
           <span key={tag} className="rounded-xs bg-tint px-1.5 py-px text-fog">
             #{tag}

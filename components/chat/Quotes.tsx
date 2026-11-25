@@ -25,7 +25,7 @@ export function addQuote(draft: QuoteDraft, quote: QuotedPassage): "added" | "al
   return "added";
 }
 
-const chipClass = "flex min-w-0 max-w-full items-center gap-1.5 rounded-md bg-panel-hover py-1 pl-2 text-[12px] ring-1 ring-inset ring-line";
+const chipClass = "flex min-w-0 max-w-full items-center gap-1.5 rounded-md bg-panel-hover py-1 pl-2 text-label ring-1 ring-inset ring-line";
 
 /** The passages waiting in the composer. Each is one chip, removed whole. */
 export function DraftQuotes({ quotes, onRemove }: { quotes: QuotedPassage[]; onRemove(index: number): void }) {
@@ -87,9 +87,9 @@ function SentQuote({ quote, number }: { quote: QuotedPassage; number: number }) 
         title={missing ? missingNote : place ? `Go to this passage · ${place}` : "Go to this passage"}
         className={clsx(chipClass, "press pr-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-panel-raised")}
       >
-        <span className="shrink-0 tabular-nums text-[11px] text-dim">{number}</span>
+        <span className="shrink-0 tabular-nums text-caption text-dim">{number}</span>
         <span className="min-w-0 flex-1 truncate font-reading text-prose">{quote.text}</span>
-        {missing ? <span className="shrink-0 text-[11px] text-warn">Not found</span> : null}
+        {missing ? <span className="shrink-0 text-caption text-warn">Not found</span> : null}
       </button>
     </li>
   );
@@ -128,7 +128,7 @@ export function CitationLink({ number, children }: { number: number; children: R
       className="cursor-pointer text-paper underline decoration-accent/60 decoration-dotted underline-offset-[3px] transition-colors hover:decoration-accent"
     >
       {children}
-      <sup className={clsx("ml-px text-[10px] font-medium tabular-nums no-underline", missing ? "text-warn" : "text-accent")}>{number}</sup>
+      <sup className={clsx("ml-px text-caption font-medium tabular-nums no-underline", missing ? "text-warn" : "text-accent")}>{number}</sup>
     </a>
   );
 }
@@ -143,15 +143,15 @@ function Source({ number, claims }: { number: number; claims: string[] }) {
   const place = placeLabel(quote.chapterTitle, quote.anchor);
   return (
     <li className="group/source flex min-w-0 items-start gap-2">
-      <span className="mt-px w-3 shrink-0 text-right tabular-nums text-[11px] text-accent">{number}</span>
+      <span className="mt-px w-3 shrink-0 text-right tabular-nums text-caption text-accent">{number}</span>
       <button
         type="button"
         onClick={follow.find}
         title={follow.missing ? missingNote : "Go to this passage"}
         className="press min-w-0 flex-1 rounded-xs text-left transition-colors duration-[var(--duration-fast)] hover:text-paper"
       >
-        <span className="line-clamp-2 font-reading text-[12px] leading-snug text-fog">{quote.text}</span>
-        <span className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-dim">
+        <span className="line-clamp-2 font-reading text-label leading-snug text-fog">{quote.text}</span>
+        <span className="mt-0.5 flex min-w-0 items-center gap-1 text-caption text-dim">
           <CornerDownRight className="size-3 shrink-0" aria-hidden />
           <span className="truncate">{follow.missing ? "Not found in this copy of the book" : (place ?? "Go to passage")}</span>
         </span>
@@ -163,7 +163,7 @@ function Source({ number, claims }: { number: number; claims: string[] }) {
           citations.save(quote, citationNote(claims));
           setSaved(true);
         }}
-        className="press shrink-0 rounded-xs px-1.5 py-0.5 text-[11px] text-dim transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper disabled:pointer-events-none"
+        className="press shrink-0 rounded-xs px-1.5 py-0.5 text-caption text-dim transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper disabled:pointer-events-none"
       >
         {saved ? "Saved to notes" : "Save to notes"}
       </button>

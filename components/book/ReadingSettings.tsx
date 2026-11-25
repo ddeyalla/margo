@@ -44,7 +44,7 @@ export function ReadingSettings({
       <PopoverTrigger
         aria-label="Reading settings"
         title="Reading settings"
-        className="press flex h-7 shrink-0 items-center justify-center rounded-sm px-2 font-reading text-[14px] leading-none text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[open]:bg-panel-raised data-[open]:text-paper data-[open]:shadow-chip"
+        className="press flex h-7 shrink-0 items-center justify-center rounded-sm px-2 font-reading text-callout leading-none text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:bg-tint hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[open]:bg-panel-raised data-[open]:text-paper data-[open]:shadow-chip"
       >
         Aa
       </PopoverTrigger>
