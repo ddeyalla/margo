@@ -161,8 +161,9 @@ you ask.
       carries on into the next section and stops at the book's end, on a jump to another chapter,
       and when the book closes. The spotlight follows the paragraph being read. Pause cancels the
       voice and play resumes at the last word, since a paused utterance is unreliable in Chromium.
-      Word boundaries arrive from macOS voices in Electron 45 and in the desktop app's Chromium 156.
-      PDF is not covered yet.
+      Checked with macOS voices in the Electron app (Electron 45) and in Google Chrome 158, both
+      lighting each word. In Pages mode the page keeps a wider margin while the controls are open,
+      so its last line stays clear of them. PDF is not covered yet.
 
 ## Phase 12 — Light and dark audit · S
 

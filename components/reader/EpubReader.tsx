@@ -146,6 +146,8 @@ const GESTURE_GAP_MS = 400;
 const COLUMN_WIDTH = "570px";
 /** Keys that move through the book. */
 const NAV_KEYS = new Set(["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+/** Pages mode's top and foot margin while the read-along controls are open: their height and offset, and a little air. */
+const PAGE_MARGIN_UNDER_CONTROLS = "64px";
 /** Panes at least this wide show two columns side by side in Pages mode. */
 const TWO_COLUMNS_FROM = 1040;
 
@@ -437,6 +439,15 @@ export function EpubReader({
   const open = readAloud !== null;
   const rate = readAloud?.rate ?? 1;
   const voice = readAloud?.voice ?? null;
+  /* In Pages mode the controls float over the page's foot, so the page keeps its last line clear of them. foliate
+     lays the page out again and returns to the passage. */
+  useEffect(() => {
+    const renderer = openRef.current ? viewRef.current?.renderer : null;
+    if (!renderer) return;
+    if (open && mode === "pages") renderer.setAttribute("margin", PAGE_MARGIN_UNDER_CONTROLS);
+    else renderer.removeAttribute("margin");
+  }, [open, mode]);
+
   useEffect(() => {
     const readAlong = readAlongRef.current;
     if (!open) readAlong?.close();

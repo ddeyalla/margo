@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import { addFixations, FIXATION_TAG } from "@/components/reader/fixations";
 import { pickVoice } from "@/components/reader/narrator";
 import { markAt, ssmlToText } from "@/components/reader/ssml";
 import { TTS } from "@/public/vendor/foliate-js/tts.js";
@@ -98,6 +99,19 @@ describe("read-along over foliate's TTS", () => {
     }
     expect(spoken).toEqual(["Chapter one", "Zero to One is about building the future, not copying it.", "A boldly nested word ends here."]);
     expect(lit).toEqual("Chapter one Zero to One is about building the future not copying it A boldly nested word ends here".split(" "));
+  });
+
+  it("lights whole words when bold starts has split them into marked pieces", () => {
+    const doc = new DOMParser().parseFromString(SECTION, "application/xhtml+xml");
+    addFixations(doc);
+    expect(doc.getElementsByTagName(FIXATION_TAG).length).toBeGreaterThan(0);
+    const lit: string[] = [];
+    const tts = new TTS(doc, textWalker, (range: Range) => lit.push(range.toString()), "word");
+    tts.next();
+    const { text, marks } = ssmlToText(tts.next()!);
+    expect(text.trim()).toBe("Zero to One is about building the future, not copying it.");
+    for (const index of boundaries(text)) tts.setMark(markAt(marks, index)!);
+    expect(lit).toEqual("Zero to One is about building the future not copying it".split(" "));
   });
 
   it("starts at a paragraph in view, from its first word", () => {
