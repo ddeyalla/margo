@@ -635,7 +635,8 @@ tldraw is out because its SDK needs a production licence.
       come in as one picture. Asked to draw, the tutor names its diagram in a `%%` first line,
       which titles the board.*
 - [x] **Many boards per book, in their own pane.** The board pane opens between the book
-      and the chat, so all three show at once; it can also hide the book and take its room.
+      and the chat, so all three show at once, and moves to the book's other side with one
+      button; it can also hide the book and take its room.
       It lists the book's boards (the chapter's own, new ones by title, and ones from the
       chat) and draws the open one. The tutor's review, edits and Draw it back sit in a rail
       that opens on demand, or by itself when it has something to show.

@@ -110,7 +110,9 @@ export function BoardPane({
   unavailable,
   theme,
   bookShown,
+  side,
   onToggleBook,
+  onSwap,
   onRecall,
   onDraw,
   onAnswer,
@@ -124,7 +126,11 @@ export function BoardPane({
   unavailable: string | null;
   theme: "light" | "dark";
   bookShown: boolean;
+  /** Which side of the book the pane is on. */
+  side: "left" | "right";
   onToggleBook(): void;
+  /** Moves the pane to the other side of the book. */
+  onSwap(): void;
   /** Draw it back closes the book and the chat while it lasts. */
   onRecall(active: boolean): void;
   /** Asks the tutor, in the chat, to draw something. */
@@ -143,7 +149,9 @@ export function BoardPane({
         unavailable={unavailable}
         theme={theme}
         bookShown={bookShown}
+        side={side}
         onToggleBook={onToggleBook}
+        onSwap={onSwap}
         onRecall={onRecall}
         onAnswer={onAnswer}
         onBack={boards.list}

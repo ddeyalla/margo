@@ -5,7 +5,7 @@ import { CaptureUpdateAction, Excalidraw, exportToBlob, hashElementsVersion, Mai
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI, ExcalidrawInitialDataState } from "@excalidraw/excalidraw/types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, Eye, PanelLeftClose, PanelLeftOpen, RotateCcw, Send, Sparkles, X } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronLeft, Eye, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { Button, IconButton, Spinner } from "@/components/ui";
 import { compactScene, type BoardCheck, type BoardReview, type OpenedBoard } from "@/lib/shared/boards";
 import type { BookId, ProviderId } from "@/lib/shared/types";
@@ -29,7 +29,11 @@ export interface WhiteboardProps {
   onAnswer(text: string): void;
   /** The book is beside the board, rather than hidden for the board to take its room. */
   bookShown: boolean;
+  /** Which side of the book the board is on. */
+  side: "left" | "right";
   onToggleBook(): void;
+  /** Moves the board to the other side of the book. Its edits save as it moves. */
+  onSwap(): void;
   /** Back to the list of boards, once the edits are saved. */
   onBack(): void;
   onClose(): void;
@@ -99,7 +103,7 @@ const pendingKey = (list: readonly Suggestion[]) => list.map((s) => s.id).join("
  * closed: redrawn from memory, the tutor points at the first link that doesn't hold, and says nothing more.
  */
 export default function Whiteboard(props: WhiteboardProps) {
-  const { bookId, boardId, provider, unavailable, theme, bookShown, onRecall, onAnswer, onToggleBook, onBack, onClose } = props;
+  const { bookId, boardId, provider, unavailable, theme, bookShown, side, onRecall, onAnswer, onToggleBook, onSwap, onBack, onClose } = props;
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [mode, setMode] = useState<"board" | "recall">("board");
   const [save, setSave] = useState<Save>({ state: "saved" });
@@ -460,8 +464,14 @@ export default function Whiteboard(props: WhiteboardProps) {
             Tutor
           </Button>
         ) : null}
+        {bookShown ? (
+          <IconButton size="sm" label={side === "right" ? "Move the board to the left of the book" : "Move the board to the right of the book"} disabled={mode === "recall"} onClick={onSwap}>
+            <ArrowLeftRight />
+          </IconButton>
+        ) : null}
         <IconButton size="sm" label={bookShown ? "Hide the book" : "Show the book"} active={!bookShown} disabled={mode === "recall"} onClick={onToggleBook}>
-          {bookShown ? <PanelLeftClose /> : <PanelLeftOpen />}
+          {/* The book is on the far side of the board: the icon's panel is the book. */}
+          {side === "right" ? bookShown ? <PanelLeftClose /> : <PanelLeftOpen /> : bookShown ? <PanelRightClose /> : <PanelRightOpen />}
         </IconButton>
         <IconButton size="sm" label="Close the whiteboard" onClick={() => void close()}>
           <X />

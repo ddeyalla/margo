@@ -50,7 +50,7 @@ import { useShortcuts, type Shortcut } from "./useShortcuts";
 import { useSpotlight } from "./useSpotlight";
 import { useFocusSession } from "./useFocusSession";
 import { useTutorActions } from "./useTutorActions";
-import { BOARD_PANE_ID, BOOK_PANE_ID, PANEL_ID, useTutorPanel } from "./useTutorPanel";
+import { BOARD_PANE_IDS, BOOK_PANE_ID, PANEL_ID, useTutorPanel, type BoardSide } from "./useTutorPanel";
 
 /** A sheet opened from a link leaves the link once closed, so a reload opens the book. */
 /* The bar between two panes, drawn only while it's hovered, focused or dragged. */
@@ -324,8 +324,8 @@ export function BookWorkspace({
   useEffect(() => placeBoardPane(boardPaneShown), [boardPaneShown]);
   /* Dragged shut, the pane closes its board, which saves it; the book is never folded away with nothing in its place. */
   const layoutChanged = () => {
-    if (boards.open && panel.layout.isCollapsed(BOARD_PANE_ID)) boards.close();
-    if (panel.layout.isCollapsed(BOOK_PANE_ID) && panel.layout.isCollapsed(BOARD_PANE_ID)) panel.showBook();
+    if (boards.open && panel.isBoardClosed()) boards.close();
+    if (panel.layout.isCollapsed(BOOK_PANE_ID) && panel.isBoardClosed()) panel.showBook();
     panel.sync();
   };
   const toggleBook = () => (panel.isBookOpen() ? panel.hideBook() : panel.showBook());
@@ -362,6 +362,48 @@ export function BookWorkspace({
       quotes: [],
     });
     focus.dismiss(true);
+  };
+
+  /* The board's slot on one side of the book, with the bar between it and the book. Only the board's side draws it. */
+  const boardSlot = (side: BoardSide) => {
+    const here = panel.boardSide === side && panel.boardOpen;
+    const handle = <ResizableHandle aria-label="Resize the whiteboard" disabled={!here} className={here ? HANDLE : HANDLE.replace("w-2", "w-0")} />;
+    const pane = (
+      <ResizablePanel id={BOARD_PANE_IDS[side]} defaultSize="0px" minSize="400px" collapsible className="min-w-0 overflow-hidden">
+        {/* Drawn only while open: a canvas in a closed pane has no size. */}
+        {boardPaneShown && here ? (
+          <div data-board-pane className={clsx("flex h-full min-w-0 flex-col overflow-hidden bg-page", !bare && "rounded-xl shadow-canvas")}>
+            <BoardPane
+              boards={boards}
+              bookId={book.id}
+              spot={spot}
+              context={boardContext}
+              provider={provider}
+              unavailable={unavailable}
+              theme={appTheme}
+              bookShown={panel.bookOpen}
+              side={side}
+              onToggleBook={toggleBook}
+              onSwap={panel.swapBoard}
+              onRecall={recallBoard}
+              onDraw={drawInChat}
+              onAnswer={answerFromBoard}
+            />
+          </div>
+        ) : null}
+      </ResizablePanel>
+    );
+    return side === "left" ? (
+      <>
+        {pane}
+        {handle}
+      </>
+    ) : (
+      <>
+        {handle}
+        {pane}
+      </>
+    );
   };
 
   const readerProps: ReaderProps = {
@@ -418,10 +460,11 @@ export function BookWorkspace({
       />
       <Resizable
         controller={panel.layout}
-        autoSaveId="rigg-learn.book-layout.v2"
+        autoSaveId="rigg-learn.book-layout.v3"
         onLayoutChange={layoutChanged}
         className={clsx("min-h-0 flex-1", !bare && "px-2 pb-2")}
       >
+        {boardSlot("left")}
         <ResizablePanel id={BOOK_PANE_ID} minSize="360px" collapsible className="min-w-0">
           <div ref={readerPaneRef} style={{ "--toc-width": `${TOC_WIDTH}px` } as CSSProperties} className="flex h-full min-w-0">
             {tocDocked && !error ? (
@@ -511,28 +554,7 @@ export function BookWorkspace({
             </main>
           </div>
         </ResizablePanel>
-        <ResizableHandle aria-label="Resize the whiteboard" disabled={!panel.boardOpen} className={clsx(HANDLE, !panel.boardOpen && "w-0")} />
-        <ResizablePanel id={BOARD_PANE_ID} defaultSize="0px" minSize="400px" collapsible className="min-w-0 overflow-hidden">
-          {/* Drawn only while open: a canvas in a closed pane has no size. */}
-          {boardPaneShown && panel.boardOpen ? (
-            <div data-board-pane className={clsx("flex h-full min-w-0 flex-col overflow-hidden bg-page", !bare && "rounded-xl shadow-canvas")}>
-              <BoardPane
-                boards={boards}
-                bookId={book.id}
-                spot={spot}
-                context={boardContext}
-                provider={provider}
-                unavailable={unavailable}
-                theme={appTheme}
-                bookShown={panel.bookOpen}
-                onToggleBook={toggleBook}
-                onRecall={recallBoard}
-                onDraw={drawInChat}
-                onAnswer={answerFromBoard}
-              />
-            </div>
-          ) : null}
-        </ResizablePanel>
+        {boardSlot("right")}
         <ResizableHandle aria-label="Resize the tutor panel" className={HANDLE} />
         <ResizablePanel
           id={PANEL_ID}
