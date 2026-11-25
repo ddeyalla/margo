@@ -55,7 +55,7 @@ export interface Mastery {
   /** Chapters of the Course passed, out of the chapters it reads that the library has. */
   passed: number;
   chapters: number;
-  /** Predicted recall over the Course's cards and quiz questions, 0 to 1, or null before any review. */
+  /** Predicted recall over the Course's cards, quiz questions and chapter boards redrawn from memory, 0 to 1, or null before any of them. */
   retained: number | null;
   /** How many cards, questions and redrawn boards retention is read from. */
   items: number;
@@ -63,7 +63,9 @@ export interface Mastery {
 
 /**
  * Coverage and retention of a Course, read from evidence at the moment asked. Cards count when made in a chapter
- * the Course reads, or in a section of one whose quiz recorded its sections. Nothing here is stored.
+ * the Course reads, or in a section of one whose quiz recorded its sections; quiz questions count by their chapter;
+ * a chapter's board counts once, from its draw-it-back attempts, when it is about one of those chapters or sections.
+ * Nothing here is stored.
  */
 export const courseMastery = (course: Pick<Course, "books" | "units">, books: ReadonlyMap<BookId, BookEvidence>, now: Date): Mastery => {
   const steps = courseSteps(course);

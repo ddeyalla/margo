@@ -674,7 +674,8 @@ div.board-canvas .excalidraw.theme--dark {
   box-shadow: var(--elevation-float);
 }
 
-/* In a narrow pane the tool bar is wider than the room it has: it scrolls sideways instead of hanging off both edges. */
+/* In a narrow pane the tool bar is wider than the room it has: its tools wrap onto a second row instead of hanging off
+   both edges. Wrapping, not scrolling, so the extra tools' menu, which opens inside the bar, isn't clipped. */
 .board-canvas .excalidraw .App-top-bar :is(div:has(.App-toolbar), .App-toolbar) {
   max-width: 100%;
   min-width: 0;
@@ -682,7 +683,7 @@ div.board-canvas .excalidraw.theme--dark {
 .board-canvas .excalidraw .App-top-bar .App-toolbar-container {
   display: flex;
 }
-.board-canvas .excalidraw .App-toolbar {
-  overflow-x: auto;
-  scrollbar-width: none;
+.board-canvas .excalidraw .App-toolbar-content {
+  flex-wrap: wrap;
+  justify-content: center;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrowBetween, besideOffset, boundsOf, NODE, placeNodes } from "@/components/board/geometry";
+import { anchoredX, arrowBetween, besideOffset, boundsOf, boundTextMaxWidth, containerWidthFor, NODE, placeNodes, textRepairs, wrapWords } from "@/components/board/geometry";
 import { boardChapter } from "@/lib/shared/boards";
 
 describe("board geometry", () => {
@@ -35,11 +35,92 @@ describe("board geometry", () => {
     expect(placeNodes([{ id: "a", near: null }], null).get("a")).toEqual({ x: 0, y: 0 });
   });
 
+  it("stacks ideas beside the same element by its id, not by which box object stands for it", () => {
+    const placed = placeNodes(
+      [
+        { id: "a", near: { x: 0, y: 0, width: 180, height: 64 }, key: "cue" },
+        { id: "b", near: { x: 0, y: 0, width: 180, height: 64 }, key: "cue" },
+      ],
+      null,
+    );
+    expect(placed.get("b")).toEqual({ x: 300, y: NODE.height + 40 });
+  });
+
+  it("stacks equal boxes without a key by where they are", () => {
+    const placed = placeNodes([{ id: "a", near: { x: 0, y: 0, width: 180, height: 64 } }, { id: "b", near: { x: 0, y: 0, width: 180, height: 64 } }], null);
+    expect(placed.get("b")).toEqual({ x: 300, y: NODE.height + 40 });
+  });
+
+  it("leaves room for a tall idea before the next, beside an element and in the column", () => {
+    const near = { x: 0, y: 0, width: 180, height: 64 };
+    const tall = { width: 320, height: 145 };
+    const beside = placeNodes([{ id: "a", near, key: "n", size: tall }, { id: "b", near, key: "n" }], null);
+    expect(beside.get("b")).toEqual({ x: 300, y: 145 + 40 });
+    const column = placeNodes([{ id: "a", near: null, size: tall }, { id: "b", near: null }], null);
+    expect(column.get("b")).toEqual({ x: 0, y: 145 + 40 });
+  });
+
   it("moves a converted diagram to the right of the board, tops aligned", () => {
     const drawing = { x: 50, y: 70, width: 100, height: 100 };
     expect(besideOffset({ x: 0, y: 0, width: 400, height: 300 }, drawing)).toEqual({ dx: 400 + 160 - 50, dy: -70 });
     expect(besideOffset(null, drawing)).toEqual({ dx: -50, dy: -70 });
     expect(besideOffset(null, null)).toEqual({ dx: 0, dy: 0 });
+  });
+});
+
+describe("fitting text", () => {
+  const measure = (line: string) => line.length * 10;
+
+  it("sizes labels as Excalidraw does for each kind of shape", () => {
+    expect(boundTextMaxWidth("rectangle", 200, 20)).toBe(190);
+    expect(boundTextMaxWidth("diamond", 200, 20)).toBe(90);
+    expect(boundTextMaxWidth("ellipse", 200, 20)).toBe(131);
+    expect(boundTextMaxWidth("arrow", 100, 20)).toBe(220);
+    expect(containerWidthFor("rectangle", 100)).toBe(110);
+    expect(containerWidthFor("diamond", 100)).toBe(220);
+    for (const type of ["rectangle", "diamond", "ellipse"]) expect(boundTextMaxWidth(type, containerWidthFor(type, 100), 20)).toBeGreaterThanOrEqual(99);
+  });
+
+  it("keeps text anchored by its alignment as it widens", () => {
+    expect(anchoredX(100, 50, 80, "left")).toBe(100);
+    expect(anchoredX(100, 50, 80, "center")).toBe(85);
+    expect(anchoredX(100, 50, 80, "right")).toBe(70);
+  });
+
+  it("wraps words to a width, keeping the lines already there", () => {
+    expect(wrapWords("one two three\nfour", 80, measure)).toBe("one two\nthree\nfour");
+    expect(wrapWords("unbreakable", 30, measure)).toBe("unbreakable");
+  });
+
+  const text = { id: "t", isDeleted: false, x: 0, width: 50, fontSize: 20, textAlign: "center", containerId: null as string | null, measured: 80 };
+
+  it("leaves text that already fits alone", () => {
+    expect(textRepairs([{ ...text, measured: 50.3 }], new Map()).size).toBe(0);
+  });
+
+  it("widens free text around its alignment", () => {
+    expect(textRepairs([{ ...text, x: 100, textAlign: "right" }], new Map()).get("t")).toEqual({ x: 70, width: 80 });
+  });
+
+  it("never resizes an arrow, and keeps its label centered on it", () => {
+    const arrow = { id: "a", isDeleted: false, type: "arrow", x: 100, width: 0 };
+    const repairs = textRepairs([{ ...text, x: 75, containerId: "a", measured: 100 }], new Map([["a", arrow]]));
+    expect(repairs.has("a")).toBe(false);
+    expect(repairs.get("t")).toEqual({ x: 50, width: 100 });
+  });
+
+  it("widens a shape around its center as Excalidraw would size it, and aligns the label inside", () => {
+    const diamond = { id: "d", isDeleted: false, type: "diamond", x: 0, width: 200 };
+    const repairs = textRepairs([{ ...text, containerId: "d", measured: 120, textAlign: "left" }], new Map([["d", diamond]]));
+    expect(repairs.get("d")).toEqual({ x: -30, width: 260 });
+    expect(repairs.get("t")).toEqual({ x: -30 + 5 + 65, width: 120 });
+  });
+
+  it("keeps a shape whose label still fits, moving only the label", () => {
+    const box = { id: "r", isDeleted: false, type: "rectangle", x: 0, width: 200 };
+    const repairs = textRepairs([{ ...text, containerId: "r", measured: 120, textAlign: "right" }], new Map([["r", box]]));
+    expect(repairs.has("r")).toBe(false);
+    expect(repairs.get("t")).toEqual({ x: 5 + 190 - 120, width: 120 });
   });
 });
 

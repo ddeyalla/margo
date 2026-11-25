@@ -338,12 +338,16 @@ export function BookWorkspace({
   /* The recall from a focus session goes to the tutor as the reader's own message, to be checked against the book. */
   /* The board pane is open exactly while a board, or the list of them, is. */
   const boardPaneShown = boards.open !== null;
+  /* Work waiting for a board to open is given up once another board, or none, is open instead. */
+  const openBoardId = boards.open?.id ?? null;
+  useEffect(() => boardLink.cancel(openBoardId), [boardLink, openBoardId]);
   const placeBoardPane = useEffectEvent((shown: boolean) => (shown ? panel.showBoard() : panel.hideBoard()));
   /* Again once the layout attaches: one saved with a board open has none in it now. */
   useEffect(() => placeBoardPane(boardPaneShown), [boardPaneShown, panel.attached]);
   /* Dragged shut, the pane closes its board, which saves it; the book is never folded away with nothing in its place. */
   const layoutChanged = () => {
-    if (boards.open && panel.isBoardClosed()) boards.close();
+    /* A board that couldn't save stays open: its pane comes back with it. */
+    if (boards.open && panel.isBoardClosed()) void boards.close().then((closed) => closed || panel.showBoard());
     if (panel.layout.isCollapsed(BOOK_PANE_ID) && panel.isBoardClosed()) panel.showBook();
     panel.sync();
   };
@@ -367,7 +371,7 @@ export function BookWorkspace({
       await boards.fromDiagram(source);
       return null;
     }
-    return (await boardLink.addDiagram(boardId, source)).added;
+    return boardLink.addDiagram(boardId, source);
   });
   const diagramBoards = useMemo(() => ({ boards: boards.boards, add: addDiagram }), [boards.boards, addDiagram]);
   /* Words from the board go into the chat's composer, with the board attached, for the reader to finish. */
@@ -480,7 +484,7 @@ export function BookWorkspace({
         focusing={focus.active}
         onFocus={focus.start}
         boardOpen={boardPaneShown}
-        onBoard={() => (boards.open ? boards.close() : boards.list())}
+        onBoard={() => (boards.open ? void boards.close() : boards.list())}
         panelId={PANEL_ID}
         panelOpen={panel.open}
         onTogglePanel={panel.toggle}

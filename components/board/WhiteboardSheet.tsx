@@ -4,13 +4,14 @@ import { createContext } from "react";
 import dynamic from "next/dynamic";
 import { Spinner } from "@/components/ui";
 import type { BoardSummary } from "@/lib/shared/boards";
+import type { Placed } from "./link";
 import type { WhiteboardProps } from "./Whiteboard";
 
 /** Where a Mermaid diagram from the chat can go, where the book allows it: the book's boards, and a way onto one. */
 export interface DiagramBoards {
   boards: readonly BoardSummary[];
-  /** Puts the diagram on the board `boardId`, or on a board of its own when null; says how many suggestions it made. */
-  add(source: string, boardId: string | null): Promise<number | null>;
+  /** Puts the diagram on the board `boardId`, or on a board of its own when null; says how it went on an existing board. */
+  add(source: string, boardId: string | null): Promise<Placed | null>;
 }
 
 export const OpenAsBoard = createContext<DiagramBoards | null>(null);

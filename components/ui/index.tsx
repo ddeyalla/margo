@@ -80,7 +80,7 @@ export { Segmented } from "./pill";
 
 /* A field's edge and its states: the hairline darkens on hover and on focus, where the accent ring also shows. */
 const fieldClass =
-  "min-w-0 rounded-sm bg-panel text-paper outline-none ring-1 ring-inset ring-line transition-shadow duration-[var(--duration-fast)] placeholder:text-dim hover:ring-line-strong focus-visible:ring-line-strong disabled:opacity-50";
+  "min-w-0 rounded-sm bg-panel text-paper outline-none ring-1 ring-inset ring-line transition-shadow duration-[var(--duration-fast)] placeholder:text-dim hover:ring-line-strong focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50";
 
 /** A one-line text field. `size` md for a form, sm for a field in a toolbar or list. */
 export function Field({ className, size = "sm", ...props }: Omit<ComponentProps<"input">, "size"> & { size?: "sm" | "md" }) {

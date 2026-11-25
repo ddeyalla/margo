@@ -8,7 +8,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { citedNumber } from "@/lib/shared/quotes";
 import { BOARD_FENCE } from "@/lib/shared/boards";
-import { BoardChanges, BoardChangesWriting } from "./BoardChanges";
+import { AnswerBoard, BoardChanges, BoardChangesWriting } from "./BoardChanges";
 import { Diagram } from "./Diagram";
 import { CitationLink } from "./Quotes";
 import { settledStarts } from "./settled";
@@ -45,7 +45,13 @@ const fenceSource = (node: Element | undefined, language: string): string | null
    code. The tutor's board changes are never shown as their JSON: they are a card, writing while they arrive. */
 function Pre(props: JSX.IntrinsicElements["pre"] & ExtraProps) {
   const live = useContext(Live);
-  if (fenceSource(props.node, BOARD_FENCE) !== null) return live ? <BoardChangesWriting /> : <BoardChanges />;
+  const changes = useContext(AnswerBoard);
+  if (fenceSource(props.node, BOARD_FENCE) !== null) {
+    if (live) return <BoardChangesWriting />;
+    /* Only the last fence is the answer's changes; an earlier one, superseded, shows as nothing rather than a second card. */
+    const at = props.node?.position?.start.offset;
+    return changes && at !== undefined && at !== changes.fenceAt ? null : <BoardChanges />;
+  }
   const source = live ? null : fenceSource(props.node, "mermaid");
   return source === null ? <StyledPre {...props} /> : <Diagram source={source} codeClass={preClass} />;
 }

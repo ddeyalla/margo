@@ -1,6 +1,6 @@
 import type { Provider, TutorTurn } from "./types";
 
-export const DIAGRAM_SYSTEM = `You fix Mermaid diagrams that failed to parse. Keep what the diagram shows: the same nodes, labels and links, and a first line that is a %% comment naming it. Change only what breaks the syntax, such as unquoted labels with brackets or parentheses, which you wrap in double quotes. Reply with the fixed diagram alone in one \`\`\`mermaid fence, and nothing else.`;
+export const DIAGRAM_SYSTEM = `You fix Mermaid diagrams that failed to parse. Keep what the diagram shows: the same nodes, labels and links. Keep any frontmatter (the block between --- lines) at the very start, where Mermaid requires it, and keep directives where they are. Then keep, or add, a %% comment line naming the diagram: the first line, or the first line after the frontmatter. Change only what breaks the syntax, such as unquoted labels with brackets or parentheses, which you wrap in double quotes. Don't add a subgraph. Reply with the fixed diagram alone in one \`\`\`mermaid fence, and nothing else.`;
 
 export const repairRequest = (source: string, error: string) =>
   `This Mermaid diagram failed to parse.\n\n\`\`\`mermaid\n${source}\n\`\`\`\n\nThe parser said:\n\n${error}`;

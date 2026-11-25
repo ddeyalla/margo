@@ -2,7 +2,7 @@ import { convertToExcalidrawElements, getCommonBounds, newElementWith } from "@e
 import type { ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import type { BoardOp } from "@/lib/shared/boards";
-import { arrowBetween, boundsOf, NODE, placeNodes, type Box } from "./geometry";
+import { anchoredX, arrowBetween, boundsOf, NODE, placeNodes, wrapWords, type Box, type TextAlign } from "./geometry";
 
 /**
  * The tutor's changes as suggestions on the canvas: drawn in their own colour, dashed and locked, and tagged in
@@ -86,13 +86,15 @@ export const suggestionsFor = (ops: readonly BoardOp[], ids: Record<string, stri
   /* New ideas first, so links can find them: placed where the tutor said, or beside what they link to. */
   const newNodes = new Map<string, { id: string; box: Box }>();
   const board = boundsOf(live(elements).map(boxOf));
+  const sizes = new Map(ops.flatMap((op) => (op.op === "add_node" ? [[op.id, nodeSize(op.text)] as const] : [])));
   const unplaced = ops.filter((op): op is Extract<BoardOp, { op: "add_node" }> => op.op === "add_node" && (op.x === undefined || op.y === undefined));
   const positions = placeNodes(
     unplaced.map((op) => {
       const link = ops.find((o) => o.op === "add_link" && (o.from === op.id || o.to === op.id)) as Extract<BoardOp, { op: "add_link" }> | undefined;
       const other = link && (link.from === op.id ? link.to : link.from);
       const near = other ? reader(other) : undefined;
-      return { id: op.id, near: near ? boxOf(near) : null };
+      /* Stacked by the element they sit beside, each taking the height its words need. */
+      return { id: op.id, near: near ? boxOf(near) : null, key: near?.id, size: sizes.get(op.id) };
     }),
     board,
   );
@@ -102,9 +104,11 @@ export const suggestionsFor = (ops: readonly BoardOp[], ids: Record<string, stri
   for (const op of ops) {
     const suggestion = newId();
     if (op.op === "add_node") {
-      const at = op.x !== undefined && op.y !== undefined ? { x: op.x, y: op.y } : positions.get(op.id)!;
+      /* A coordinate the tutor gave is kept even when the other one was left to the app. */
+      const placed = positions.get(op.id);
+      const at = { x: op.x ?? placed!.x, y: op.y ?? placed!.y };
       const id = newId();
-      const size = nodeSize(op.text);
+      const size = sizes.get(op.id)!;
       const skeleton: ExcalidrawElementSkeleton = { type: "rectangle", id, ...at, ...size, ...style, roundness: { type: 3 }, label: { text: op.text, strokeColor: SUGGESTION_COLOR } };
       /* Keep the id: links to this idea are drawn against it. */
       added.push(...tag(convertToExcalidrawElements([skeleton], { regenerateIds: false }), { suggestion, kind: "add_node", label: `Add ${quoted(op.text)}` }));
@@ -218,6 +222,26 @@ const labelFor = (target: Element, text: string): ExcalidrawTextElement => {
   return newElementWith(made, { containerId: target.id, strokeColor: READER_COLOR });
 };
 
+/** How wide `text` draws in `like`'s font, and how tall. */
+const measure = (like: ExcalidrawTextElement, text: string) => {
+  const [made] = convertToExcalidrawElements([
+    { type: "text", x: 0, y: 0, text, fontSize: like.fontSize, fontFamily: like.fontFamily, lineHeight: like.lineHeight, textAlign: like.textAlign },
+  ]) as ExcalidrawTextElement[];
+  return made;
+};
+
+/**
+ * A text element with new words, measured in its own font and kept where it was by its alignment. Text the reader
+ * gave a fixed width keeps that width, its words wrapped to it.
+ */
+const reworded = (target: ExcalidrawTextElement, words: string): ExcalidrawTextElement => {
+  const fixed = target.autoResize === false;
+  const text = !fixed ? words : wrapWords(words, target.width, (line) => measure(target, line).width);
+  const made = measure(target, text);
+  const width = !fixed ? made.width : target.width;
+  return newElementWith(target, { text: made.text, originalText: words, width, height: made.height, x: anchoredX(target.x, target.width, width, target.textAlign as TextAlign) });
+};
+
 /** Makes a suggestion the reader's own: in their colour, unlocked, attached where it points. */
 export const acceptSuggestion = (elements: readonly Element[], suggestion: string): Element[] => {
   const group = groupOf(elements, suggestion);
@@ -264,9 +288,8 @@ export const acceptSuggestion = (elements: readonly Element[], suggestion: strin
 
   if (data.kind === "update") {
     if (target.type === "text") {
-      const [made] = convertToExcalidrawElements([{ type: "text", x: target.x, y: target.y, text: data.text!, fontSize: target.fontSize, fontFamily: target.fontFamily }]);
-      changed.set(target.id, newElementWith(target, { isDeleted: true }));
-      extra.push(made);
+      /* Reworded in place, so its id, the arrows bound to it and the rest of its style stay as they are. */
+      changed.set(target.id, reworded(target, data.text!));
     } else {
       const label = labelFor(target, data.text!);
       if (bound) changed.set(bound.id, newElementWith(bound, { isDeleted: true }));

@@ -8,6 +8,7 @@ import { ArrowUp, ImagePlus, Square } from "lucide-react";
 import { IMAGE_TYPES } from "@/lib/shared/attachments";
 import { useUnsentText } from "@/lib/client/unsent";
 import { insertAtCaret } from "@/lib/shared/dictation";
+import { parseCompactScene } from "@/lib/shared/boards";
 import { DraftBoard } from "./BoardChip";
 import { DraftImages } from "./Images";
 import { DraftQuotes, type QuoteDraft } from "./Quotes";
@@ -80,7 +81,8 @@ export function Composer({
   if (handed && handed !== taken) {
     setTaken(handed);
     setDetached(null);
-    setText(handed.text);
+    /* Words already typed stay, after the handed-over ones. */
+    setText(text.trim() ? `${handed.text}${text}` : handed.text);
   }
   useEffect(() => {
     if (!handed || !link) return;
@@ -93,7 +95,9 @@ export function Composer({
   const hasContent = text.trim().length > 0 || images.ready.length > 0 || quoted.length > 0;
   const unquote = (index: number) => quotes.set(quotes.get().filter((_, i) => i !== index));
   const canSend = !disabledReason && !waiting && !images.uploading && !images.failed && hasContent;
-  const problem = images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;
+  /* A board too big to read can't go with a message; the message can go without it. */
+  const [boardProblem, setBoardProblem] = useState<string | null>(null);
+  const problem = (attached ? boardProblem : null) ?? images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -115,7 +119,15 @@ export function Composer({
 
   const send = () => {
     if (!canSend) return;
-    onSend({ text: text.trim(), attachments: images.ready, quotes: quoted, ...(attached ? { board: attached.mention() } : {}) });
+    const mention = attached?.mention();
+    if (mention && !parseCompactScene(mention.scene)) {
+      setBoardProblem("This board is too big to send with a message. Take it off the message to send the words alone.");
+      return;
+    }
+    setBoardProblem(null);
+    onSend({ text: text.trim(), attachments: images.ready, quotes: quoted, ...(mention ? { board: mention } : {}) });
+    /* Taken off this message only: the next one goes with the open board again. */
+    setDetached(null);
     setText("");
     images.clear();
     quotes.set([]);

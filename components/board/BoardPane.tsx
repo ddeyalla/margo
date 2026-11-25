@@ -23,7 +23,7 @@ function LineForm({ label, placeholder, button, onSend }: { label: string; place
       }}
     >
       <Field aria-label={label} value={text} onChange={(event) => setText(event.target.value)} placeholder={placeholder} className="flex-1" />
-      <Button type="submit" size="sm" disabled={!text.trim()}>
+      <Button type="submit" size="sm" aria-label={label} disabled={!text.trim()}>
         {button}
       </Button>
     </form>
@@ -77,7 +77,15 @@ function BoardRow({ board, onOpen, onRename, onRemove }: { board: BoardSummary; 
         </span>
       </button>
       <span className="flex shrink-0 opacity-0 transition-opacity duration-[var(--duration-fast)] focus-within:opacity-100 group-hover/board:opacity-100">
-        <IconButton size="sm" label="Rename" onClick={() => setRenaming(true)}>
+        <IconButton
+          size="sm"
+          label="Rename"
+          onClick={() => {
+            /* From the title as it is now: another window may have renamed it since. */
+            setTitle(board.title);
+            setRenaming(true);
+          }}
+        >
           <Pencil />
         </IconButton>
         {/* A chapter's board holds its draw-it-back history, which retention reads: it stays. */}
@@ -148,7 +156,8 @@ export function BoardPane({
         onRecall={onRecall}
         onAnswer={onAnswer}
         onBack={boards.list}
-        onClose={boards.close}
+        onClose={() => void boards.close()}
+        guard={boards.guard}
       />
     );
   }
@@ -160,7 +169,7 @@ export function BoardPane({
     <div className="flex min-h-0 flex-1 flex-col">
       <PaneHeader>
         <span className="min-w-0 flex-1 truncate pl-1.5 text-label font-medium text-paper">Whiteboards</span>
-        <IconButton size="sm" label="Close the whiteboards" onClick={boards.close}>
+        <IconButton size="sm" label="Close the whiteboards" onClick={() => void boards.close()}>
           <X />
         </IconButton>
       </PaneHeader>
@@ -182,7 +191,7 @@ export function BoardPane({
           <LineForm label="New board" placeholder="New board, by title" button={<Plus />} onSend={(title) => void boards.create(title)} />
           <p className="flex items-start gap-2 px-1 text-caption leading-relaxed text-dim">
             <MessageSquare aria-hidden className="mt-px size-3.5 shrink-0" />
-            <span>To have the tutor draw one, ask in the chat: “Draw how attention works.” With a board open, it draws on that board; otherwise its diagram goes on the board about the same thing, or a new one.</span>
+            <span>To have the tutor draw one, ask in the chat: “Draw how attention works.” With a board open, it draws on that board. Otherwise you choose where its diagram goes: the board about the same thing, or a new one.</span>
           </p>
         </div>
         {others.length ? (

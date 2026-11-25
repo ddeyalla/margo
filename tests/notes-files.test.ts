@@ -47,7 +47,7 @@ describe("saving a note never overwrites a change made on disk", () => {
     await put("Ideas.md", "first");
     const opened = await openNote(dir, "Ideas.md");
     await put("Ideas.md", "changed in Obsidian");
-    const saved = await saveIfUnchanged(path.join(dir, "Ideas.md"), "typed in the app", opened!.hash, AT);
+    const saved = await saveIfUnchanged(path.join(dir, "Ideas.md"), "typed in the app", opened!.hash, { at: AT });
     expect(saved).toMatchObject({ state: "conflict", current: { text: "changed in Obsidian", hash: contentHash("changed in Obsidian") } });
     expect(await read("Ideas.md")).toBe("changed in Obsidian");
     expect(await read("Ideas (conflict 2026-11-24 14.32).md")).toBe("typed in the app");
@@ -70,7 +70,7 @@ describe("saving a note never overwrites a change made on disk", () => {
     await put("Gone.md", "first");
     const { hash } = (await openNote(dir, "Gone.md"))!;
     await rm(path.join(dir, "Gone.md"));
-    const saved = await saveIfUnchanged(path.join(dir, "Gone.md"), "still typing", hash, AT);
+    const saved = await saveIfUnchanged(path.join(dir, "Gone.md"), "still typing", hash, { at: AT });
     expect(saved).toMatchObject({ state: "conflict", current: null });
     expect(await readdir(dir)).toEqual(["Gone (conflict 2026-11-24 14.32).md"]);
   });

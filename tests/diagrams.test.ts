@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readBookState, updateBookState } from "@/lib/server/store";
-import { repairDiagram, repairedSource } from "@/lib/server/tutor/diagram";
+import { DIAGRAM_SYSTEM, repairDiagram, repairedSource } from "@/lib/server/tutor/diagram";
 import type { Provider, TutorEvent, TutorTurn } from "@/lib/server/tutor/types";
 import { diagramFences, replaceDiagram } from "@/lib/shared/diagrams";
 import type { BookId, Thread } from "@/lib/shared/types";
@@ -28,6 +28,7 @@ vi.mock("@/lib/server/tutor/providers", async (original) => {
 vi.mock("@/lib/server/library", () => ({ findBook: async () => ({ book: { id: bookId } }) }));
 
 const { POST } = await import("@/app/api/books/[bookId]/diagrams/route");
+const { POST: BOARDS_POST } = await import("@/app/api/books/[bookId]/boards/route");
 
 const fakeProvider = (events: TutorEvent[]): Provider => ({
   id: "claude",
@@ -139,5 +140,47 @@ describe("POST /api/books/[bookId]/diagrams", () => {
     await updateBookState(bookId, (state) => ({ ...state, threads: [answer("No diagram.")] }));
     expect((await post({ threadId: "t1", createdAt: answerAt, broken: [] })).status).toBe(400);
     expect((await post({ threadId: "t1", createdAt: "nope", broken: [{ index: 0, error: "x" }] })).status).toBe(404);
+  });
+});
+
+describe("the repair prompt", () => {
+  it("keeps frontmatter first, where Mermaid needs it, and names the diagram after it", () => {
+    expect(DIAGRAM_SYSTEM).toMatch(/frontmatter[^.]*at the very start/);
+    expect(DIAGRAM_SYSTEM).toMatch(/the first line, or the first line after the frontmatter/);
+    expect(DIAGRAM_SYSTEM).toMatch(/Don't add a subgraph/);
+  });
+});
+
+describe("POST /api/books/[bookId]/boards, checking what the page sent", () => {
+  const post = (body: unknown) =>
+    BOARDS_POST(new Request("http://127.0.0.1/api", { method: "POST", body: JSON.stringify(body) }), { params: Promise.resolve({ bookId }) });
+  const scene = { nodes: [{ id: "n1", text: "Cue", x: 0, y: 0 }], links: [], loose: 0, sketches: 0 };
+  /* A 1×1 PNG. */
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+  beforeEach(async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-boards-route-"));
+    vi.stubEnv("DATA_DIR", path.join(dir, "data"));
+    vi.stubEnv("BOOKS_DIR", dir);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("refuses a board picture that isn't an image, before asking the tutor", async () => {
+    for (const image of ["", "AAAA", "bm90IGEgcG5n", 7]) {
+      const response = await post({ op: "review", id: "board-0001", provider: "claude", scene, image });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toMatch(/picture/);
+    }
+    /* A real picture, or none, gets past the check: this board just isn't in the book. */
+    expect((await post({ op: "review", id: "board-0001", provider: "claude", scene, image: PNG })).status).toBe(404);
+    expect((await post({ op: "review", id: "board-0001", provider: "claude", scene, image: null })).status).toBe(404);
+  });
+
+  it("refuses a new board whose chapter is neither a chapter nor null", async () => {
+    for (const chapter of [5, "", { title: "Habits" }]) {
+      const response = await post({ op: "create", title: "Map", chapter });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toMatch(/chapter/);
+    }
   });
 });

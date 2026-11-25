@@ -89,7 +89,18 @@ function ToBoard({ source, boards }: { source: string; boards: DiagramBoards }) 
   const add = (boardId: string | null, title: string | null) => {
     setState({ busy: true });
     boards.add(source, boardId).then(
-      (added) => setState(added === null || !title ? null : { done: added ? `Added to “${title}”` : `Already on “${title}”` }),
+      (placed) =>
+        setState(
+          placed === null || !title
+            ? null
+            : {
+                done: placed.added
+                  ? `Added to “${title}”`
+                  : placed.dropped
+                    ? `“${title}” changed meanwhile, so nothing went on it. Try again.`
+                    : `Already on “${title}”`,
+              },
+        ),
       (failure: unknown) => setState({ done: failure instanceof Error ? failure.message : "The diagram couldn't go on the board." }),
     );
   };

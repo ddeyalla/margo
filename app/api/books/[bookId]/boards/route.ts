@@ -12,6 +12,7 @@ import {
   saveBoard,
   type BoardAsk,
 } from "@/lib/server/boards";
+import { sniffImage } from "@/lib/server/attachments";
 import { getFolders } from "@/lib/server/config";
 import { contentHash } from "@/lib/server/notes-folder";
 import { withNotes } from "@/lib/server/notes-route";
@@ -36,8 +37,13 @@ const MAX_IMAGE_CHARS = 8_000_000;
 /* The diagram a board was made from is only hashed, never kept. */
 const MAX_SOURCE_CHARS = 100_000;
 
-const parseImage = (value: unknown): TutorImage | null =>
-  typeof value === "string" && value.length <= MAX_IMAGE_CHARS && /^[A-Za-z0-9+/]+=*$/.test(value) ? { mediaType: "image/png", data: value } : null;
+/** The board's picture: null when none was sent, the image as its bytes say it is, or undefined when it isn't one. */
+const parseImage = (value: unknown): TutorImage | null | undefined => {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || value.length > MAX_IMAGE_CHARS || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return undefined;
+  const info = sniffImage(Buffer.from(value, "base64"));
+  return info ? { mediaType: info.mediaType, data: value } : undefined;
+};
 
 /* A board that went missing, such as one removed in another window. */
 const missing = async (run: () => Promise<Response>): Promise<Response> => {
@@ -92,7 +98,8 @@ export const POST = withBook(async ({ book, request }) => {
   if (body.op === "create") {
     const title = shortText(body.title, 200);
     if (!title) return badRequest("Give the board a title.");
-    const chapter = body.chapter === null ? null : shortText(body.chapter, 500);
+    const chapter = body.chapter === undefined || body.chapter === null ? null : shortText(body.chapter, 500);
+    if (body.chapter !== undefined && body.chapter !== null && !chapter) return badRequest("Expected a chapter, or null.");
     if (body.text !== undefined && typeof body.text !== "string") return badRequest("Expected the board's text.");
     if (body.source !== undefined && (typeof body.source !== "string" || !body.source.trim() || body.source.length > MAX_SOURCE_CHARS)) {
       return badRequest("Expected the diagram the board was made from.");
@@ -141,6 +148,8 @@ export const POST = withBook(async ({ book, request }) => {
   const ask: BoardAsk = { kind: body.op };
   if (ask.kind === "check" && !scene.links.length) return badRequest("Draw arrows between the ideas first: the check is about how they connect.");
   if (ask.kind === "review" && !scene.nodes.length) return badRequest("The board is empty.");
+  const image = parseImage(body.image);
+  if (image === undefined) return badRequest("Expected the board's picture as a base64 image, or null.");
 
   const [state, settings] = await Promise.all([readBookState(book.id), readSettings()]);
   const board = state.boards.find((entry) => entry.id === id);
@@ -151,7 +160,7 @@ export const POST = withBook(async ({ book, request }) => {
   try {
     const answer = await askAboutBoard(
       PROVIDERS[body.provider],
-      { bookId: book.id, book: label, chapter: board.chapter, labels: board.labels, scene, image: parseImage(body.image), ask },
+      { bookId: book.id, book: label, chapter: board.chapter, labels: board.labels, scene, image, ask },
       modelFor(settings.models, body.provider),
       request.signal,
     );
@@ -160,6 +169,7 @@ export const POST = withBook(async ({ book, request }) => {
     return Response.json({ ...answer, attempts });
   } catch (error) {
     if (request.signal.aborted) return new Response(null, { status: 499 });
+    if (error instanceof NoSuchBoard) return Response.json({ error: error.message }, { status: 404 });
     return Response.json({ error: error instanceof Error ? error.message : "The tutor couldn't answer." }, { status: 502 });
   }
 });

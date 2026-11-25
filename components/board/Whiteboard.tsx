@@ -38,6 +38,11 @@ export interface WhiteboardProps {
   /** Back to the list of boards, once the edits are saved. */
   onBack(): void;
   onClose(): void;
+  /**
+   * Sets the board's leaving check, which every change of board waits for: it saves the board and says whether it may
+   * go. Null when the board goes.
+   */
+  guard(leave: (() => Promise<boolean>) | null): void;
 }
 
 type Load = { state: "loading" } | { state: "failed"; error: string } | { state: "ready"; board: OpenedBoard; key: number };
@@ -95,6 +100,13 @@ const picture = async (api: ExcalidrawImperativeAPI): Promise<string | null> => 
   }
 };
 
+/**
+ * What a save writes, as one comparable value: the elements, the canvas settings that are saved with them, and which
+ * pictures are stored. A change to any of them is an edit to save.
+ */
+const drawingVersion = (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) =>
+  `${hashElementsVersion(elements)}:${appState.viewBackgroundColor}:${appState.gridSize ?? ""}:${Object.keys(files).sort().join(",")}`;
+
 const pendingKey = (list: readonly Suggestion[]) => list.map((s) => s.id).join(",");
 
 /**
@@ -106,7 +118,7 @@ const pendingKey = (list: readonly Suggestion[]) => list.map((s) => s.id).join("
  * hold, and says nothing more.
  */
 export default function Whiteboard(props: WhiteboardProps) {
-  const { bookId, boardId, provider, unavailable, theme, bookShown, side, onRecall, onAnswer, onToggleBook, onSwap, onBack, onClose } = props;
+  const { bookId, boardId, provider, unavailable, theme, bookShown, side, onRecall, onAnswer, onToggleBook, onSwap, onBack, onClose, guard } = props;
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [mode, setMode] = useState<"board" | "recall">("board");
   const [save, setSave] = useState<Save>({ state: "saved" });
@@ -126,10 +138,10 @@ export default function Whiteboard(props: WhiteboardProps) {
 
   const api = useRef<ExcalidrawImperativeAPI | null>(null);
   const hash = useRef<string | null>(null);
-  /* The version of the reader's elements last saved or opened; null until the board first reports. */
-  const savedVersion = useRef<number | null>(null);
+  /* The version of the reader's drawing last saved or opened; null until the board first reports. */
+  const savedVersion = useRef<string | null>(null);
   /** The drawing whose save just failed: it waits for the next edit rather than retrying on every pointer move. */
-  const failedVersion = useRef<number | null>(null);
+  const failedVersion = useRef<string | null>(null);
   /**
    * The board as it last reported itself, which is what a save writes. Never read back from the canvas: by the time a
    * closing board saves, Excalidraw has already emptied its scene.
@@ -139,6 +151,11 @@ export default function Whiteboard(props: WhiteboardProps) {
     appState: AppState;
     files: BinaryFiles;
   } | null>(null);
+  /** The version of the drawing as last reported, or null before it first reports. */
+  const latestVersion = () => {
+    const board = latest.current;
+    return board && drawingVersion(readerElements(board.elements.filter((element) => !element.isDeleted)), board.appState, board.files);
+  };
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef<Promise<void> | null>(null);
   const conflicted = useRef(false);
@@ -170,6 +187,8 @@ export default function Whiteboard(props: WhiteboardProps) {
         }));
       },
       (failure: unknown) => {
+        /* Work waiting for this board to open won't be done. */
+        if (ticket === opening.current) link?.cancel(null);
         if (ticket === opening.current)
           setLoad({
             state: "failed",
@@ -177,7 +196,7 @@ export default function Whiteboard(props: WhiteboardProps) {
           });
       },
     );
-  }, [bookId, boardId]);
+  }, [bookId, boardId, link]);
 
   useEffect(() => {
     void fetchInto();
@@ -189,44 +208,58 @@ export default function Whiteboard(props: WhiteboardProps) {
     void fetchInto();
   };
 
-  /** Saves the reader's drawing if it changed since the last save. One save at a time; after a conflict, none. */
+  /**
+   * Saves the reader's drawing until what is saved is what was last drawn, one save at a time; after a conflict, none.
+   * True when the drawing is safe: in its file, in the conflict copy beside it, or with nothing to save. False when a
+   * save failed.
+   */
   const flush = useCallback(
-    async (keepalive = false): Promise<void> => {
+    async (keepalive = false): Promise<boolean> => {
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
-      if (inFlight.current) await inFlight.current;
-      const board = latest.current;
-      if (!board || conflicted.current || modeRef.current !== "board") return;
-      const elements = readerElements(board.elements.filter((element) => !element.isDeleted));
-      const version = hashElementsVersion(elements);
-      if (version === savedVersion.current) return;
-      const text = serializeAsJSON(elements, board.appState, board.files, "local");
-      setSave({ state: "saving" });
-      const run = putBoard(bookId, { id: boardId, text, baseHash: hash.current }, keepalive).then(
-        (result) => {
-          if (result.state === "saved") {
-            hash.current = result.hash;
-            savedVersion.current = version;
-            failedVersion.current = null;
-            setPath(result.path);
-            setSave({ state: "saved" });
-          } else {
-            conflicted.current = true;
-            setSave({ state: "conflict", copy: result.copy });
-          }
-        },
-        (failure: unknown) => {
-          failedVersion.current = version;
-          setSave({
-            state: "failed",
-            error: failure instanceof Error ? failure.message : "The board couldn't be saved.",
-          });
-        },
-      );
-      inFlight.current = run.finally(() => {
-        inFlight.current = null;
-      });
-      await inFlight.current;
+      for (;;) {
+        /* Another caller may have started the next save while this one waited: wait again until none is running. */
+        while (inFlight.current) await inFlight.current;
+        const board = latest.current;
+        /* The canvas stops taking edits at a conflict, and the drawing is in the copy beside the file. */
+        if (conflicted.current) return true;
+        if (!board || modeRef.current !== "board") return true;
+        const elements = readerElements(board.elements.filter((element) => !element.isDeleted));
+        const version = drawingVersion(elements, board.appState, board.files);
+        if (version === savedVersion.current) return true;
+        const text = serializeAsJSON(elements, board.appState, board.files, "local");
+        setSave({ state: "saving" });
+        let ok = false;
+        const run = putBoard(bookId, { id: boardId, text, baseHash: hash.current }, keepalive).then(
+          (result) => {
+            if (result.state === "saved") {
+              hash.current = result.hash;
+              savedVersion.current = version;
+              failedVersion.current = null;
+              ok = true;
+              setPath(result.path);
+              /* An edit made while this save was out is still unsaved; the loop saves it next. */
+              setSave({ state: latestVersion() === version ? "saved" : "unsaved" });
+            } else {
+              conflicted.current = true;
+              ok = true;
+              setSave({ state: "conflict", copy: result.copy });
+            }
+          },
+          (failure: unknown) => {
+            failedVersion.current = version;
+            setSave({
+              state: "failed",
+              error: failure instanceof Error ? failure.message : "The board couldn't be saved.",
+            });
+          },
+        );
+        inFlight.current = run.finally(() => {
+          inFlight.current = null;
+        });
+        await inFlight.current;
+        if (!ok) return false;
+      }
     },
     [bookId, boardId],
   );
@@ -235,9 +268,10 @@ export default function Whiteboard(props: WhiteboardProps) {
     const list = pendingSuggestions(elements);
     if (mode === "board" && savedVersion.current !== null) undecided.current = elements.filter((element) => !element.isDeleted && isSuggestion(element));
     setPending((current) => (pendingKey(current) === pendingKey(list) ? current : list));
+    /* After a conflict the canvas is read-only until the reader opens the file's version, so nothing drawn is dropped. */
     if (mode !== "board" || conflicted.current) return;
     latest.current = { elements, appState, files };
-    const version = hashElementsVersion(readerElements(elements.filter((element) => !element.isDeleted)));
+    const version = latestVersion()!;
     if (savedVersion.current === null) {
       savedVersion.current = version;
       /* Suggestions left undecided when this board last closed come back with it. */
@@ -268,9 +302,9 @@ export default function Whiteboard(props: WhiteboardProps) {
     return () => {
       removeEventListener("pagehide", onHide);
       aborter.current?.abort();
-      settling(boardId, flush(true));
+      settling(bookId, boardId, flush(true));
     };
-  }, [flush, boardId]);
+  }, [flush, bookId, boardId]);
 
   /** Puts the tutor's changes on the board as suggestions, through the ids they were written against. */
   const suggest = (ops: readonly BoardOp[], ids: Record<string, string>) => {
@@ -303,6 +337,7 @@ export default function Whiteboard(props: WhiteboardProps) {
     const { elements, files } = await mermaidElements(source, readerElements(current));
     const drawn = compactScene(elements).scene;
     if (!drawn.nodes.length) {
+      if (!elements.length) throw new Error("The diagram had nothing to draw.");
       if (files.length) board.addFiles(files);
       board.updateScene({ elements: [...board.getSceneElementsIncludingDeleted(), ...elements], captureUpdate: CaptureUpdateAction.IMMEDIATELY });
       board.scrollToContent(elements, { animate: true, fitToViewport: true, viewportZoomFactor: 0.8 });
@@ -410,8 +445,17 @@ export default function Whiteboard(props: WhiteboardProps) {
     });
   };
 
+  /** What stops the board from being left: its last save failed or conflicted, with what the reader was doing. */
+  const [stuck, setStuck] = useState<"close" | "back" | "recall" | null>(null);
+
   const startRecall = async () => {
-    await flush();
+    if (!(await flush())) {
+      setStuck("recall");
+      return;
+    }
+    setStuck(null);
+    /* Suggestions still undecided come back with the board after the draw-it-back. */
+    if (link && undecided.current.length) link.held.set(boardId, undecided.current);
     aborter.current?.abort();
     setReview(null);
     setCheck(null);
@@ -430,17 +474,34 @@ export default function Whiteboard(props: WhiteboardProps) {
     open();
   };
 
-  const close = async () => {
-    if (mode === "recall") onRecall(false);
-    await flush();
-    onClose();
+  /*
+   * However the board is left (its own buttons, the header, another board opened, the pane dragged shut), it saves
+   * first; a board whose save fails stays open with the drawing, unless the reader chooses to leave without it.
+   */
+  const discard = useRef(false);
+  const leaving = useRef<(() => Promise<boolean>) | null>(null);
+  leaving.current = async () => {
+    if (!discard.current && !(await flush())) {
+      setStuck((current) => current ?? "close");
+      return false;
+    }
+    discard.current = false;
+    setStuck(null);
+    if (modeRef.current === "recall") onRecall(false);
+    return true;
   };
-
-  const back = async () => {
-    if (mode === "recall") onRecall(false);
-    await flush();
-    onBack();
+  useEffect(() => {
+    guard(() => leaving.current!());
+    return () => guard(null);
+  }, [guard]);
+  const leave = (how: "close" | "back", anyway = false) => {
+    discard.current = anyway;
+    setStuck(how);
+    if (how === "close") onClose();
+    else onBack();
   };
+  const close = (anyway = false) => leave("close", anyway);
+  const back = (anyway = false) => leave("back", anyway);
 
   const board = load.state === "ready" ? load.board.board : null;
   const title = board?.title ?? "Whiteboard";
@@ -466,6 +527,7 @@ export default function Whiteboard(props: WhiteboardProps) {
           }}
           initialData={mode === "recall" ? { elements: [], scrollToContent: true } : initialData(load.board)}
           onChange={onChange}
+          viewModeEnabled={mode === "board" && save.state === "conflict" ? true : undefined}
           theme={theme}
           name={title}
           aiEnabled={false}
@@ -504,10 +566,21 @@ export default function Whiteboard(props: WhiteboardProps) {
       {mode === "board" && save.state === "conflict" ? (
         <div role="alert" className="absolute inset-x-3 top-3 z-10 flex items-center gap-3 rounded-lg bg-panel-raised px-3 py-2.5 shadow-float ring-1 ring-inset ring-line">
           <p className="min-w-0 flex-1 text-label text-prose">
-            This board changed in another app while it was open, so it stopped saving over it. Yours is saved beside it as “{save.copy.split("/").pop()}”.
+            This board changed in another app while it was open, so it stopped saving over it and can’t be edited here until you open the file’s version. Yours is saved beside it as “{save.copy.split("/").pop()}”.
           </p>
           <Button size="sm" onClick={open}>
             Open the file’s version
+          </Button>
+        </div>
+      ) : null}
+      {stuck && save.state === "failed" ? (
+        <div role="alert" className="absolute inset-x-3 top-3 z-10 flex flex-wrap items-center gap-2 rounded-lg bg-panel-raised px-3 py-2.5 shadow-float ring-1 ring-inset ring-line">
+          <p className="min-w-0 flex-1 text-label text-prose">The board couldn’t be saved, so it stayed open with your drawing. {save.error}</p>
+          <Button size="sm" variant="ghost" onClick={() => (stuck === "recall" ? setStuck(null) : leave(stuck, true))}>
+            {stuck === "recall" ? "Not now" : "Leave without saving"}
+          </Button>
+          <Button size="sm" variant="primary" onClick={() => (stuck === "recall" ? void startRecall() : leave(stuck))}>
+            Try again
           </Button>
         </div>
       ) : null}
@@ -520,7 +593,7 @@ export default function Whiteboard(props: WhiteboardProps) {
   return (
     <div aria-label={`Whiteboard: ${title}`} role="region" className="flex min-h-0 flex-1 flex-col">
       <PaneHeader>
-        <IconButton size="sm" label="All boards" onClick={() => void back()}>
+        <IconButton size="sm" label="All boards" onClick={() => back()}>
           <ChevronLeft />
         </IconButton>
         <span title={path ?? undefined} className="min-w-0 truncate text-label font-medium text-paper">
@@ -568,7 +641,7 @@ export default function Whiteboard(props: WhiteboardProps) {
           {/* The book is on the far side of the board: the icon's panel is the book. */}
           {side === "right" ? bookShown ? <PanelLeftClose /> : <PanelLeftOpen /> : bookShown ? <PanelRightClose /> : <PanelRightOpen />}
         </IconButton>
-        <IconButton size="sm" label="Close the whiteboard" onClick={() => void close()}>
+        <IconButton size="sm" label="Close the whiteboard" onClick={() => close()}>
           <X />
         </IconButton>
       </PaneHeader>

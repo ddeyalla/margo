@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { createStore, type Store } from "@/components/ui/store";
-import { boardOpsIn, type BoardMention, type BoardOp } from "@/lib/shared/boards";
+import { BOARD_FENCE, boardOpsIn, type BoardMention, type BoardOp } from "@/lib/shared/boards";
 import type { ChatMessage } from "@/lib/shared/types";
 
 /** The whiteboard open in its pane, as the chat reaches it. */
@@ -42,6 +42,11 @@ export interface BoardLink {
   attach(board: OpenBoard | null): void;
   /** Opens a board in the pane. */
   show(id: string): void;
+  /**
+   * Gives up the work waiting for boards other than `keep` to open: that board failed to open, or another one, or
+   * none, is open instead. Work given up is not done, and a diagram waiting says so.
+   */
+  cancel(keep: string | null): void;
   /** Suggestions still undecided when their board closed, by board: put back when it opens again during this visit. */
   held: Map<string, readonly ExcalidrawElement[]>;
 }
@@ -51,6 +56,8 @@ export interface AnswerChanges {
   key: string;
   board: BoardMention;
   ops: BoardOp[] | string;
+  /** Where in the answer its last ```board fence starts, the one these changes come from. */
+  fenceAt: number;
 }
 
 /**
@@ -65,7 +72,7 @@ export const answerChanges = (threadId: string, messages: readonly ChatMessage[]
   const board = asked >= 0 && messages[asked].role === "user" ? messages[asked].board : undefined;
   if (!board) return null;
   const ops = boardOpsIn(answer.content, board.scene);
-  return ops === null ? null : { key: `${threadId}:${index}`, board, ops };
+  return ops === null ? null : { key: `${threadId}:${index}`, board, ops, fenceAt: answer.content.lastIndexOf("```" + BOARD_FENCE) };
 };
 
 export const BoardLinkContext = createContext<BoardLink | null>(null);
@@ -94,24 +101,30 @@ const writePlaced = (bookId: string, placed: Record<string, Placed>) => {
 
 /** The book's link between its chat and its boards. `show` opens a board in the pane. */
 export function useCreateBoardLink(bookId: string, show: (id: string) => void): BoardLink {
+  /* The book being read now: the link outlives a change of book in the same page. */
+  const book = useRef(bookId);
   const [link] = useState((): BoardLink => {
     const open = createStore<OpenBoard | null>(null);
     const placed = createStore<Record<string, Placed>>({});
-    /* Work for a board that isn't open yet waits for it. */
-    let waiting: { id: string; run(board: OpenBoard): void; cancel?(): void } | null = null;
+    /* Work for a board that isn't open yet waits for it, all of it, in the order it was asked for. */
+    let waiting: { id: string; run(board: OpenBoard): void; cancel?(): void }[] = [];
+    const cancel = (keep: string | null) => {
+      const gone = waiting.filter((work) => work.id !== keep);
+      waiting = waiting.filter((work) => work.id === keep);
+      for (const work of gone) work.cancel?.();
+    };
     const onBoard = (id: string, run: (board: OpenBoard) => void, cancel?: () => void) => {
       const current = open.get();
       if (current?.id === id) run(current);
       else {
-        waiting?.cancel?.();
-        waiting = { id, run, cancel };
+        waiting.push({ id, run, cancel });
         show(id);
       }
     };
     const put = (board: OpenBoard, key: string, mention: BoardMention, ops: readonly BoardOp[]) => {
       if (placed.get()[key]) return;
       placed.set({ ...placed.get(), [key]: board.suggest(ops, mention.ids) });
-      writePlaced(bookId, placed.get());
+      writePlaced(book.current, placed.get());
     };
     return {
       open,
@@ -124,24 +137,28 @@ export function useCreateBoardLink(bookId: string, show: (id: string) => void): 
           onBoard(
             boardId,
             (board) => board.addDiagram(source).then(resolve, reject),
-            () => reject(new Error("Another board was opened first.")),
+            () => reject(new Error("The board didn't open, so the diagram isn't on it.")),
           ),
         ),
       show,
+      cancel,
       held: new Map(),
       attach(board) {
         open.set(board);
-        if (board && waiting?.id === board.id) {
-          const { run } = waiting;
-          waiting = null;
-          run(board);
-        }
+        if (!board) return;
+        const ready = waiting.filter((work) => work.id === board.id);
+        waiting = waiting.filter((work) => work.id !== board.id);
+        for (const work of ready) work.run(board);
       },
     };
   });
-  /* Read after the first render, so the page the server drew and the one the browser hydrates agree. */
+  /* Read after the first render, so the page the server drew and the one the browser hydrates agree; read again for
+     another book, whose answers are its own. */
   useEffect(() => {
-    link.placed.set({ ...readPlaced(bookId), ...link.placed.get() });
+    book.current = bookId;
+    link.placed.set(readPlaced(bookId));
+    link.held.clear();
+    link.cancel(null);
   }, [link, bookId]);
   return link;
 }

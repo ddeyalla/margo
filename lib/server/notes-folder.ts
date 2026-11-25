@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
-import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { lstat, mkdir, open, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { serialized, writeFileAtomic } from "./store";
+import { serialized } from "./store";
 
 /* Files the app keeps in the notes folder (an Obsidian vault) beside the reader's own: markdown notes now, and
    whiteboards later. Everything here is about one rule: a file the reader or another app changed is never
@@ -128,16 +128,36 @@ export type SaveResult =
  * it changed or was deleted since, the file is left alone and the text goes to a conflict copy beside it, so both are kept.
  * Saves to one file queue behind each other.
  */
-export const saveIfUnchanged = (file: string, text: string, baseHash: string, at = new Date()): Promise<SaveResult> =>
+export const saveIfUnchanged = (
+  file: string,
+  text: string,
+  baseHash: string,
+  { at = new Date(), beforeReplace }: { at?: Date; beforeReplace?: () => Promise<void> } = {},
+): Promise<SaveResult> =>
   serialized(file, async () => {
+    const keepBoth = async (current: Versioned | null): Promise<SaveResult> => {
+      const ext = path.extname(file);
+      const copy = await createUnique(path.dirname(file), conflictName(path.basename(file, ext), at), ext, text);
+      return { state: "conflict", copy, copyHash: contentHash(text), current };
+    };
     const current = await readVersioned(file);
     /* Already this text, whatever version the save started from: a repeated save, such as one more as the page closes. */
     if (current?.text === text) return { state: "saved", hash: current.hash };
-    if (current?.hash === baseHash) {
-      await writeFileAtomic(file, text);
+    if (current?.hash !== baseHash) return keepBoth(current);
+    /*
+     * Saves made by this app queue on the file, but Obsidian doesn't queue with them: the text goes to a temporary file
+     * first, and the file is read and hashed again just before the temporary one is renamed over it. Only an edit
+     * landing between that last read and the rename, one system call, could still be replaced.
+     */
+    const temp = `${file}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+    try {
+      await writeFile(temp, text, { flag: "wx" });
+      await beforeReplace?.();
+      const now = await readVersioned(file);
+      if (now?.hash !== baseHash) return keepBoth(now);
+      await rename(temp, file);
       return { state: "saved", hash: contentHash(text) };
+    } finally {
+      await rm(temp, { force: true });
     }
-    const ext = path.extname(file);
-    const copy = await createUnique(path.dirname(file), conflictName(path.basename(file, ext), at), ext, text);
-    return { state: "conflict", copy, copyHash: contentHash(text), current };
   });

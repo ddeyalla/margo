@@ -378,25 +378,6 @@ library was read, so a failure there left an unanswered message.
       Phase 14's signal summary ("1 held", "1 misconception") sits above it.*
 - [x] Books outside a Course are never gated.
       *They get no quizzes, notices or locks at all.*
-- [x] **One board per topic, not one per diagram.** A chat diagram goes on the board that is
-      open, or else the board whose title it shares words with, and only otherwise on a board
-      of its own ("New board" is always offered). On an existing board it adds only what is
-      new, as suggestions: ideas already drawn are reused by their words, so a diagram that
-      corrects or grows the board adds the missing ideas and links and rewords links. With a
-      board attached, the tutor draws, expands and corrects on that board through ops (now
-      up to 60) instead of drawing a separate diagram.
-      *Suggestions left undecided when a board closes come back when it reopens in the same
-      visit, and which answers' changes went on a board is remembered in the browser, so a
-      reload doesn't offer them twice. Suggested ideas are sized to their words.*
-- [x] **Panes that hold up.** The board opens even when the window has no room for the book,
-      the board and the chat together, by taking the book's place. The chat folds away with
-      the board on either side, and a layout saved with a board open no longer comes back as
-      an empty pane. In a narrow pane, Excalidraw's tool bar scrolls instead of hanging off
-      both edges.
-- [x] **One design system.** `components/ui` holds the primitives every surface uses:
-      `Field`, `TextArea`, `Surface`, `PaneHeader` and `Divider` beside `Button`. Edges are
-      hairlines (`line`, `line-strong`); only floating surfaces get elevation. Excalidraw's
-      chrome and canvas take the app's tokens, so the board reads as part of the pane.
 - [x] Results feed retention (Phase 18).
       *Every attempt keeps each answer with right or wrong, confidence and thinking, ready
       for Phase 18 to read.*
@@ -680,7 +661,7 @@ tldraw is out because its SDK needs a production licence.
       with a hint toward the passage; the drawing is never saved over the board.*
 - [x] The tutor edits the board by returning JSON operations (add, update, delete),
       validated by the app. Bad JSON goes back once with the error.
-      *Ops are `add_node`, `add_link`, `update` and `delete`, at most 30, checked against the
+      *Ops are `add_node`, `add_link`, `update` and `delete`, at most 60, checked against the
       ids sent. Changes are asked for in the chat, not in a second box on the board: the
       open board rides along as a chip on the message, the tutor answers in words and puts
       its ops in a `board` fence, and they land on that board as suggestions once the
@@ -688,7 +669,8 @@ tldraw is out because its SDK needs a production licence.
       they went.*
 - [x] **Agent edits are suggestions:** shown in their own colour, accepted or rejected one
       by one, so the tutor never overwrites your drawing. Undo covers the rest.
-      *Suggestions are dashed, violet and locked, and carry what they would do on the
+      *Suggestions are violet and locked (new shapes and links also dashed; a reworded label
+      shows as violet text), and carry what they would do on the
       elements themselves, so undo and redo keep the list right. Keeping a link keeps the
       new ideas it joins; dropping an idea drops its links. They are never saved until kept.*
 - [x] Mermaid from chat converts to an editable board.
@@ -709,6 +691,23 @@ tldraw is out because its SDK needs a production licence.
       Draw it back stays on chapter boards, so only they count toward retention. To have
       the tutor draw a new board, ask in the chat. Labels measured before Excalidraw's hand
       font loaded are measured again when a board opens, so none draw clipped.*
+- [x] **One board per topic, not one per diagram.** A chat diagram goes on the board that is
+      open, or else the board whose title it shares words with, and only otherwise on a board
+      of its own ("New board" is always offered). On an existing board a flowchart adds only
+      what is new, as suggestions: ideas already drawn are reused by their words, so a diagram
+      that corrects or grows the board adds the missing ideas and links and rewords links. A
+      kind Excalidraw opens as one picture goes on the board as it is. With a
+      board attached, the tutor draws, expands and corrects on that board through ops (now
+      up to 60) instead of drawing a separate diagram.
+      *Suggestions left undecided when a board closes come back when it reopens in the same
+      visit, and which answers' changes went on a board is remembered in the browser (the last
+      300 of them), so a reload doesn't offer them twice. Suggested ideas are sized to their words.*
+- [x] **Panes that hold up.** The board opens even when the window has no room for the book,
+      the board and the chat together, by taking the book's place. The chat folds away with
+      the board on either side, and a layout saved with a board open no longer comes back as
+      an empty pane. In a narrow pane, Excalidraw's tool bar wraps instead of hanging off
+      both edges. Leaving a board saves it first, however it is left; one whose save fails
+      stays open with the drawing until it saves or the reader leaves without saving.
 - [x] **One design system.** `components/ui` holds the primitives every surface uses:
       `Field`, `TextArea`, `Surface`, `PaneHeader` and `Divider` beside `Button`. Edges are
       hairlines (`line`, `line-strong`); only floating surfaces get elevation. Excalidraw's

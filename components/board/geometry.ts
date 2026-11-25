@@ -49,27 +49,145 @@ const SPACE = { x: 120, y: 40 };
 
 /**
  * Places new ideas that came without a position: beside the idea they link to, stacked down its right side, or
- * else in a column to the right of everything on the board.
+ * else in a column to the right of everything on the board. Each takes the room its own size needs, so a tall
+ * idea pushes the next one down. Ideas beside the same element share a stack, named by `key` (the element's id)
+ * or else by where that element is.
  */
 export const placeNodes = (
-  wanted: readonly { id: string; near: Box | null }[],
+  wanted: readonly { id: string; near: Box | null; key?: string; size?: { width: number; height: number } }[],
   board: Box | null,
 ): Map<string, { x: number; y: number }> => {
   const placed = new Map<string, { x: number; y: number }>();
-  const stacks = new Map<Box, number>();
+  /* How far down each stack, and the column, has filled. */
+  const stacks = new Map<string, number>();
   let column = 0;
-  for (const { id, near } of wanted) {
+  for (const { id, near, key, size } of wanted) {
+    const height = size?.height ?? NODE.height;
     if (near) {
-      const n = stacks.get(near) ?? 0;
-      stacks.set(near, n + 1);
-      placed.set(id, { x: near.x + near.width + SPACE.x, y: near.y + n * (NODE.height + SPACE.y) });
+      const stack = key ?? `${near.x},${near.y},${near.width},${near.height}`;
+      const down = stacks.get(stack) ?? 0;
+      stacks.set(stack, down + height + SPACE.y);
+      placed.set(id, { x: near.x + near.width + SPACE.x, y: near.y + down });
     } else {
       const x = board ? board.x + board.width + SPACE.x : 0;
-      const y = (board ? board.y : 0) + column++ * (NODE.height + SPACE.y);
-      placed.set(id, { x, y });
+      placed.set(id, { x, y: (board ? board.y : 0) + column });
+      column += height + SPACE.y;
     }
   }
   return placed;
+};
+
+/* How Excalidraw 0.18.1 fits a label inside its shape (element/textElement.ts: BOUND_TEXT_PADDING,
+   getBoundTextMaxWidth, computeContainerDimensionForBoundText, getContainerCoords). None of these is exported at
+   runtime, so they are repeated here. */
+const TEXT_PADDING = 5;
+const ARROW_LABEL_WIDTH_FRACTION = 0.7;
+const ARROW_LABEL_MIN_WIDTH_PER_FONT_SIZE = 11;
+
+export type TextAlign = "left" | "center" | "right";
+
+/** The widest a label may be inside a container of this type and width. */
+export const boundTextMaxWidth = (type: string, width: number, fontSize: number): number => {
+  if (type === "arrow") return Math.max(ARROW_LABEL_WIDTH_FRACTION * width, fontSize * ARROW_LABEL_MIN_WIDTH_PER_FONT_SIZE);
+  if (type === "ellipse") return Math.round((width / 2) * Math.sqrt(2)) - TEXT_PADDING * 2;
+  if (type === "diamond") return Math.round(width / 2) - TEXT_PADDING * 2;
+  return width - TEXT_PADDING * 2;
+};
+
+/** How wide a shape of this type must be to hold a label this wide. */
+export const containerWidthFor = (type: string, textWidth: number): number => {
+  const width = Math.ceil(textWidth);
+  const padding = TEXT_PADDING * 2;
+  if (type === "ellipse") return Math.round(((width + padding) / Math.sqrt(2)) * 2);
+  if (type === "diamond") return 2 * (width + padding);
+  return width + padding;
+};
+
+/** Where a shape's label area starts, from its left edge. */
+const textInsetX = (type: string, width: number) =>
+  TEXT_PADDING + (type === "ellipse" ? (width / 2) * (1 - Math.sqrt(2) / 2) : type === "diamond" ? width / 4 : 0);
+
+/** The x of a label this wide inside a shape, aligned as the label is. */
+export const boundTextX = (shape: { type: string; x: number; width: number }, textWidth: number, fontSize: number, align: TextAlign): number => {
+  const left = shape.x + textInsetX(shape.type, shape.width);
+  const room = boundTextMaxWidth(shape.type, shape.width, fontSize);
+  return align === "left" ? left : align === "right" ? left + room - textWidth : left + (room - textWidth) / 2;
+};
+
+/** The x that keeps a line of text anchored where it was, by its alignment, as its width changes. */
+export const anchoredX = (x: number, width: number, nextWidth: number, align: TextAlign): number =>
+  align === "left" ? x : align === "right" ? x + width - nextWidth : x + (width - nextWidth) / 2;
+
+/** Text broken into lines no wider than `maxWidth`, at spaces, keeping the lines it already has. */
+export const wrapWords = (text: string, maxWidth: number, measure: (line: string) => number): string =>
+  text
+    .split("\n")
+    .map((paragraph) => {
+      const lines: string[] = [];
+      let line = "";
+      for (const word of paragraph.split(" ")) {
+        const tried = line ? `${line} ${word}` : word;
+        if (line && measure(tried) > maxWidth) {
+          lines.push(line);
+          line = word;
+        } else line = tried;
+      }
+      lines.push(line);
+      return lines.join("\n");
+    })
+    .join("\n");
+
+interface MeasuredText {
+  id: string;
+  isDeleted: boolean;
+  x: number;
+  width: number;
+  fontSize: number;
+  textAlign: string;
+  containerId: string | null;
+  /** How wide its widest line draws in the loaded font. */
+  measured: number;
+}
+
+interface Container {
+  id: string;
+  isDeleted: boolean;
+  type: string;
+  x: number;
+  width: number;
+}
+
+/**
+ * The x and width changes that fit text drawn too narrow: the text widens, keeping its alignment; a shape it is
+ * the label of widens around its center if the label no longer fits, as Excalidraw sizes that shape; an arrow it
+ * labels keeps its geometry, and the label stays centered on it.
+ */
+export const textRepairs = (
+  texts: readonly MeasuredText[],
+  containers: ReadonlyMap<string, Container>,
+): Map<string, { x: number; width: number }> => {
+  const repairs = new Map<string, { x: number; width: number }>();
+  for (const text of texts) {
+    if (text.isDeleted || text.measured <= text.width + 0.5) continue;
+    const width = text.measured;
+    const align = (["left", "center", "right"].includes(text.textAlign) ? text.textAlign : "center") as TextAlign;
+    const container = text.containerId ? containers.get(text.containerId) : undefined;
+    if (!container || container.isDeleted) {
+      repairs.set(text.id, { x: anchoredX(text.x, text.width, width, align), width });
+    } else if (container.type === "arrow") {
+      repairs.set(text.id, { x: anchoredX(text.x, text.width, width, "center"), width });
+    } else {
+      const shape = { ...container, ...repairs.get(container.id) };
+      if (width > boundTextMaxWidth(shape.type, shape.width, text.fontSize)) {
+        const room = Math.max(shape.width, containerWidthFor(shape.type, width));
+        shape.x -= (room - shape.width) / 2;
+        shape.width = room;
+        repairs.set(shape.id, { x: shape.x, width: shape.width });
+      }
+      repairs.set(text.id, { x: boundTextX(shape, width, text.fontSize, align), width });
+    }
+  }
+  return repairs;
 };
 
 /** How far to move a drawing so it sits to the right of what is on the board, tops aligned. */

@@ -17,15 +17,18 @@ const post = (bookId: BookId, body: unknown, signal?: AbortSignal) =>
  * view) is read only once its last save has landed, so the new editor starts from the file's newest version.
  */
 const landing = new Map<string, Promise<unknown>>();
+/* Board ids are the book's own: two books can each have a board with the same id. */
+const landingKey = (bookId: BookId, id: string) => `${bookId}/${id}`;
 
 /** Holds back the next opening of a board until `work`, such as a closing editor's last save, is done. */
-export const settling = (id: string, work: Promise<unknown>) => {
-  landing.set(id, work);
-  void work.catch(() => undefined).finally(() => landing.get(id) === work && landing.delete(id));
+export const settling = (bookId: BookId, id: string, work: Promise<unknown>) => {
+  const key = landingKey(bookId, id);
+  landing.set(key, work);
+  void work.catch(() => undefined).finally(() => landing.get(key) === work && landing.delete(key));
 };
 
 export const fetchBoard = async (bookId: BookId, id: string): Promise<OpenedBoard> => {
-  await landing.get(id)?.catch(() => undefined);
+  await landing.get(landingKey(bookId, id))?.catch(() => undefined);
   return answer<OpenedBoard>(await fetch(`${url(bookId)}?id=${encodeURIComponent(id)}`, { cache: "no-store" }), "Opening the board");
 };
 
@@ -34,10 +37,10 @@ const KEEPALIVE_LIMIT = 60_000;
 
 export const putBoard = (bookId: BookId, body: { id: string; text: string; baseHash: string | null }, keepalive = false): Promise<BoardSave> => {
   const json = JSON.stringify(body);
-  const run = fetch(url(bookId), { method: "PUT", headers: { "Content-Type": "application/json" }, body: json, keepalive: keepalive && json.length < KEEPALIVE_LIMIT }).then(
+  const run = fetch(url(bookId), { method: "PUT", headers: { "Content-Type": "application/json" }, body: json, keepalive: keepalive && new TextEncoder().encode(json).byteLength < KEEPALIVE_LIMIT }).then(
     (response) => answer<BoardSave>(response, "Saving the board"),
   );
-  settling(body.id, run);
+  settling(bookId, body.id, run);
   return run;
 };
 

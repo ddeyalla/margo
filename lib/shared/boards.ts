@@ -76,16 +76,25 @@ export const normalizeBoard = (raw: Partial<Board> & { chapter: string | null })
   return raw.from ? { ...board, from: raw.from } : board;
 };
 
+/* Mermaid frontmatter, which must come first in a diagram: "---", its settings, "---". */
+const FRONTMATTER = /^\s*---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
 /**
  * The title a chat diagram gives the board made from it: its first line when that is a Mermaid comment ("%% Attention
- * flow"), which the tutor writes when it draws for a board, or else its first label.
+ * flow"), which the tutor writes when it draws for a board, after any frontmatter; else the frontmatter's title; else
+ * its first label, quoted ("Query (attention)") or not, however short.
  */
 export const diagramTitle = (source: string): string => {
-  const first = source.trimStart().split("\n", 1)[0];
+  const front = FRONTMATTER.exec(source);
+  const rest = front ? source.slice(front[0].length) : source;
+  const first = rest.trimStart().split("\n", 1)[0];
   const comment = /^%%(?!\{)\s*(.+)$/.exec(first)?.[1]?.trim();
   if (comment) return comment.slice(0, 120);
-  const body = source.replace(/^\s*%%.*$/gm, "");
-  const label = /[[({>]+"?([^[({\])}"\n]{2,60})"?[\])}]/.exec(body)?.[1]?.trim();
+  const titled = front && /^title:[ \t]*["']?(.+?)["']?[ \t]*$/m.exec(front[1])?.[1]?.trim();
+  if (titled) return titled.slice(0, 120);
+  const body = rest.replace(/^\s*%%.*$/gm, "");
+  const match = /[[({>]+(?:"([^"\n]{1,60})"|([^[({\])}"\n]{1,60}))[\])}]/.exec(body);
+  const label = (match?.[1] ?? match?.[2])?.trim();
   return label || "Diagram from the chat";
 };
 
@@ -114,7 +123,9 @@ export const MAX_BOARD_BYTES = 20_000_000;
 
 /** Whether the text is a board as Excalidraw saves it: `{ "type": "excalidraw", "elements": [...] }`, within the size limit. */
 export const isBoardFile = (text: string): boolean => {
+  /* A character is one to three UTF-8 bytes (a surrogate pair, two units, is four), so only long text needs counting. */
   if (text.length > MAX_BOARD_BYTES) return false;
+  if (text.length * 3 > MAX_BOARD_BYTES && new TextEncoder().encode(text).byteLength > MAX_BOARD_BYTES) return false;
   try {
     const value = JSON.parse(text) as { type?: unknown; elements?: unknown };
     return value?.type === "excalidraw" && Array.isArray(value.elements);
@@ -558,10 +569,12 @@ export const boardChapter = (
   courseChapters: readonly string[],
 ): { chapter: string; labels: string[] } | null => {
   if (index < 0 || index >= toc.length) return null;
-  const chapter = chapterOf(toc, index, courseChapters) ?? (() => {
-    let at = index;
-    while (at > 0 && toc[at].depth > 0) at--;
-    return toc[at].label;
-  })();
-  return { chapter, labels: chapterSpan(toc, chapter)?.labels ?? [chapter] };
+  const course = chapterOf(toc, index, courseChapters);
+  if (course) return { chapter: course, labels: chapterSpan(toc, course)?.labels ?? [course] };
+  /* The sections come from this occurrence of the chapter, not the first entry that shares its name. */
+  let start = index;
+  while (start > 0 && toc[start].depth > 0) start--;
+  let end = start + 1;
+  while (end < toc.length && toc[end].depth > toc[start].depth) end++;
+  return { chapter: toc[start].label, labels: [...new Set(toc.slice(start, end).map((entry) => entry.label))] };
 };

@@ -16,7 +16,7 @@ import {
   type OpenedBoard,
 } from "@/lib/shared/boards";
 import type { BookId } from "@/lib/shared/types";
-import { contentHash, createUnique, NotesPathError, readVersioned, resolveInside, saveIfUnchanged } from "./notes-folder";
+import { conflictName, contentHash, createUnique, NotesPathError, readVersioned, resolveInside, saveIfUnchanged } from "./notes-folder";
 import { chapterBlocks, fitBlocks } from "./quiz/generate";
 import { bookText } from "./search/index";
 import { readBookState, serialized, updateBookState } from "./store";
@@ -53,9 +53,13 @@ const getBoard = async (bookId: BookId, id: string): Promise<Board> => {
   return board;
 };
 
-/** The book's boards with one of them changed. */
+/** The book's boards with one of them changed. Throws `NoSuchBoard` when it was removed meanwhile, as the change is made. */
 const changeBoard = (bookId: BookId, id: string, change: (board: Board) => Board) =>
-  updateBookState(bookId, (state) => ({ ...state, boards: state.boards.map((board) => (board.id === id ? change(board) : board)) }));
+  updateBookState(bookId, (state) => {
+    const board = findBoard(state.boards, id);
+    if (!board) throw new NoSuchBoard("That board isn't in this book any more.");
+    return { ...state, boards: state.boards.map((entry) => (entry.id === id ? change(board) : entry)) };
+  });
 
 /** Writes a new board file under a name nothing else holds, and returns its path relative to the notes folder. */
 const createFile = async (notesDir: string, rel: string, text: string) => {
@@ -96,7 +100,10 @@ export const chapterBoard = (bookId: BookId, chapter: string, labels: string[]):
     const id = chapterBoardId(chapter);
     const state = await updateBookState(bookId, (current) => {
       const existing = findBoard(current.boards, id);
-      if (existing) return existing.labels.join("\n") === labels.join("\n") ? current : { ...current, boards: current.boards.map((b) => (b.id === id ? { ...b, labels } : b)) };
+      if (existing) {
+        const same = existing.labels.length === labels.length && existing.labels.every((label, i) => label === labels[i]);
+        return same ? current : { ...current, boards: current.boards.map((b) => (b.id === id ? { ...b, labels } : b)) };
+      }
       return { ...current, boards: [...current.boards, { id, title: chapter, kind: "chapter", chapter, labels, path: null, attempts: [] }] };
     });
     return findBoard(state.boards, id)!;
@@ -125,7 +132,6 @@ export const createBoard = (
 
 /** Renames a board in the app. Its file keeps the name it was saved under, as a renamed chapter's board does. */
 export const renameBoard = async (bookId: BookId, id: string, title: string): Promise<Board> => {
-  await getBoard(bookId, id);
   const state = await changeBoard(bookId, id, (board) => ({ ...board, title }));
   return findBoard(state.boards, id)!;
 };
@@ -139,9 +145,14 @@ export const removeBoard = async (bookId: BookId, id: string): Promise<void> => 
   await updateBookState(bookId, (state) => ({ ...state, boards: state.boards.filter((board) => board.id !== id) }));
 };
 
+/** Keeps `text` beside `file` as a conflict copy, leaving the file as it is. */
+/** A board's file is saved as a note is: over the file only while it is still the version opened. */
+export const replaceIfUnchanged = saveIfUnchanged;
+
 /**
  * Saves a board. `baseHash` is the version it was opened at, or null for a board with no file yet, which is
- * created under a name nothing else holds. Saves of one board queue behind each other.
+ * created under a name nothing else holds. Saves of one board queue behind each other, and each reads the board's
+ * entry inside the queue: a save from null that finds a file another save already made keeps both, as a stale save does.
  */
 export const saveBoard = (
   notesDir: string,
@@ -152,13 +163,25 @@ export const saveBoard = (
     if (!isBoardFile(text)) throw new BoardError("That isn't an Excalidraw board, or it's too big to save.");
     const board = await getBoard(bookId, id);
     if (baseHash === null) {
+      if (board.path) {
+        const { file } = await boardFile(notesDir, board.path);
+        const current = await readVersioned(file);
+        if (current?.text === text) return { state: "saved", path: board.path, hash: current.hash };
+        if (current) {
+          /* Another save made the file first: keep it, and this drawing beside it. */
+          const ext = path.extname(file);
+          const copy = await createUnique(path.dirname(file), conflictName(path.basename(file, ext), new Date()), ext, text);
+          return { state: "conflict", path: board.path, copy: await relativeTo(notesDir, copy), current };
+        }
+      }
+      /* No file yet, or the one it had was removed: a new one, under its old name when that is free. */
       const rel = await createFile(notesDir, board.path ?? boardPath(bookTitle, board.title), text);
       await changeBoard(bookId, id, (b) => ({ ...b, path: rel }));
       return { state: "saved", path: rel, hash: contentHash(text) };
     }
     if (!board.path) throw new BoardError("This board has no file yet; save it as new.");
     const { file } = await boardFile(notesDir, board.path);
-    const result = await saveIfUnchanged(file, text, baseHash);
+    const result = await replaceIfUnchanged(file, text, baseHash);
     if (result.state === "saved") return { state: "saved", path: board.path, hash: result.hash };
     return { state: "conflict", path: board.path, copy: await relativeTo(notesDir, result.copy), current: result.current };
   });

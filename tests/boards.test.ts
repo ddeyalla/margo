@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, readdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  boardChapter,
   boardRecall,
   chapterBoardId,
   compactScene,
@@ -11,6 +12,7 @@ import {
   relatedBoard,
   normalizeBoard,
   isBoardFile,
+  MAX_BOARD_BYTES,
   parseCheckReply,
   parseCompactScene,
   boardOpsIn,
@@ -34,7 +36,7 @@ vi.mock("@/lib/server/search/index", () => ({
   }),
 }));
 
-const { askAboutBoard, boardPath, chapterBoard, createBoard, listBoards, openBoard, recordAttempt, removeBoard, renameBoard, saveBoard } = await import("@/lib/server/boards");
+const { askAboutBoard, boardPath, chapterBoard, createBoard, listBoards, openBoard, recordAttempt, removeBoard, renameBoard, replaceIfUnchanged, saveBoard } = await import("@/lib/server/boards");
 const { readBookState } = await import("@/lib/server/store");
 const { answerChanges } = await import("@/components/board/link");
 
@@ -170,7 +172,7 @@ describe("the board in the chat", () => {
       { role: "user" as const, content: "And now?", createdAt: "" },
       { role: "assistant" as const, content: fence, createdAt: "" },
     ];
-    expect(answerChanges("t1", messages, 1)).toEqual({ key: "t1:1", board: mention, ops: [{ op: "delete", id: "l1" }] });
+    expect(answerChanges("t1", messages, 1)).toEqual({ key: "t1:1", board: mention, ops: [{ op: "delete", id: "l1" }], fenceAt: expect.any(Number) });
     expect(answerChanges("t1", messages, 3)).toBeNull();
     expect(answerChanges("t1", [messages[0], { ...messages[1], partial: true }], 1)).toBeNull();
   });
@@ -312,6 +314,39 @@ describe("board files in the notes folder", () => {
     expect(await readFile(path.join(notes, opened.board.path!), "utf8")).toBe(WITH("from Obsidian"));
   });
 
+  it("keeps both when Obsidian saves the board between the app's check and its write", async () => {
+    await save("Habits", EMPTY, null);
+    const opened = await openChapter("Habits");
+    const file = path.join(notes, opened.board.path!);
+    const saved = await replaceIfUnchanged(file, WITH("from the app"), opened.file!.hash, { beforeReplace: () => writeFile(file, WITH("from Obsidian")) });
+    expect(saved.state).toBe("conflict");
+    if (saved.state !== "conflict") return;
+    expect(saved.current?.text).toBe(WITH("from Obsidian"));
+    expect(await readFile(file, "utf8")).toBe(WITH("from Obsidian"));
+    expect(await readFile(saved.copy, "utf8")).toBe(WITH("from the app"));
+    /* No temporary file is left behind either way. */
+    expect((await readdir(path.dirname(file))).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+    const clean = await replaceIfUnchanged(file, WITH("again"), saved.current!.hash);
+    expect(clean.state).toBe("saved");
+    expect((await readdir(path.dirname(file))).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+  });
+
+  it("keeps the first file when two first saves of a chapter's board race, and still makes one when the file was removed", async () => {
+    const [first, second] = await Promise.all([save("Habits", WITH("first reader"), null), save("Habits", WITH("second reader"), null)]);
+    expect(first).toMatchObject({ state: "saved", path: "Whiteboards/Atomic Habits/Habits.excalidraw" });
+    expect(second.state).toBe("conflict");
+    if (second.state !== "conflict") return;
+    expect(second.path).toBe("Whiteboards/Atomic Habits/Habits.excalidraw");
+    expect(second.current?.text).toBe(WITH("first reader"));
+    expect(await readFile(path.join(notes, second.copy), "utf8")).toBe(WITH("second reader"));
+    expect((await openChapter("Habits")).file?.text).toBe(WITH("first reader"));
+    /* The same text again, such as one more save as the page closes, is no conflict. */
+    expect((await save("Habits", WITH("first reader"), null)).state).toBe("saved");
+    /* The reader deleted the file in Obsidian: a save from nothing makes it again, under its name. */
+    await rm(path.join(notes, "Whiteboards/Atomic Habits/Habits.excalidraw"));
+    expect(await save("Habits", WITH("redrawn"), null)).toMatchObject({ state: "saved", path: "Whiteboards/Atomic Habits/Habits.excalidraw" });
+  });
+
   it("refuses text that isn't a board, and a board folder that leaves the notes folder through a link", async () => {
     await expect(save("Habits", "{}", null)).rejects.toThrow(/isn't an Excalidraw board/);
     const outside = await mkdtemp(path.join(tmpdir(), "rigg-outside-"));
@@ -324,6 +359,11 @@ describe("board files in the notes folder", () => {
     expect(isBoardFile(EMPTY)).toBe(true);
     expect(isBoardFile('{"type":"excalidraw"}')).toBe(false);
     expect(isBoardFile("not json")).toBe(false);
+    /* The limit is in bytes: text under it in characters but over it in UTF-8 is refused. */
+    const wide = JSON.stringify({ type: "excalidraw", elements: [{ id: "x", type: "text", text: "é".repeat(MAX_BOARD_BYTES / 2 + 10) }] });
+    expect(wide.length).toBeLessThan(MAX_BOARD_BYTES);
+    expect(isBoardFile(wide)).toBe(false);
+    expect(isBoardFile(JSON.stringify({ type: "excalidraw", elements: [{ id: "x", type: "text", text: "é".repeat(MAX_BOARD_BYTES / 4) }] }))).toBe(true);
   });
 
   it("records draw-it-back attempts on the chapter's board in the book's state", async () => {
@@ -391,6 +431,19 @@ describe("many boards in a book", () => {
     expect(await readFile(path.join(notes, board.path!), "utf8")).toBe(EMPTY);
   });
 
+  it("updates a chapter board's sections when they change, even in a way joining them with newlines would hide", async () => {
+    await chapterBoard(bookId, "Habits", ["Habits", "Cues\nand cravings"]);
+    const board = await chapterBoard(bookId, "Habits", ["Habits", "Cues", "and cravings"]);
+    expect(board.labels).toEqual(["Habits", "Cues", "and cravings"]);
+  });
+
+  it("says a board removed meanwhile is gone, rather than renaming or recording nothing", async () => {
+    const board = await createBoard(notes, book(), { title: "Draft", chapter: null, labels: [], text: EMPTY, from: null });
+    await removeBoard(bookId, board.id);
+    await expect(renameBoard(bookId, board.id, "New")).rejects.toThrow(/isn't in this book/);
+    await expect(recordAttempt(bookId, board.id, { at: "2026-03-10T09:00:00.000Z", correct: true })).rejects.toThrow(/isn't in this book/);
+  });
+
   it("keeps a chapter's own board, whose draw-it-backs count toward retention", async () => {
     const { id } = await chapterBoard(bookId, "Habits", ["Habits"]);
     await expect(removeBoard(bookId, id)).rejects.toThrow(/stays/);
@@ -406,6 +459,33 @@ describe("diagrams drawn for a board", () => {
     expect(diagramTitle("flowchart TD\n  A[Cue] --> B[Craving]")).toBe("Cue");
     expect(diagramTitle("flowchart TD\n  A --> B")).toBe("Diagram from the chat");
     expect(diagramTitle("mindmap\n  root((AI Engineering))\n    Foundations")).toBe("AI Engineering");
+    expect(diagramTitle('flowchart TD\n  A["Query (attention)"] --> B["Keys"]')).toBe("Query (attention)");
+    expect(diagramTitle("flowchart TD\n  A[X] --> B[Y]")).toBe("X");
+    expect(diagramTitle("---\ntitle: Ignored\n---\n%% Attention flow\nflowchart TD\n  A[Q] --> B")).toBe("Attention flow");
+    expect(diagramTitle("---\ntitle: Habit loop\n---\nflowchart TD\n  A[Cue] --> B")).toBe("Habit loop");
+    expect(diagramTitle("---\nconfig:\n  theme: forest\n---\nflowchart TD\n  A[Cue] --> B")).toBe("Cue");
+  });
+});
+
+describe("which chapter's board the reader means", () => {
+  const toc = [
+    { label: "Introduction", depth: 0 },
+    { label: "Why habits", depth: 1 },
+    { label: "Part one", depth: 0 },
+    { label: "Introduction", depth: 0 },
+    { label: "The loop", depth: 1 },
+    { label: "Cues", depth: 2 },
+  ];
+
+  it("takes the sections from the chapter being read, even when another chapter has the same name", () => {
+    expect(boardChapter(toc, 1, [])).toEqual({ chapter: "Introduction", labels: ["Introduction", "Why habits"] });
+    expect(boardChapter(toc, 5, [])).toEqual({ chapter: "Introduction", labels: ["Introduction", "The loop", "Cues"] });
+    expect(boardChapter(toc, 2, [])).toEqual({ chapter: "Part one", labels: ["Part one"] });
+  });
+
+  it("uses the Course chapter around the place when a Course reads the book", () => {
+    expect(boardChapter(toc, 5, ["The loop"])).toEqual({ chapter: "The loop", labels: ["The loop", "Cues"] });
+    expect(boardChapter(toc, 9, [])).toBeNull();
   });
 });
 

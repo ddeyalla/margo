@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Board, BoardSummary } from "@/lib/shared/boards";
 import type { BookId } from "@/lib/shared/types";
 import { chapterBoard, createBoard, listBoards, removeBoard, renameBoard } from "./api";
@@ -16,7 +16,13 @@ export interface BoardsApi {
   show(id: string): void;
   /** Opens the pane on the list of boards. */
   list(): void;
-  close(): void;
+  /** Closes the pane; false when the open board couldn't be saved and stayed open. */
+  close(): Promise<boolean>;
+  /**
+   * The open board's leaving check, set by its editor: it saves the board and says whether it may go. Every change of
+   * board waits for it, so a board whose save fails stays open with the reader's drawing.
+   */
+  guard(leave: (() => Promise<boolean>) | null): void;
   /** Reads the list again, after a save names a new file or another window changed it. */
   refresh(): void;
   /** Opens the board of the chapter being read, making it the first time. */
@@ -35,14 +41,31 @@ const summary = (board: Board): BoardSummary => ({ ...board, editedAt: null });
 export function useBoards(bookId: BookId, initial: readonly Board[], context: BoardContext, onError: (text: string) => void): BoardsApi {
   const [boards, setBoards] = useState<BoardSummary[]>(() => initial.map(summary));
   const [open, setOpen] = useState<BoardsApi["open"]>(null);
+  /* Only the latest request lands: a listing that answers after a change made here would put back the old list, and
+     an opening that answers after a later one would replace the board the reader asked for since. */
+  const listing = useRef(0);
+  const opening = useRef(0);
+  const leaving = useRef<(() => Promise<boolean>) | null>(null);
 
   const refresh = useCallback(() => {
-    listBoards(bookId).then(setBoards, () => undefined);
+    const ticket = ++listing.current;
+    listBoards(bookId).then((list) => ticket === listing.current && setBoards(list), () => undefined);
   }, [bookId]);
   useEffect(refresh, [refresh]);
 
   return useMemo((): BoardsApi => {
-    const added = (board: Board) => setBoards((current) => [summary(board), ...current.filter((b) => b.id !== board.id)]);
+    const changed = (update: (current: BoardSummary[]) => BoardSummary[]) => {
+      listing.current++;
+      setBoards(update);
+    };
+    const added = (board: Board) => changed((current) => [summary(board), ...current.filter((b) => b.id !== board.id)]);
+    /** Moves the pane to `next` once the open board, if it is a different one, has saved and may go. */
+    const go = async (next: BoardsApi["open"], ticket = ++opening.current): Promise<boolean> => {
+      if (open?.id && open.id !== next?.id && leaving.current && !(await leaving.current())) return false;
+      if (ticket !== opening.current) return false;
+      setOpen(next);
+      return true;
+    };
     const failed = (failure: unknown, doing: string) => onError(failure instanceof Error ? failure.message : `${doing} failed.`);
 
     const openChapter = async () => {
@@ -51,10 +74,11 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
         onError("Open a chapter first: a chapter's board belongs to the chapter you're reading.");
         return;
       }
+      const ticket = ++opening.current;
       try {
         const board = await chapterBoard(bookId, where.chapter, where.labels);
         if (!boards.some((b) => b.id === board.id)) added(board);
-        setOpen({ id: board.id });
+        await go({ id: board.id }, ticket);
       } catch (failure) {
         failed(failure, "Opening the chapter's board");
       }
@@ -62,10 +86,11 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
 
     const create = async (title: string) => {
       const where = context();
+      const ticket = ++opening.current;
       try {
         const board = await createBoard(bookId, { title, chapter: where?.chapter ?? null, labels: where?.labels ?? [] });
         added(board);
-        setOpen({ id: board.id });
+        await go({ id: board.id }, ticket);
       } catch (failure) {
         failed(failure, "Making the board");
       }
@@ -73,13 +98,14 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
 
     const fromDiagram = async (source: string) => {
       const where = context();
+      const ticket = ++opening.current;
       try {
         /* Excalidraw is large: it loads with the first diagram opened as a board, not with the chat. */
         const { mermaidBoard } = await import("./mermaid");
         const { title, text } = await mermaidBoard(source);
         const board = await createBoard(bookId, { title, chapter: where?.chapter ?? null, labels: where?.labels ?? [], text, source });
         if (!boards.some((b) => b.id === board.id)) added(board);
-        setOpen({ id: board.id });
+        await go({ id: board.id }, ticket);
       } catch (failure) {
         onError(`The diagram couldn't be turned into a board. ${failure instanceof Error ? failure.message : ""}`.trim());
       }
@@ -88,7 +114,7 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
     const rename = async (id: string, title: string) => {
       try {
         const board = await renameBoard(bookId, id, title);
-        setBoards((current) => current.map((b) => (b.id === id ? { ...b, title: board.title } : b)));
+        changed((current) => current.map((b) => (b.id === id ? { ...b, title: board.title } : b)));
       } catch (failure) {
         failed(failure, "Renaming the board");
       }
@@ -96,8 +122,10 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
 
     const remove = async (id: string) => {
       try {
+        /* The open board saves before it goes, so the file it leaves in the notes has the reader's last edits. */
+        if (open?.id === id && !(await go({ id: null }))) return;
         await removeBoard(bookId, id);
-        setBoards((current) => current.filter((b) => b.id !== id));
+        changed((current) => current.filter((b) => b.id !== id));
         setOpen((current) => (current?.id === id ? { id: null } : current));
       } catch (failure) {
         failed(failure, "Removing the board");
@@ -107,14 +135,17 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
     return {
       boards,
       open,
-      show: (id) => setOpen({ id }),
+      show: (id) => void go({ id }),
       list: () => {
-        setOpen({ id: null });
-        refresh();
+        void go({ id: null }).then((done) => done && refresh());
       },
-      close: () => {
-        setOpen(null);
-        refresh();
+      close: async () => {
+        const done = await go(null);
+        if (done) refresh();
+        return done;
+      },
+      guard: (leave) => {
+        leaving.current = leave;
       },
       refresh,
       openChapter,

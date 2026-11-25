@@ -192,6 +192,17 @@ describe("API messages", () => {
   });
 });
 
+describe("the tutor's diagrams", () => {
+  it("asks for flowcharts without subgraphs, which a whiteboard can't open as shapes", () => {
+    expect(TUTOR_SYSTEM).toMatch(/Never group a flowchart's nodes in a subgraph/);
+    expect(TUTOR_SYSTEM).toMatch(/flowchart with no subgraph/);
+  });
+
+  it("draws on the attached whiteboard instead of a separate diagram, as the board note asks", () => {
+    expect(TUTOR_SYSTEM).toMatch(/comes with their whiteboard as JSON[^.]*: there, put the drawing on that board[^.]*, and draw no separate diagram/);
+  });
+});
+
 describe("tutor turns", () => {
   const thread: Thread = {
     kind: "passage",
