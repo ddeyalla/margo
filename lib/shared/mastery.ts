@@ -1,3 +1,4 @@
+import { boardRecall, type ChapterBoard } from "./boards";
 import { recordSignal, signalOf, type Signal } from "./confidence";
 import { courseSteps, type Course } from "./courses";
 import { isPassed, type ChapterQuiz } from "./quiz";
@@ -42,10 +43,12 @@ export const quizRecall = (quiz: ChapterQuiz, now: Date): RecallItem[] =>
 export const retention = (items: readonly RecallItem[]): number | null =>
   items.length ? items.reduce((sum, item) => sum + item.recall * item.weight, 0) / items.length : null;
 
-/** What a Course needs from each of its books: the cards and quizzes in its state. */
+/** What a Course needs from each of its books: the cards, quizzes and whiteboards in its state. */
 export interface BookEvidence {
   cardSets: CardSet[];
   quizzes: ChapterQuiz[];
+  /** Absent in evidence gathered before whiteboards existed. */
+  boards?: ChapterBoard[];
 }
 
 export interface Mastery {
@@ -54,7 +57,7 @@ export interface Mastery {
   chapters: number;
   /** Predicted recall over the Course's cards and quiz questions, 0 to 1, or null before any review. */
   retained: number | null;
-  /** How many cards and questions retention is read from. */
+  /** How many cards, questions and redrawn boards retention is read from. */
   items: number;
 }
 
@@ -79,6 +82,12 @@ export const courseMastery = (course: Pick<Course, "books" | "units">, books: Re
       for (const label of quiz.labels ?? []) labels.add(label);
       if (isPassed(quiz)) passed++;
       items.push(...quizRecall(quiz, now));
+    }
+    /* A chapter's draw-it-back attempts count once, as one thing to remember. */
+    for (const board of evidence.boards ?? []) {
+      if (!board.labels.concat(board.chapter).some((label) => labels.has(label))) continue;
+      const item = boardRecall(board, now);
+      if (item) items.push(item);
     }
     for (const set of evidence.cardSets) {
       if (set.chapterTitle === null || !labels.has(set.chapterTitle)) continue;

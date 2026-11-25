@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, BookOpen, Focus, Moon, PanelRight, Search, Sun, SunMoon, TableOfContents } from "lucide-react";
+import { ArrowLeft, BookOpen, Focus, Moon, PanelRight, Search, Shapes, Sun, SunMoon, TableOfContents } from "lucide-react";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import { SEARCH_SHORTCUT } from "@/components/search/SearchDialog";
 import { IconButton, Segmented } from "@/components/ui";
@@ -48,6 +48,7 @@ export function BookHeader({
   onSpotlight,
   focusing,
   onFocus,
+  onBoard,
   panelId,
   panelOpen,
   onTogglePanel,
@@ -73,6 +74,8 @@ export function BookHeader({
   /** A focus session is on: the header clears away, as for the spotlight. */
   focusing: boolean;
   onFocus(minutes: number): void;
+  /** Opens the whiteboard of the chapter being read. */
+  onBoard(): void;
   panelId: string;
   panelOpen: boolean;
   onTogglePanel(): void;
@@ -125,6 +128,9 @@ export function BookHeader({
       ) : (
         <Segmented label="Page colours" options={PDF_THEMES} value={settings.pdfPage} onChange={(theme) => choose("pdfPage", theme)} />
       )}
+      <IconButton label="Whiteboard: draw this chapter’s ideas and how they connect" disabled={failed} onClick={onBoard}>
+        <Shapes />
+      </IconButton>
       <FocusButton disabled={failed} onStart={onFocus} />
       {/* A disabled button takes no pointer, so the reason it is off sits on this wrapper. */}
       <span title={format === "epub" ? undefined : "Spotlight works in EPUB books for now"} className="inline-flex">

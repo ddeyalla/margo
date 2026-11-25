@@ -625,3 +625,8 @@
     corner-shape: round;
   }
 }
+
+/* The whiteboard has no shape library: Excalidraw's library browses a website, and boards stay local. */
+.board-canvas .default-sidebar-trigger {
+  display: none;
+}

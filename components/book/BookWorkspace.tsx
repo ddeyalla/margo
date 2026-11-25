@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
+import { OpenAsBoard, WhiteboardSheet } from "@/components/board/WhiteboardSheet";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { ReviewSheet } from "@/components/cards/ReviewSheet";
@@ -26,6 +27,7 @@ import { useResolvedTheme } from "@/components/ui/theme";
 import { patchBookState } from "@/lib/client/api";
 import { hasUnsentText } from "@/lib/client/unsent";
 import type { CourseContext } from "@/lib/shared/courses";
+import { boardChapter } from "@/lib/shared/boards";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
 import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext } from "@/lib/shared/types";
 import { BookHeader, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
@@ -117,13 +119,17 @@ export function BookWorkspace({
   const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, courses, spot, toc, provider });
   const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
+  /* The chapter whose whiteboard is open over the book, with a diagram from the chat to add to it. */
+  const [board, setBoard] = useState<{ chapter: string; labels: string[]; mermaid: string | null } | null>(null);
+  /* Whether the tutor panel was open when Draw it back folded it away. */
+  const panelBeforeRecall = useRef(false);
   useActivity(book.id, quizChapter ? "quiz" : reviewing ? "review" : "reading", spot);
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
-  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note, mid-dictation or holding words typed but not sent. */
-  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText());
+  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note, mid-dictation, holding words typed but not sent, or has a whiteboard open (its saves and checks change the revision too). */
+  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText() || board !== null);
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
   const { notice, dismiss: dismissNotice, placeMoved, navigate } = useOpeningNotice({
     initialState,
@@ -249,7 +255,7 @@ export function BookWorkspace({
   useShortcuts({
     shortcuts,
     /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
-    plainKeysOff: reviewing || !!quizChapter,
+    plainKeysOff: reviewing || !!quizChapter || !!board,
     /* The highlight menu goes first and alone, so the same press doesn't also dismiss the greeting or the spotlight. */
     closeFirst: menu ? closeMenu : null,
     /* Esc takes one thing away at a time: the selection, then the greeting, then the spotlight. */
@@ -300,6 +306,27 @@ export function BookWorkspace({
   const reply = useStableCallback((draft: MessageDraft) => provider && tutor.reply(draft, provider));
   const retry = useStableCallback(() => provider && tutor.retry(provider));
   /* The recall from a focus session goes to the tutor as the reader's own message, to be checked against the book. */
+  /** Opens the whiteboard of the chapter being read, the Course's chapter when a Course reads this book. */
+  const openBoard = (mermaid: string | null = null) => {
+    const entry = spot.get()?.place?.chapter ?? null;
+    const target = toc && entry ? boardChapter(toc, toc.indexOf(entry), quizzes.chapters) : null;
+    if (!target) {
+      setToast({ text: "Open a chapter first: a whiteboard belongs to the chapter you're reading.", action: false });
+      return;
+    }
+    setQuizChapter(null);
+    setReviewing(false);
+    setBoard({ ...target, mermaid });
+  };
+
+  /* Draw it back closes the book, the chat included, and opens it again after. */
+  const recallBoard = (active: boolean) => {
+    if (active) {
+      panelBeforeRecall.current = panel.isOpen();
+      panel.collapse();
+    } else if (panelBeforeRecall.current) panel.expand();
+  };
+
   const askRecall = (text: string, minutes: number) => {
     showTab("chat");
     reply({
@@ -355,6 +382,7 @@ export function BookWorkspace({
         onSpotlight={toggleSpotlight}
         focusing={focus.active}
         onFocus={focus.start}
+        onBoard={() => openBoard()}
         panelId={PANEL_ID}
         panelOpen={panel.open}
         onTogglePanel={panel.toggle}
@@ -449,8 +477,27 @@ export function BookWorkspace({
                 />
               ) : null}
               {quizChapter && !reviewing ? <QuizSheet quizzes={quizzes} chapter={quizChapter} onClose={closeQuiz} onJump={jumpTo} /> : null}
+              {board ? (
+                <WhiteboardSheet
+                  key={board.chapter}
+                  bookId={book.id}
+                  chapter={board.chapter}
+                  labels={board.labels}
+                  provider={provider}
+                  unavailable={unavailable}
+                  theme={appTheme}
+                  mermaid={board.mermaid}
+                  onMermaidUsed={() => setBoard((current) => (current ? { ...current, mermaid: null } : current))}
+                  onRecall={recallBoard}
+                  onAnswer={(text) => {
+                    showTab("chat");
+                    reply({ text, attachments: [], quotes: [] });
+                  }}
+                  onClose={() => setBoard(null)}
+                />
+              ) : null}
               {!tocDocked && !error ? (
-                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter} docked={false} onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter && !board} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
             </main>
           </div>
@@ -467,29 +514,31 @@ export function BookWorkspace({
           collapsible
           className="min-w-0 overflow-hidden"
         >
-          <SidePanel
-            tab={tab}
-            onTabChange={chooseTab}
-            tutor={tutor}
-            unavailable={unavailable}
-            onJump={jumpTo}
-            onAsk={askAnywhere}
-            onSendParked={sendParked}
-            onReply={reply}
-            onRetry={retry}
-            annotations={annotations}
-            noteDraft={noteDraft}
-            noteFocus={noteFocus}
-            onNoteDraft={setNoteDraft}
-            onOpenNote={openNote}
-            quotes={quoteDraft}
-            onFindQuote={findQuote}
-            onQuote={quoteHighlight}
-            cards={cards}
-            onReview={startReview}
-            onRemakeCards={provider ? remakeCards : null}
-            panelOpen={panel.open}
-          />
+          <OpenAsBoard value={openBoard}>
+            <SidePanel
+              tab={tab}
+              onTabChange={chooseTab}
+              tutor={tutor}
+              unavailable={unavailable}
+              onJump={jumpTo}
+              onAsk={askAnywhere}
+              onSendParked={sendParked}
+              onReply={reply}
+              onRetry={retry}
+              annotations={annotations}
+              noteDraft={noteDraft}
+              noteFocus={noteFocus}
+              onNoteDraft={setNoteDraft}
+              onOpenNote={openNote}
+              quotes={quoteDraft}
+              onFindQuote={findQuote}
+              onQuote={quoteHighlight}
+              cards={cards}
+              onReview={startReview}
+              onRemakeCards={provider ? remakeCards : null}
+              panelOpen={panel.open}
+            />
+          </OpenAsBoard>
         </ResizablePanel>
       </Resizable>
       <SelectionToolbar

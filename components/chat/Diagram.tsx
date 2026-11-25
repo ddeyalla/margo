@@ -1,10 +1,13 @@
 "use client";
 
 import { createContext, useContext, useEffect, useId, useState } from "react";
+import { OpenAsBoard } from "@/components/board/WhiteboardSheet";
 import { drawnDiagram, renderDiagram } from "./mermaid";
 
 /** Saves a diagram's source to the reader's notes, where the answer allows it. */
 export const SaveDiagram = createContext<((source: string) => void) | null>(null);
+
+const corner = "press rounded-xs bg-panel-raised px-1.5 py-0.5 text-caption text-fog shadow-chip hover:text-paper";
 
 type Drawn = { source: string; svg: string } | { source: string; failed: true };
 
@@ -12,6 +15,7 @@ type Drawn = { source: string; svg: string } | { source: string; failed: true };
 export function Diagram({ source, codeClass }: { source: string; codeClass: string }) {
   const id = `diagram-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const save = useContext(SaveDiagram);
+  const toBoard = useContext(OpenAsBoard);
   /* A diagram drawn before shows on the first frame; the server has no document, so it starts as code there. */
   const [drawn, setDrawn] = useState<Drawn | null>(() => {
     const svg = typeof document === "undefined" ? undefined : drawnDiagram(source);
@@ -41,10 +45,16 @@ export function Diagram({ source, codeClass }: { source: string; codeClass: stri
   return (
     <figure className="group/diagram relative my-2">
       {/* Mermaid's strict mode sanitizes the SVG it returns: labels are escaped and scripts and links removed. A wide
-          diagram scrolls inside its box; the button stays put in the corner. */}
+          diagram scrolls inside its box; the buttons stay put in the corner. */}
       <div className="overflow-x-auto rounded-md bg-ink/70 px-3 py-3">
         <div role="img" aria-label="Diagram" className="flex w-max min-w-full justify-center" dangerouslySetInnerHTML={{ __html: ready.svg }} />
       </div>
+      <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity duration-[var(--duration-fast)] focus-within:opacity-100 group-hover/diagram:opacity-100 has-[:disabled]:opacity-100">
+        {toBoard ? (
+          <button type="button" onClick={() => toBoard(source)} className={corner}>
+            Open as whiteboard
+          </button>
+        ) : null}
       {save ? (
         <button
           type="button"
@@ -53,11 +63,12 @@ export function Diagram({ source, codeClass }: { source: string; codeClass: stri
             save(source);
             setSaved(true);
           }}
-          className="press absolute right-1.5 top-1.5 rounded-xs bg-panel-raised px-1.5 py-0.5 text-caption text-fog opacity-0 shadow-chip transition-opacity duration-[var(--duration-fast)] hover:text-paper focus-visible:opacity-100 group-hover/diagram:opacity-100 disabled:opacity-100"
+          className={corner}
         >
           {saved ? "Saved to notes" : "Save to notes"}
         </button>
       ) : null}
+      </div>
     </figure>
   );
 }

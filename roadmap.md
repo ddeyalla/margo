@@ -601,19 +601,40 @@ inline, raw syntax shows on the line being edited. Not a clone of Obsidian.
 A free whiteboard per chapter that you and the tutor both draw on. Excalidraw (MIT);
 tldraw is out because its SDK needs a production licence.
 
-- [ ] One `.excalidraw` file per chapter, in the notes folder so Obsidian's Excalidraw
+- [x] One `.excalidraw` file per chapter, in the notes folder so Obsidian's Excalidraw
       plugin opens it.
-- [ ] Review with the tutor: send the scene as compact JSON (text, positions, arrow
+      *`Whiteboards/<Book>/<Chapter>.excalidraw`, through `lib/server/notes-folder.ts`: created
+      with an exclusive open, saved only over the version it opened, and a conflict goes to
+      a copy beside it. The chapter is the Course's chapter when a Course reads the book,
+      else the top-level contents entry. The board saves itself a moment after each change
+      and as it closes. `lib/server/boards.ts`, `components/board/`.*
+- [x] Review with the tutor: send the scene as compact JSON (text, positions, arrow
       connections) plus a PNG. The tutor reports missing concepts, wrong links and one
       "why does A lead to B?" question.
-- [ ] **Draw it back:** a blank board, the book closed. The tutor points at the first
+      *The scene is ideas (shapes and free text) and links (arrows bound at both ends), with
+      short ids; loose arrows and sketches are only counted. The tutor also gets the
+      chapter's text. Its additions come back as suggestions, and its question can be
+      answered in the chat.*
+- [x] **Draw it back:** a blank board, the book closed. The tutor points at the first
       wrong link and gives no grade.
-- [ ] The tutor edits the board by returning JSON operations (add, update, delete),
+      *The tutor panel folds away while it runs. The wrong link is selected on the canvas
+      with a hint toward the passage; the drawing is never saved over the board.*
+- [x] The tutor edits the board by returning JSON operations (add, update, delete),
       validated by the app. Bad JSON goes back once with the error.
-- [ ] **Agent edits are suggestions:** shown in their own colour, accepted or rejected one
+      *Ops are `add_node`, `add_link`, `update` and `delete`, at most 30, checked against the
+      ids sent. "Ask the tutor to change the board" sends an instruction the same way.*
+- [x] **Agent edits are suggestions:** shown in their own colour, accepted or rejected one
       by one, so the tutor never overwrites your drawing. Undo covers the rest.
-- [ ] Mermaid from chat converts to an editable board.
-- [ ] Results feed retention (Phase 18).
+      *Suggestions are dashed, violet and locked, and carry what they would do on the
+      elements themselves, so undo and redo keep the list right. Keeping a link keeps the
+      new ideas it joins; dropping an idea drops its links. They are never saved until kept.*
+- [x] Mermaid from chat converts to an editable board.
+      *"Open as whiteboard" on a chat diagram adds it to the chapter's board, to the right
+      of what is there. Flowcharts become shapes and bound arrows; other kinds come in as
+      one picture.*
+- [x] Results feed retention (Phase 18).
+      *Each Draw it back check is an attempt, right when no link was wrong. A Course chapter
+      with a board gains a recall item scheduled from those attempts, like a quiz.*
 
 ## Phase 24 — Coding tasks · L
 

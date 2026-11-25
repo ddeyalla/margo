@@ -44,14 +44,14 @@ export const coursesForBook = async (bookId: BookId): Promise<CourseContext[]> =
   return Promise.all(reading.map(async (course) => ({ id: course.id, name: course.name, steps: courseSteps(course), passed: [...(await passedSteps(course))] })));
 };
 
-/** Coverage and retention of a Course as of `now`, read from its books' cards and quizzes. */
+/** Coverage and retention of a Course as of `now`, read from its books' cards, quizzes and whiteboards. */
 export const masteryOf = async (course: Pick<Course, "books" | "units">, now = new Date()): Promise<Mastery> => {
   const ids = [...new Set(courseSteps(course).map((step) => step.bookId))];
   const states = await Promise.all(ids.map((id) => readBookState(id).catch(() => null)));
   const books = new Map<BookId, BookEvidence>();
   ids.forEach((id, i) => {
     const state = states[i];
-    if (state) books.set(id, { cardSets: state.cardSets, quizzes: state.quizzes });
+    if (state) books.set(id, { cardSets: state.cardSets, quizzes: state.quizzes, boards: state.boards });
   });
   return courseMastery(course, books, now);
 };

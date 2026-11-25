@@ -1,3 +1,4 @@
+import type { ChapterBoard } from "./boards";
 import type { ChapterQuiz } from "./quiz";
 
 export type BookFormat = "epub" | "pdf";
@@ -301,6 +302,8 @@ export interface BookState {
   cardSets: CardSet[];
   /** Chapter quizzes of the book's chapters in a Course, each with every attempt. */
   quizzes: ChapterQuiz[];
+  /** Chapter whiteboards: where each one's file is, and its draw-it-back attempts. */
+  boards: ChapterBoard[];
   /** When the reader last moved through the book, an ISO time, or null if never or saved before this was kept. */
   lastReadAt: string | null;
 }
@@ -314,6 +317,7 @@ export const emptyBookState = (): BookState => ({
   notes: [],
   cardSets: [],
   quizzes: [],
+  boards: [],
   lastReadAt: null,
 });
 
