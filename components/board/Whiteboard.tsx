@@ -5,12 +5,11 @@ import { CaptureUpdateAction, Excalidraw, exportToBlob, hashElementsVersion, Mai
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI, ExcalidrawInitialDataState } from "@excalidraw/excalidraw/types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Eye, RotateCcw, Send, X } from "lucide-react";
+import { Check, ChevronLeft, Eye, Maximize2, PanelRight, RotateCcw, Send, X } from "lucide-react";
 import { Button, IconButton, Spinner } from "@/components/ui";
 import { compactScene, type BoardCheck, type BoardReview, type OpenedBoard } from "@/lib/shared/boards";
 import type { BookId, ProviderId } from "@/lib/shared/types";
-import { askBoard, fetchBoard, putBoard, type BoardRequest } from "./api";
-import { mermaidElements } from "./mermaid";
+import { askBoard, fetchBoard, putBoard, settling, type BoardRequest } from "./api";
 import { acceptSuggestion, pendingSuggestions, readerElements, rejectSuggestion, suggestionsFor, type Suggestion } from "./suggestions";
 
 /* Excalidraw fetches its fonts from a CDN unless told where they are; the app serves its own copies, offline. */
@@ -18,19 +17,19 @@ if (typeof window !== "undefined") (window as unknown as { EXCALIDRAW_ASSET_PATH
 
 export interface WhiteboardProps {
   bookId: BookId;
-  chapter: string;
-  labels: string[];
+  boardId: string;
+  /** Over the book with the tutor's tools beside it, or small in the side panel, for drawing alone. */
+  layout: "full" | "panel";
   provider: ProviderId | null;
   /** Why the tutor can't be asked right now, or null. */
   unavailable: string | null;
   theme: "light" | "dark";
-  /** A Mermaid diagram from the chat to add to the board once it's open. */
-  mermaid: string | null;
-  onMermaidUsed(): void;
   /** Draw it back closes the book: the tutor panel folds away while it lasts. */
   onRecall(active: boolean): void;
   /** Sends a message to the tutor's chat. */
   onAnswer(text: string): void;
+  /** Moves the board to the other place, the panel or the full view, once its edits are saved. */
+  onMove(): void;
   onClose(): void;
 }
 
@@ -92,13 +91,13 @@ const picture = async (api: ExcalidrawImperativeAPI): Promise<string | null> => 
 const pendingKey = (list: readonly Suggestion[]) => list.map((s) => s.id).join(",");
 
 /**
- * A chapter's whiteboard over the book. The reader draws; the board saves itself to the notes folder as they go.
+ * A whiteboard, over the book or in the side panel. The reader draws; the board saves itself to the notes folder as they go.
  * The tutor can review it against the chapter, or change it when asked, and what it sends back arrives as
  * suggestions the reader takes or leaves one at a time. "Draw it back" swaps in a blank board with the book
  * closed: redrawn from memory, the tutor points at the first link that doesn't hold, and says nothing more.
  */
 export default function Whiteboard(props: WhiteboardProps) {
-  const { bookId, chapter, labels, provider, unavailable, theme, mermaid, onMermaidUsed, onRecall, onAnswer, onClose } = props;
+  const { bookId, boardId, layout, provider, unavailable, theme, onRecall, onAnswer, onMove, onClose } = props;
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [mode, setMode] = useState<"board" | "recall">("board");
   const [save, setSave] = useState<Save>({ state: "saved" });
@@ -142,21 +141,19 @@ export default function Whiteboard(props: WhiteboardProps) {
   }, [mode]);
   /* Where the board is saved, shown beside the save state. */
   const [path, setPath] = useState<string | null>(null);
-  /* The load whose scene Excalidraw has put on the canvas: it applies the file a moment after mounting. */
-  const [shown, setShown] = useState<number | null>(null);
 
   /* Only the latest opening lands: an earlier one answering late would put the canvas back as it was. */
   const opening = useRef(0);
   const fetchInto = useCallback(() => {
     const ticket = ++opening.current;
-    return fetchBoard(bookId, chapter).then(
+    return fetchBoard(bookId, boardId).then(
       (board) => {
         if (ticket !== opening.current) return;
         hash.current = board.file?.hash ?? null;
         savedVersion.current = null;
         latest.current = null;
         conflicted.current = false;
-        setPath(board.file ? board.path : null);
+        setPath(board.file ? board.board.path : null);
         setSave({ state: "saved" });
         setLoad((current) => ({
           state: "ready",
@@ -172,7 +169,7 @@ export default function Whiteboard(props: WhiteboardProps) {
           });
       },
     );
-  }, [bookId, chapter]);
+  }, [bookId, boardId]);
 
   useEffect(() => {
     void fetchInto();
@@ -197,7 +194,7 @@ export default function Whiteboard(props: WhiteboardProps) {
       if (version === savedVersion.current) return;
       const text = serializeAsJSON(elements, board.appState, board.files, "local");
       setSave({ state: "saving" });
-      const run = putBoard(bookId, { chapter, labels, text, baseHash: hash.current }, keepalive).then(
+      const run = putBoard(bookId, { id: boardId, text, baseHash: hash.current }, keepalive).then(
         (result) => {
           if (result.state === "saved") {
             hash.current = result.hash;
@@ -223,7 +220,7 @@ export default function Whiteboard(props: WhiteboardProps) {
       });
       await inFlight.current;
     },
-    [bookId, chapter, labels],
+    [bookId, boardId],
   );
 
   const onChange = (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
@@ -234,7 +231,9 @@ export default function Whiteboard(props: WhiteboardProps) {
     const version = hashElementsVersion(readerElements(elements.filter((element) => !element.isDeleted)));
     if (savedVersion.current === null) {
       savedVersion.current = version;
-      if (load.state === "ready") setShown(load.key);
+      /* The whole drawing in view when it opens, however small the panel. */
+      const live = elements.filter((element) => !element.isDeleted);
+      if (live.length) api.current?.scrollToContent(live, { fitToViewport: true, viewportZoomFactor: 0.85 });
       return;
     }
     if (version === savedVersion.current || version === failedVersion.current) return;
@@ -250,28 +249,9 @@ export default function Whiteboard(props: WhiteboardProps) {
     return () => {
       removeEventListener("pagehide", onHide);
       aborter.current?.abort();
-      void flush(true);
+      settling(boardId, flush(true));
     };
-  }, [flush]);
-
-  /* A diagram from the chat lands on the board once the board's own drawing is on it, as the reader's own drawing. */
-  useEffect(() => {
-    if (!mermaid || load.state !== "ready" || shown !== load.key || mode !== "board") return;
-    const board = api.current;
-    if (!board) return;
-    onMermaidUsed();
-    mermaidElements(mermaid, board.getSceneElements()).then(
-      ({ elements, files }) => {
-        if (files.length) board.addFiles(files);
-        board.updateScene({
-          elements: [...board.getSceneElementsIncludingDeleted(), ...elements],
-          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-        });
-        board.scrollToContent(elements, { fitToContent: true, animate: true });
-      },
-      (failure: unknown) => setError(`The diagram couldn't be turned into a board. ${failure instanceof Error ? failure.message : ""}`.trim()),
-    );
-  }, [mermaid, load, shown, mode, onMermaidUsed]);
+  }, [flush, boardId]);
 
   const ask = async (kind: "review" | "check" | "edit") => {
     const board = api.current;
@@ -290,8 +270,7 @@ export default function Whiteboard(props: WhiteboardProps) {
     setNotice(null);
     aborter.current = new AbortController();
     const base = {
-      chapter,
-      labels,
+      id: boardId,
       provider,
       scene,
       image: await picture(board),
@@ -378,6 +357,14 @@ export default function Whiteboard(props: WhiteboardProps) {
     onClose();
   };
 
+  const move = async () => {
+    await flush();
+    onMove();
+  };
+
+  const board = load.state === "ready" ? load.board.board : null;
+  const title = board?.title ?? "Whiteboard";
+
   const saveLine =
     save.state === "saving"
       ? "Saving…"
@@ -390,22 +377,89 @@ export default function Whiteboard(props: WhiteboardProps) {
             : path
               ? "Saved to your notes"
               : "";
-  const askBlocked = !provider ? (unavailable ?? "No tutor is available.") : null;
+  const askBlocked = !provider
+    ? (unavailable ?? "No tutor is available.")
+    : board && !board.chapter
+      ? "This board isn’t about a chapter, so the tutor has nothing to read it against."
+      : null;
+  const saveState =
+    mode === "board" && saveLine ? (
+      <span title={path ?? undefined} className={save.state === "failed" || save.state === "conflict" ? "shrink-0 text-label text-danger" : "shrink-0 text-label text-dim"}>
+        {saveLine}
+      </span>
+    ) : null;
+  const canvas = (
+    <div className="board-canvas relative min-w-0 flex-1">
+      {load.state === "ready" ? (
+        <Excalidraw
+          key={`${mode}:${load.key}`}
+          excalidrawAPI={(instance) => {
+            api.current = instance;
+          }}
+          initialData={mode === "recall" ? { elements: [], scrollToContent: true } : initialData(load.board)}
+          onChange={onChange}
+          theme={theme}
+          name={title}
+          aiEnabled={false}
+          UIOptions={{
+            canvasActions: {
+              loadScene: false,
+              saveToActiveFile: false,
+              export: false,
+              saveAsImage: false,
+              toggleTheme: false,
+              clearCanvas: mode === "board",
+            },
+          }}
+        >
+          <MainMenu>
+            <MainMenu.DefaultItems.SearchMenu />
+            <MainMenu.DefaultItems.Help />
+            {mode === "board" ? <MainMenu.DefaultItems.ClearCanvas /> : null}
+            <MainMenu.Separator />
+            <MainMenu.DefaultItems.ChangeCanvasBackground />
+          </MainMenu>
+        </Excalidraw>
+      ) : (
+        <div className="flex h-full items-center justify-center px-4">
+          {load.state === "loading" ? (
+            <Spinner />
+          ) : (
+            <div className="flex max-w-[44ch] flex-col items-center gap-3 text-center">
+              <p className="text-title text-paper">The board couldn’t be opened.</p>
+              <p className="text-label text-dim">{load.error}</p>
+              <Button onClick={open}>Try again</Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  if (layout === "panel") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex h-9 shrink-0 items-center gap-1 pl-1 pr-1.5">
+          <IconButton size="sm" label="All boards" onClick={() => void close()}>
+            <ChevronLeft />
+          </IconButton>
+          <span className="min-w-0 truncate text-label font-medium text-paper">{title}</span>
+          {saveState}
+          <span className="flex-1" />
+          <IconButton size="sm" label="Open over the book, with the tutor" disabled={load.state !== "ready"} onClick={() => void move()}>
+            <Maximize2 />
+          </IconButton>
+        </div>
+        {canvas}
+      </div>
+    );
+  }
 
   return (
-    <div role="dialog" aria-modal aria-label={`Whiteboard: ${chapter}`} className="animate-fade absolute inset-0 z-30 flex flex-col bg-page">
+    <div role="dialog" aria-modal aria-label={`Whiteboard: ${title}`} className="animate-fade absolute inset-0 z-30 flex flex-col bg-page">
       <div className="flex h-11 shrink-0 items-center gap-2 px-3">
-        <span className="min-w-0 truncate text-label text-fog">
-          {mode === "recall" ? "Draw it back" : "Whiteboard"} · {chapter}
-        </span>
-        {mode === "board" && saveLine ? (
-          <span
-            title={path ?? undefined}
-            className={save.state === "failed" || save.state === "conflict" ? "shrink-0 text-label text-danger" : "shrink-0 text-label text-dim"}
-          >
-            {saveLine}
-          </span>
-        ) : null}
+        <span className="min-w-0 truncate text-label text-fog">{mode === "recall" ? `Draw it back · ${board?.chapter ?? title}` : title}</span>
+        {saveState}
         <span className="flex-1" />
         {mode === "board" ? (
           <>
@@ -415,10 +469,15 @@ export default function Whiteboard(props: WhiteboardProps) {
                 Review with the tutor
               </Button>
             </span>
-            <Button size="sm" disabled={!!busy || load.state !== "ready"} onClick={() => void startRecall()}>
-              <RotateCcw />
-              Draw it back
-            </Button>
+            {board?.kind === "chapter" ? (
+              <Button size="sm" disabled={!!busy} onClick={() => void startRecall()}>
+                <RotateCcw />
+                Draw it back
+              </Button>
+            ) : null}
+            <IconButton label="Move to the side panel" disabled={load.state !== "ready"} onClick={() => void move()}>
+              <PanelRight />
+            </IconButton>
           </>
         ) : (
           <>
@@ -438,51 +497,7 @@ export default function Whiteboard(props: WhiteboardProps) {
         </IconButton>
       </div>
       <div className="flex min-h-0 flex-1">
-        <div className="board-canvas relative min-w-0 flex-1">
-          {load.state === "ready" ? (
-            <Excalidraw
-              key={`${mode}:${load.key}`}
-              excalidrawAPI={(instance) => {
-                api.current = instance;
-              }}
-              initialData={mode === "recall" ? { elements: [], scrollToContent: true } : initialData(load.board)}
-              onChange={onChange}
-              theme={theme}
-              name={chapter}
-              aiEnabled={false}
-              UIOptions={{
-                canvasActions: {
-                  loadScene: false,
-                  saveToActiveFile: false,
-                  export: false,
-                  saveAsImage: false,
-                  toggleTheme: false,
-                  clearCanvas: mode === "board",
-                },
-              }}
-            >
-              <MainMenu>
-                <MainMenu.DefaultItems.SearchMenu />
-                <MainMenu.DefaultItems.Help />
-                {mode === "board" ? <MainMenu.DefaultItems.ClearCanvas /> : null}
-                <MainMenu.Separator />
-                <MainMenu.DefaultItems.ChangeCanvasBackground />
-              </MainMenu>
-            </Excalidraw>
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              {load.state === "loading" ? (
-                <Spinner />
-              ) : (
-                <div className="flex max-w-[44ch] flex-col items-center gap-3 text-center">
-                  <p className="text-title text-paper">The board couldn’t be opened.</p>
-                  <p className="text-label text-dim">{load.error}</p>
-                  <Button onClick={open}>Try again</Button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {canvas}
         <aside aria-label="Tutor" className="flex w-[300px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-line px-4 py-4">
           {mode === "recall" ? (
             <RecallRail check={check} busy={busy === "check"} onShow={(link) => check && show(check.ids[link])} />
@@ -499,8 +514,8 @@ export default function Whiteboard(props: WhiteboardProps) {
               ) : null}
               {!review && !pending.length && !busy ? (
                 <p className="text-label leading-relaxed text-dim">
-                  Draw the chapter’s ideas in boxes and join them with arrows for how they connect. The tutor can review the board against the chapter; anything
-                  it adds shows up in its own colour for you to keep or drop.
+                  Draw ideas in boxes and join them with arrows for how they connect. The tutor can review the board against{" "}
+                  {board?.chapter ? `“${board.chapter}”` : "its chapter"}; anything it adds shows up in its own colour for you to keep or drop.
                 </p>
               ) : null}
               {busy === "review" || busy === "edit" ? (
@@ -515,7 +530,7 @@ export default function Whiteboard(props: WhiteboardProps) {
                   onAnswer={setAnswer}
                   onShow={(link) => show(review.ids[link])}
                   onSend={() => {
-                    onAnswer(`On my whiteboard of “${chapter}”, you asked: ${review.review.question}\n\nMy answer: ${answer.trim()}`);
+                    onAnswer(`On my whiteboard “${title}”, you asked: ${review.review.question}\n\nMy answer: ${answer.trim()}`);
                     setAnswer("");
                   }}
                 />

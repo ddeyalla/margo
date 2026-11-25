@@ -1,6 +1,7 @@
-import { convertToExcalidrawElements, getCommonBounds, newElementWith } from "@excalidraw/excalidraw";
+import { convertToExcalidrawElements, getCommonBounds, newElementWith, serializeAsJSON } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import type { BinaryFileData } from "@excalidraw/excalidraw/types";
+import type { BinaryFileData, BinaryFiles } from "@excalidraw/excalidraw/types";
+import { diagramTitle } from "@/lib/shared/boards";
 import { besideOffset, boundsOf, type Box } from "./geometry";
 
 const boxOf = (elements: readonly ExcalidrawElement[]): Box | null => {
@@ -27,4 +28,11 @@ export const mermaidElements = async (
     elements: made.map((element) => newElementWith(element, { x: element.x + dx, y: element.y + dy })),
     files: Object.values(files ?? {}),
   };
+};
+
+/** A diagram as a new board's file, and the title it names itself with. */
+export const mermaidBoard = async (source: string): Promise<{ title: string; text: string }> => {
+  const { elements, files } = await mermaidElements(source, []);
+  const byId: BinaryFiles = Object.fromEntries(files.map((file) => [file.id, file]));
+  return { title: diagramTitle(source), text: serializeAsJSON(elements, {}, byId, "local") };
 };

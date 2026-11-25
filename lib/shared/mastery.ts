@@ -1,4 +1,4 @@
-import { boardRecall, type ChapterBoard } from "./boards";
+import { boardRecall, type Board } from "./boards";
 import { recordSignal, signalOf, type Signal } from "./confidence";
 import { courseSteps, type Course } from "./courses";
 import { isPassed, type ChapterQuiz } from "./quiz";
@@ -48,7 +48,7 @@ export interface BookEvidence {
   cardSets: CardSet[];
   quizzes: ChapterQuiz[];
   /** Absent in evidence gathered before whiteboards existed. */
-  boards?: ChapterBoard[];
+  boards?: Board[];
 }
 
 export interface Mastery {
@@ -85,7 +85,7 @@ export const courseMastery = (course: Pick<Course, "books" | "units">, books: Re
     }
     /* A chapter's draw-it-back attempts count once, as one thing to remember. */
     for (const board of evidence.boards ?? []) {
-      if (!board.labels.concat(board.chapter).some((label) => labels.has(label))) continue;
+      if (board.kind !== "chapter" || !board.chapter || !board.labels.concat(board.chapter).some((label) => labels.has(label))) continue;
       const item = boardRecall(board, now);
       if (item) items.push(item);
     }

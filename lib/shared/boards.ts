@@ -16,15 +16,81 @@ export interface BoardAttempt {
   correct: boolean;
 }
 
-/** What the app keeps about a chapter's board in the book's state. The drawing itself lives in the notes folder. */
-export interface ChapterBoard {
-  chapter: string;
+/**
+ * What the app keeps about one of a book's boards in the book's state. The drawing itself lives in the notes folder.
+ * A book has any number of boards. One per chapter is that chapter's board, which draw-it-back is for; the rest are
+ * the reader's own, made new or opened from a diagram in the chat.
+ */
+export interface Board {
+  id: string;
+  title: string;
+  kind: "chapter" | "free";
+  /** The chapter the board is about, which the tutor reads it against, or null when it was made outside any chapter. */
+  chapter: string | null;
   /** The chapter and the sections under it, as its quiz and Course steps name them. */
   labels: string[];
-  /** The board's file, relative to the notes folder, once it has been saved; it keeps its name if the chapter's changes. */
+  /** The board's file, relative to the notes folder, once it has been saved; it keeps its name if the title changes. */
   path: string | null;
   attempts: BoardAttempt[];
+  /** For a board made from a diagram in the chat, a hash of the diagram, so opening it again opens the same board. */
+  from?: string;
 }
+
+/** A board in the list: its entry, and when its file last changed, or null when it has none. */
+export type BoardSummary = Board & { editedAt: string | null };
+
+/** A short hash, the same in the browser and on the server. Not for security: it names things. */
+export const shortHash = (text: string): string => {
+  let a = 0x811c9dc5;
+  let b = 0x01000193 ^ text.length;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    a = Math.imul(a ^ code, 0x01000193);
+    b = Math.imul(b ^ code, 0x5bd1e995);
+  }
+  return (a >>> 0).toString(16).padStart(8, "0") + (b >>> 0).toString(16).padStart(8, "0");
+};
+
+/** A chapter board's id, worked out from the chapter, so the same chapter always names the same board. */
+export const chapterBoardId = (chapter: string): string => `chapter-${shortHash(chapter)}`;
+
+/** Board ids as the app makes them: a chapter's, or a new board's random one. */
+export const isBoardId = (value: unknown): value is string => typeof value === "string" && /^[a-z0-9-]{8,64}$/.test(value);
+
+/**
+ * A board entry as stored. Entries saved before books had more than one board have only a chapter: they become
+ * that chapter's board, with the id worked out from it, so reading them twice gives the same board.
+ */
+export const normalizeBoard = (raw: Partial<Board> & { chapter: string | null }): Board => {
+  const chapter = raw.chapter ?? null;
+  const kind = raw.kind ?? (raw.id ? "free" : "chapter");
+  const board: Board = {
+    id: raw.id ?? chapterBoardId(chapter ?? ""),
+    title: raw.title ?? chapter ?? "Untitled board",
+    kind,
+    chapter,
+    labels: raw.labels ?? (chapter ? [chapter] : []),
+    path: raw.path ?? null,
+    attempts: raw.attempts ?? [],
+  };
+  return raw.from ? { ...board, from: raw.from } : board;
+};
+
+/**
+ * The title a chat diagram gives the board made from it: its first line when that is a Mermaid comment ("%% Attention
+ * flow"), which the tutor writes when it draws for a board, or else its first label.
+ */
+export const diagramTitle = (source: string): string => {
+  const first = source.trimStart().split("\n", 1)[0];
+  const comment = /^%%(?!\{)\s*(.+)$/.exec(first)?.[1]?.trim();
+  if (comment) return comment.slice(0, 120);
+  const body = source.replace(/^\s*%%.*$/gm, "");
+  const label = /[[({>]"?([^\])}"\n]{2,60})"?[\])}]/.exec(body)?.[1]?.trim();
+  return label || "Diagram from the chat";
+};
+
+/** An empty board, as its first file holds it until the reader draws. */
+export const EMPTY_BOARD = JSON.stringify({ type: "excalidraw", version: 2, source: "rigg-learn", elements: [], appState: {}, files: {} }, null, 2);
 
 /** A board as opened: its file's text and the hash a save must start from. */
 export interface BoardVersion {
@@ -33,11 +99,9 @@ export interface BoardVersion {
 }
 
 export interface OpenedBoard {
-  /** The board's file, relative to the notes folder, or null before its first save. */
-  path: string | null;
+  board: Board;
   /** Null when there is no file yet, or it was removed. */
   file: BoardVersion | null;
-  attempts: BoardAttempt[];
 }
 
 export type BoardSave =
@@ -345,13 +409,13 @@ export const parseCheckReply = (reply: string, scene: CompactScene): BoardCheck 
  * How well the reader can still redraw a chapter: each draw-it-back with no wrong link counts as a right answer,
  * each with one as a wrong answer, replayed like quiz answers so the board fades and firms up as cards do.
  */
-export const boardRecall = (board: Pick<ChapterBoard, "attempts">, now: Date): RecallItem | null => {
+export const boardRecall = (board: Pick<Board, "attempts">, now: Date): RecallItem | null => {
   const schedule = replaySchedule(board.attempts);
   const recall = schedule && recallAt(schedule, now);
   return recall === null || recall === undefined ? null : { recall, weight: 1 };
 };
 
-/** What the tutor said about a board, as the route answers it. A check also returns the chapter's attempts. */
+/** What the tutor said about a board, as the route answers it. A check also returns the board's attempts. */
 export type BoardAnswer =
   | { kind: "review"; review: BoardReview }
   | { kind: "check"; check: BoardCheck; attempts?: BoardAttempt[] }

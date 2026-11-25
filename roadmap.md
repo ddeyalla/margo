@@ -629,9 +629,20 @@ tldraw is out because its SDK needs a production licence.
       elements themselves, so undo and redo keep the list right. Keeping a link keeps the
       new ideas it joins; dropping an idea drops its links. They are never saved until kept.*
 - [x] Mermaid from chat converts to an editable board.
-      *"Open as whiteboard" on a chat diagram adds it to the chapter's board, to the right
-      of what is there. Flowcharts become shapes and bound arrows; other kinds come in as
-      one picture.*
+      *Every chat diagram carries an "Open as whiteboard" bar. It opens as a new board of the
+      reader's own, over the book with the chat beside it, as an artifact opens. The same
+      diagram opens the same board. Flowcharts become shapes and bound arrows; other kinds
+      come in as one picture. Asked to draw, the tutor names its diagram in a `%%` first line,
+      which titles the board.*
+- [x] **Many boards per book, in the side panel.** A Board tab beside Chat, Notes,
+      Highlights and Cards lists the book's boards: the chapter's own, new ones by title, and
+      ones from the chat. It draws a board small beside the book and expands it over the
+      book, where the tutor's review and edits are.
+      *Each board is its own file, `Whiteboards/<Book>/<Title>.excalidraw`. The book's state
+      lists them by id; a board saved before keeps its file and becomes its chapter's board.
+      Renaming keeps the file's name, and removing a board leaves its file in the notes.
+      Draw it back stays on chapter boards, so only they count toward retention. "Ask the
+      tutor to draw" sends the request to the chat.*
 - [x] Results feed retention (Phase 18).
       *Each Draw it back check is an attempt, right when no link was wrong. A Course chapter
       with a board gains a recall item scheduled from those attempts, like a quiz.*

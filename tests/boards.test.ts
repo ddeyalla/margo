@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   boardRecall,
+  chapterBoardId,
   compactScene,
+  diagramTitle,
+  normalizeBoard,
   isBoardFile,
   parseCheckReply,
   parseCompactScene,
@@ -28,7 +31,7 @@ vi.mock("@/lib/server/search/index", () => ({
   }),
 }));
 
-const { askAboutBoard, boardPath, openBoard, recordAttempt, saveBoard } = await import("@/lib/server/boards");
+const { askAboutBoard, boardPath, chapterBoard, createBoard, listBoards, openBoard, recordAttempt, removeBoard, renameBoard, saveBoard } = await import("@/lib/server/boards");
 const { readBookState } = await import("@/lib/server/store");
 
 const box = (id: string, x: number, y: number, extra: Partial<BoardElement> = {}): BoardElement => ({ id, type: "rectangle", x, y, width: 100, height: 40, ...extra });
@@ -173,7 +176,15 @@ describe("a board in a Course's retention", () => {
   });
 
   it("counts a chapter's draw-it-backs once, by the chapter or one of its sections, and fades with time", () => {
-    const board = { chapter: "Habits, part 2", labels: ["Habits, part 2"], path: null, attempts: [{ at: day(0), correct: true }, { at: day(2), correct: true }] };
+    const board = {
+      id: "chapter-1",
+      title: "Habits, part 2",
+      kind: "chapter" as const,
+      chapter: "Habits, part 2",
+      labels: ["Habits, part 2"],
+      path: null,
+      attempts: [{ at: day(0), correct: true }, { at: day(2), correct: true }],
+    };
     const elsewhere = { ...board, chapter: "Elsewhere", labels: ["Elsewhere"] };
     const evidence = (boards: BookEvidence["boards"]) => new Map<BookId, BookEvidence>([[a, { cardSets: [], quizzes: [], boards }]]);
     expect(courseMastery(course, evidence([elsewhere]), new Date(day(3))).items).toBe(0);
@@ -182,6 +193,8 @@ describe("a board in a Course's retention", () => {
     const late = courseMastery(course, evidence([inCourse]), new Date(day(90)));
     expect(soon.items).toBe(1);
     expect(soon.retained!).toBeGreaterThan(late.retained!);
+    /* A board of the reader's own about the same chapter is not a draw-it-back. */
+    expect(courseMastery(course, evidence([{ ...inCourse, id: "free-board", kind: "free" }]), new Date(day(3))).items).toBe(0);
   });
 
   it("holds a board with a wrong link below one redrawn right", () => {
@@ -207,26 +220,29 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
-const save = (chapter: string, text: string, baseHash: string | null, bookTitle = "Atomic Habits") =>
-  saveBoard(notes, { bookId, bookTitle }, { chapter, labels: [chapter], text, baseHash });
+const save = async (chapter: string, text: string, baseHash: string | null, bookTitle = "Atomic Habits") => {
+  const { id } = await chapterBoard(bookId, chapter, [chapter]);
+  return saveBoard(notes, { bookId, bookTitle }, { id, text, baseHash });
+};
+const openChapter = (chapter: string) => openBoard(notes, bookId, chapterBoardId(chapter));
 
 describe("board files in the notes folder", () => {
-  it("names the file after the book and chapter, without characters a file system or Obsidian rejects", () => {
+  it("names the file after the book and board, without characters a file system or Obsidian rejects", () => {
     expect(boardPath("Atomic Habits: Tiny Changes", "1. The Fundamentals / Why")).toBe("Whiteboards/Atomic Habits - Tiny Changes/1. The Fundamentals Why.excalidraw");
-    expect(boardPath("../../etc", "..")).toBe("Whiteboards/etc/Untitled section.excalidraw");
-    expect(boardPath("", "#^[]")).toBe("Whiteboards/Untitled book/Untitled section.excalidraw");
+    expect(boardPath("../../etc", "..")).toBe("Whiteboards/etc/Untitled board.excalidraw");
+    expect(boardPath("", "#^[]")).toBe("Whiteboards/Untitled book/Untitled board.excalidraw");
   });
 
   it("creates the board, remembers its file, and saves over it while nothing else changed it", async () => {
     const first = await save("Habits", EMPTY, null);
     expect(first).toMatchObject({ state: "saved", path: "Whiteboards/Atomic Habits/Habits.excalidraw" });
-    const opened = await openBoard(notes, bookId, "Habits");
+    const opened = await openChapter("Habits");
     expect(opened.file?.text).toBe(EMPTY);
     const second = await save("Habits", WITH("cue"), opened.file!.hash);
     expect(second.state).toBe("saved");
     expect(await readFile(path.join(notes, "Whiteboards/Atomic Habits/Habits.excalidraw"), "utf8")).toBe(WITH("cue"));
     /* The book's title changing later doesn't lose the file. */
-    expect((await saveBoard(notes, { bookId, bookTitle: "Renamed" }, { chapter: "Habits", labels: ["Habits"], text: WITH("craving"), baseHash: (second as { hash: string }).hash })).state).toBe("saved");
+    expect((await saveBoard(notes, { bookId, bookTitle: "Renamed" }, { id: chapterBoardId("Habits"), text: WITH("craving"), baseHash: (second as { hash: string }).hash })).state).toBe("saved");
   });
 
   it("never replaces a file it didn't write: a second chapter with the same name gets its own", async () => {
@@ -239,15 +255,15 @@ describe("board files in the notes folder", () => {
 
   it("keeps both when Obsidian changed the board since it was opened", async () => {
     await save("Habits", EMPTY, null);
-    const opened = await openBoard(notes, bookId, "Habits");
-    await writeFile(path.join(notes, opened.path!), WITH("from Obsidian"));
+    const opened = await openChapter("Habits");
+    await writeFile(path.join(notes, opened.board.path!), WITH("from Obsidian"));
     const saved = await save("Habits", WITH("from the app"), opened.file!.hash);
     expect(saved.state).toBe("conflict");
     if (saved.state !== "conflict") return;
     expect(saved.current?.text).toBe(WITH("from Obsidian"));
     expect(saved.copy).toMatch(/^Whiteboards\/Atomic Habits\/Habits \(conflict .+\)\.excalidraw$/);
     expect(await readFile(path.join(notes, saved.copy), "utf8")).toBe(WITH("from the app"));
-    expect(await readFile(path.join(notes, opened.path!), "utf8")).toBe(WITH("from Obsidian"));
+    expect(await readFile(path.join(notes, opened.board.path!), "utf8")).toBe(WITH("from Obsidian"));
   });
 
   it("refuses text that isn't a board, and a board folder that leaves the notes folder through a link", async () => {
@@ -264,9 +280,79 @@ describe("board files in the notes folder", () => {
     expect(isBoardFile("not json")).toBe(false);
   });
 
-  it("records draw-it-back attempts in the book's state", async () => {
-    await recordAttempt(bookId, "Habits", ["Habits"], { at: "2026-03-10T09:00:00.000Z", correct: false });
-    expect((await readBookState(bookId)).boards).toEqual([{ chapter: "Habits", labels: ["Habits"], path: null, attempts: [{ at: "2026-03-10T09:00:00.000Z", correct: false }] }]);
+  it("records draw-it-back attempts on the chapter's board in the book's state", async () => {
+    const { id } = await chapterBoard(bookId, "Habits", ["Habits", "Cues"]);
+    await recordAttempt(bookId, id, { at: "2026-03-10T09:00:00.000Z", correct: false });
+    expect((await readBookState(bookId)).boards).toEqual([
+      { id, title: "Habits", kind: "chapter", chapter: "Habits", labels: ["Habits", "Cues"], path: null, attempts: [{ at: "2026-03-10T09:00:00.000Z", correct: false }] },
+    ]);
+  });
+});
+
+describe("many boards in a book", () => {
+  const book = () => ({ bookId, bookTitle: "Atomic Habits" });
+
+  it("reads a board saved before books had many as that chapter's board, the same each time", () => {
+    const legacy = { chapter: "Habits", labels: ["Habits"], path: "Whiteboards/Atomic Habits/Habits.excalidraw", attempts: [] };
+    const once = normalizeBoard(legacy);
+    expect(once).toEqual({ ...legacy, id: chapterBoardId("Habits"), title: "Habits", kind: "chapter" });
+    expect(normalizeBoard(legacy)).toEqual(once);
+    expect(normalizeBoard(once)).toEqual(once);
+    expect(chapterBoardId("Habits")).not.toBe(chapterBoardId("Cues"));
+  });
+
+  it("asks for a chapter's board twice and gets one board", async () => {
+    const [a, b] = await Promise.all([chapterBoard(bookId, "Habits", ["Habits"]), chapterBoard(bookId, "Habits", ["Habits"])]);
+    expect(a.id).toBe(b.id);
+    expect((await readBookState(bookId)).boards).toHaveLength(1);
+  });
+
+  it("makes a board of the reader's own with its file, named after its title, about the chapter being read", async () => {
+    const board = await createBoard(notes, book(), { title: "Attention flow", chapter: "Habits", labels: ["Habits"], text: WITH("query"), from: null });
+    expect(board).toMatchObject({ title: "Attention flow", kind: "free", chapter: "Habits", path: "Whiteboards/Atomic Habits/Attention flow.excalidraw" });
+    expect(await readFile(path.join(notes, board.path!), "utf8")).toBe(WITH("query"));
+    const again = await createBoard(notes, book(), { title: "Attention flow", chapter: null, labels: [], text: EMPTY, from: null });
+    expect(again.id).not.toBe(board.id);
+    expect(again.path).toBe("Whiteboards/Atomic Habits/Attention flow 1.excalidraw");
+    expect((await openBoard(notes, bookId, board.id)).file?.text).toBe(WITH("query"));
+  });
+
+  it("opens the same board for the same chat diagram, however quickly it's asked twice", async () => {
+    const input = { title: "Loop", chapter: null, labels: [], text: WITH("loop"), from: "hash-of-the-diagram" };
+    const [a, b] = await Promise.all([createBoard(notes, book(), input), createBoard(notes, book(), input)]);
+    expect(a.id).toBe(b.id);
+    expect((await readBookState(bookId)).boards).toHaveLength(1);
+    expect(await readdir(path.join(notes, "Whiteboards/Atomic Habits"))).toEqual(["Loop.excalidraw"]);
+  });
+
+  it("saves a board by its id, and keeps both when another app changed it", async () => {
+    const board = await createBoard(notes, book(), { title: "Map", chapter: null, labels: [], text: EMPTY, from: null });
+    const opened = await openBoard(notes, bookId, board.id);
+    const saved = await saveBoard(notes, book(), { id: board.id, text: WITH("one"), baseHash: opened.file!.hash });
+    expect(saved.state).toBe("saved");
+    const stale = await saveBoard(notes, book(), { id: board.id, text: WITH("two"), baseHash: opened.file!.hash });
+    expect(stale.state).toBe("conflict");
+    await expect(saveBoard(notes, book(), { id: "no-such-board", text: EMPTY, baseHash: null })).rejects.toThrow(/isn't in this book/);
+  });
+
+  it("renames a board without moving its file, and removes it from the book leaving the file", async () => {
+    const board = await createBoard(notes, book(), { title: "Draft", chapter: null, labels: [], text: EMPTY, from: null });
+    const renamed = await renameBoard(bookId, board.id, "Habit loop");
+    expect(renamed).toMatchObject({ title: "Habit loop", path: board.path });
+    expect((await listBoards(notes, bookId)).map((b) => b.title)).toEqual(["Habit loop"]);
+    await removeBoard(bookId, board.id);
+    expect(await listBoards(notes, bookId)).toEqual([]);
+    expect(await readFile(path.join(notes, board.path!), "utf8")).toBe(EMPTY);
+  });
+});
+
+describe("diagrams drawn for a board", () => {
+  it("names the board from the diagram's first comment, or else its first label", () => {
+    const named = "%% How attention works\nflowchart TD\n  Q[Query] --> S[Scores]";
+    expect(diagramTitle(named)).toBe("How attention works");
+    expect(diagramTitle("%%{init: {}}%%\nflowchart TD\n  A[Cue] --> B")).toBe("Cue");
+    expect(diagramTitle("flowchart TD\n  A[Cue] --> B[Craving]")).toBe("Cue");
+    expect(diagramTitle("flowchart TD\n  A --> B")).toBe("Diagram from the chat");
   });
 });
 

@@ -1,4 +1,4 @@
-import type { ChapterBoard } from "./boards";
+import type { Board } from "./boards";
 import type { ChapterQuiz } from "./quiz";
 
 export type BookFormat = "epub" | "pdf";
@@ -302,8 +302,8 @@ export interface BookState {
   cardSets: CardSet[];
   /** Chapter quizzes of the book's chapters in a Course, each with every attempt. */
   quizzes: ChapterQuiz[];
-  /** Chapter whiteboards: where each one's file is, and its draw-it-back attempts. */
-  boards: ChapterBoard[];
+  /** The book's whiteboards: each one's title, where its file is, and a chapter board's draw-it-back attempts. */
+  boards: Board[];
   /** When the reader last moved through the book, an ISO time, or null if never or saved before this was kept. */
   lastReadAt: string | null;
 }
@@ -339,9 +339,9 @@ export const isReadingFont = (value: unknown): value is ReadingFont =>
   value === null || (typeof value === "string" && value.length > 0 && value.length <= 200 && value.trim() === value && !/\p{Cc}/u.test(value));
 
 /** The tab showing in the side panel. */
-export type PanelTab = "chat" | "notes" | "highlights" | "cards";
+export type PanelTab = "chat" | "notes" | "highlights" | "cards" | "board";
 
-export const isPanelTab = (value: unknown): value is PanelTab => value === "chat" || value === "notes" || value === "highlights" || value === "cards";
+export const isPanelTab = (value: unknown): value is PanelTab => value === "chat" || value === "notes" || value === "highlights" || value === "cards" || value === "board";
 
 /** How the library shows its books: a grid of covers, or a shelf of spines that turn into 3D books. */
 export type LibraryView = "grid" | "shelf";

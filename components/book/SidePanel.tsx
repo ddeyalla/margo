@@ -5,13 +5,16 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
 import { HighlightsTab } from "@/components/annotations/HighlightsTab";
 import { NotesTab, type NoteDraft } from "@/components/annotations/NotesTab";
 import type { AnnotationsApi } from "@/components/annotations/useAnnotations";
+import { BoardsTab } from "@/components/board/BoardsTab";
+import type { BoardContext, BoardsApi } from "@/components/board/useBoards";
 import { CardsTab } from "@/components/cards/CardsTab";
 import type { CardsApi } from "@/components/cards/useCards";
 import { ChatTab } from "@/components/chat/ChatTab";
 import type { QuoteDraft } from "@/components/chat/Quotes";
 import { usePill } from "@/components/ui/pill";
 import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
-import type { Anchor, CardSet, Highlight, PanelTab, QuotedPassage } from "@/lib/shared/types";
+import type { Anchor, CardSet, Highlight, PanelTab, ProviderId, QuotedPassage } from "@/lib/shared/types";
+import type { PlaceStore } from "./place";
 
 /* New content fades in after a pointer choice only; a keyboard switch, used far more often, is instant. */
 const panelClass =
@@ -22,9 +25,10 @@ const TABS: { value: PanelTab; label: string }[] = [
   { value: "notes", label: "Notes" },
   { value: "highlights", label: "Highlights" },
   { value: "cards", label: "Cards" },
+  { value: "board", label: "Board" },
 ];
 
-/** The right panel: the tutor chat, and the book's notes, highlights and cards. Memoised, so it skips the workspace's renders that change nothing here. */
+/** The right panel: the tutor chat, and the book's notes, highlights, cards and whiteboards. Memoised, so it skips the workspace's renders that change nothing here. */
 export const SidePanel = memo(function SidePanel({
   tab,
   onTabChange,
@@ -47,6 +51,13 @@ export const SidePanel = memo(function SidePanel({
   onReview,
   onRemakeCards,
   panelOpen,
+  boards,
+  spot,
+  boardContext,
+  provider,
+  theme,
+  onDraw,
+  onAnswerFromBoard,
 }: {
   tab: PanelTab;
   onTabChange(tab: PanelTab): void;
@@ -73,6 +84,14 @@ export const SidePanel = memo(function SidePanel({
   onRemakeCards: ((set: CardSet) => void) | null;
   /** The panel is expanded, so its tab can be seen. */
   panelOpen: boolean;
+  boards: BoardsApi;
+  spot: PlaceStore;
+  boardContext: BoardContext;
+  provider: ProviderId | null;
+  theme: "light" | "dark";
+  /** Asks the tutor, in the chat, to draw something as a board. */
+  onDraw(text: string): void;
+  onAnswerFromBoard(text: string): void;
 }) {
   const { groupRef, pill, sliding, choose } = usePill(tab, "[data-selected]");
   const [keyed, setKeyed] = useState(false);
@@ -138,6 +157,20 @@ export const SidePanel = memo(function SidePanel({
       </TabsPanel>
       <TabsPanel value="cards" className={panelClass}>
         <CardsTab cards={cards} onReview={onReview} onJump={onJump} onRemake={onRemakeCards} />
+      </TabsPanel>
+      <TabsPanel value="board" className={panelClass}>
+        <BoardsTab
+          boards={boards}
+          shown={panelOpen && tab === "board"}
+          bookId={tutor.bookId}
+          spot={spot}
+          context={boardContext}
+          provider={provider}
+          unavailable={unavailable}
+          theme={theme}
+          onDraw={onDraw}
+          onAnswer={onAnswerFromBoard}
+        />
       </TabsPanel>
     </Tabs>
   );

@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import { OpenAsBoard, WhiteboardSheet } from "@/components/board/WhiteboardSheet";
+import { useBoards } from "@/components/board/useBoards";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { ReviewSheet } from "@/components/cards/ReviewSheet";
@@ -117,10 +118,16 @@ export function BookWorkspace({
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
   const cards = useCards(book.id, initialState.cardSets);
   const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, courses, spot, toc, provider });
+  /* The chapter being read, as a board made now is about: the Course's chapter when a Course reads this book. */
+  const boardContext = useStableCallback(() => {
+    const entry = spot.get()?.place?.chapter ?? null;
+    return toc && entry ? boardChapter(toc, toc.indexOf(entry), quizzes.chapters) : null;
+  });
+  const [toast, setToast] = useToast();
+  const boardError = useStableCallback((text: string) => setToast({ text, action: false }));
+  const boards = useBoards(book.id, initialState.boards, boardContext, boardError);
   const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
-  /* The chapter whose whiteboard is open over the book, with a diagram from the chat to add to it. */
-  const [board, setBoard] = useState<{ chapter: string; labels: string[]; mermaid: string | null } | null>(null);
   /* Whether the tutor panel was open when Draw it back folded it away. */
   const panelBeforeRecall = useRef(false);
   useActivity(book.id, quizChapter ? "quiz" : reviewing ? "review" : "reading", spot);
@@ -129,7 +136,7 @@ export function BookWorkspace({
   const closeMenu = useCallback(() => setMenu(null), []);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
   /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note, mid-dictation, holding words typed but not sent, or has a whiteboard open (its saves and checks change the revision too). */
-  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText() || board !== null);
+  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText() || boards.open !== null);
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
   const { notice, dismiss: dismissNotice, placeMoved, navigate } = useOpeningNotice({
     initialState,
@@ -144,7 +151,6 @@ export function BookWorkspace({
   /* The spotlight and a focus session both clear the chrome away; only the spotlight dims the page. */
   const bare = spotlight || focus.active;
   const noticeExit = useNoticeExit(notice, bare || reviewing);
-  const [toast, setToast] = useToast();
   /* Passages quoted into the chat's composer, waiting for the reader's next message. */
   const [quoteDraft] = useState(createQuoteDraft);
 
@@ -255,7 +261,7 @@ export function BookWorkspace({
   useShortcuts({
     shortcuts,
     /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
-    plainKeysOff: reviewing || !!quizChapter || !!board,
+    plainKeysOff: reviewing || !!quizChapter || !!boards.open,
     /* The highlight menu goes first and alone, so the same press doesn't also dismiss the greeting or the spotlight. */
     closeFirst: menu ? closeMenu : null,
     /* Esc takes one thing away at a time: the selection, then the greeting, then the spotlight. */
@@ -306,17 +312,11 @@ export function BookWorkspace({
   const reply = useStableCallback((draft: MessageDraft) => provider && tutor.reply(draft, provider));
   const retry = useStableCallback(() => provider && tutor.retry(provider));
   /* The recall from a focus session goes to the tutor as the reader's own message, to be checked against the book. */
-  /** Opens the whiteboard of the chapter being read, the Course's chapter when a Course reads this book. */
-  const openBoard = (mermaid: string | null = null) => {
-    const entry = spot.get()?.place?.chapter ?? null;
-    const target = toc && entry ? boardChapter(toc, toc.indexOf(entry), quizzes.chapters) : null;
-    if (!target) {
-      setToast({ text: "Open a chapter first: a whiteboard belongs to the chapter you're reading.", action: false });
-      return;
-    }
+  /** Opens a board over the book: the reader leaves a quiz or a review for it. */
+  const boardOverBook = (open: () => Promise<void>) => {
     setQuizChapter(null);
     setReviewing(false);
-    setBoard({ ...target, mermaid });
+    void open();
   };
 
   /* Draw it back closes the book, the chat included, and opens it again after. */
@@ -326,6 +326,17 @@ export function BookWorkspace({
       panel.collapse();
     } else if (panelBeforeRecall.current) panel.expand();
   };
+
+  const openDiagram = useStableCallback((source: string) => boardOverBook(() => boards.fromDiagram(source)));
+  const answerFromBoard = useStableCallback((text: string) => {
+    showTab("chat");
+    reply({ text, attachments: [], quotes: [] });
+  });
+  /* Asked from the Board tab, the tutor draws in the chat, where its diagram opens as a board. */
+  const drawInChat = useStableCallback((what: string) => {
+    showTab("chat");
+    reply({ text: `Draw this as a whiteboard for me: ${what}`, attachments: [], quotes: [] });
+  });
 
   const askRecall = (text: string, minutes: number) => {
     showTab("chat");
@@ -382,7 +393,7 @@ export function BookWorkspace({
         onSpotlight={toggleSpotlight}
         focusing={focus.active}
         onFocus={focus.start}
-        onBoard={() => openBoard()}
+        onBoard={() => boardOverBook(() => boards.openChapter("full"))}
         panelId={PANEL_ID}
         panelOpen={panel.open}
         onTogglePanel={panel.toggle}
@@ -477,27 +488,26 @@ export function BookWorkspace({
                 />
               ) : null}
               {quizChapter && !reviewing ? <QuizSheet quizzes={quizzes} chapter={quizChapter} onClose={closeQuiz} onJump={jumpTo} /> : null}
-              {board ? (
+              {boards.open?.place === "full" ? (
                 <WhiteboardSheet
-                  key={board.chapter}
+                  key={boards.open.id}
                   bookId={book.id}
-                  chapter={board.chapter}
-                  labels={board.labels}
+                  boardId={boards.open.id}
+                  layout="full"
                   provider={provider}
                   unavailable={unavailable}
                   theme={appTheme}
-                  mermaid={board.mermaid}
-                  onMermaidUsed={() => setBoard((current) => (current ? { ...current, mermaid: null } : current))}
                   onRecall={recallBoard}
-                  onAnswer={(text) => {
-                    showTab("chat");
-                    reply({ text, attachments: [], quotes: [] });
+                  onAnswer={answerFromBoard}
+                  onMove={() => {
+                    if (boards.open) boards.show(boards.open.id, "panel");
+                    showTab("board");
                   }}
-                  onClose={() => setBoard(null)}
+                  onClose={boards.close}
                 />
               ) : null}
               {!tocDocked && !error ? (
-                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter && !board} docked={false} onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter && boards.open?.place !== "full"} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
             </main>
           </div>
@@ -514,7 +524,7 @@ export function BookWorkspace({
           collapsible
           className="min-w-0 overflow-hidden"
         >
-          <OpenAsBoard value={openBoard}>
+          <OpenAsBoard value={openDiagram}>
             <SidePanel
               tab={tab}
               onTabChange={chooseTab}
@@ -537,6 +547,13 @@ export function BookWorkspace({
               onReview={startReview}
               onRemakeCards={provider ? remakeCards : null}
               panelOpen={panel.open}
+              boards={boards}
+              spot={spot}
+              boardContext={boardContext}
+              provider={provider}
+              theme={appTheme}
+              onDraw={drawInChat}
+              onAnswerFromBoard={answerFromBoard}
             />
           </OpenAsBoard>
         </ResizablePanel>

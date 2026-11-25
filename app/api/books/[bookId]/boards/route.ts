@@ -1,4 +1,18 @@
-import { askAboutBoard, openBoard, recordAttempt, saveBoard, type BoardAsk } from "@/lib/server/boards";
+import {
+  askAboutBoard,
+  chapterBoard,
+  createBoard,
+  listBoards,
+  NoSuchBoard,
+  openBoard,
+  recordAttempt,
+  removeBoard,
+  renameBoard,
+  saveBoard,
+  type BoardAsk,
+} from "@/lib/server/boards";
+import { getFolders } from "@/lib/server/config";
+import { contentHash } from "@/lib/server/notes-folder";
 import { withNotes } from "@/lib/server/notes-route";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
@@ -6,53 +20,112 @@ import { PROVIDERS, isProviderId, modelFor } from "@/lib/server/tutor/providers"
 import type { TutorImage } from "@/lib/server/tutor/types";
 import { isObject, shortText } from "@/lib/server/validate";
 import { readBody, withBook } from "@/lib/server/with-book";
-import { parseCompactScene } from "@/lib/shared/boards";
+import { EMPTY_BOARD, isBoardId, parseCompactScene } from "@/lib/shared/boards";
+import type { BookId } from "@/lib/shared/types";
 
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
 
-const parseLabels = (value: unknown, chapter: string): string[] => {
+const parseLabels = (value: unknown, chapter: string | null): string[] => {
   const labels = Array.isArray(value) ? value.map((label) => shortText(label, 500)).filter((label): label is string => !!label).slice(0, 200) : [];
-  return labels.includes(chapter) ? labels : [chapter, ...labels];
+  return !chapter || labels.includes(chapter) ? labels : [chapter, ...labels];
 };
 
 /* A PNG of the board for the tutor to look at; the page sends it scaled down. */
 const MAX_IMAGE_CHARS = 8_000_000;
+/* The diagram a board was made from is only hashed, never kept. */
+const MAX_SOURCE_CHARS = 100_000;
 
 const parseImage = (value: unknown): TutorImage | null =>
   typeof value === "string" && value.length <= MAX_IMAGE_CHARS && /^[A-Za-z0-9+/]+=*$/.test(value) ? { mediaType: "image/png", data: value } : null;
 
-/** A chapter's board: `?chapter=`. Answers its file (text and hash), or null before the first save, and its draw-it-back attempts. */
+/* A board that went missing, such as one removed in another window. */
+const missing = async (run: () => Promise<Response>): Promise<Response> => {
+  try {
+    return await run();
+  } catch (error) {
+    if (error instanceof NoSuchBoard) return Response.json({ error: error.message }, { status: 404 });
+    throw error;
+  }
+};
+
+const bookTitleOf = async (book: { id: BookId; fileTitle: string }) => (await readBookState(book.id)).meta?.title ?? book.fileTitle;
+
+/** `?id=`: a board, with its file (text and hash), or null before the first save. Without an id: the book's boards. */
 export const GET = withBook(async ({ book, request }) => {
-  const chapter = shortText(new URL(request.url).searchParams.get("chapter"), 500);
-  if (!chapter) return badRequest("Expected ?chapter=.");
-  return withNotes(async (notesDir) => Response.json(await openBoard(notesDir, book.id, chapter)));
+  const id = new URL(request.url).searchParams.get("id");
+  if (id === null) return Response.json({ boards: await listBoards(getFolders().notes.path, book.id) });
+  if (!isBoardId(id)) return badRequest("Expected ?id= of a board.");
+  return withNotes((notesDir) => missing(async () => Response.json(await openBoard(notesDir, book.id, id))));
 });
 
-/** Saves a board: `{ chapter, labels, text, baseHash }`, baseHash null for a board with no file yet. */
+/** Saves a board: `{ id, text, baseHash }`, baseHash null for a board with no file yet. */
 export const PUT = withBook(async ({ book, request }) => {
   const body = await readBody(request);
   if (!isObject(body)) return badRequest("Expected a JSON object.");
-  const chapter = shortText(body.chapter, 500);
-  if (!chapter || typeof body.text !== "string" || (body.baseHash !== null && typeof body.baseHash !== "string")) {
-    return badRequest("Expected { chapter, labels, text, baseHash }.");
+  if (!isBoardId(body.id) || typeof body.text !== "string" || (body.baseHash !== null && typeof body.baseHash !== "string")) {
+    return badRequest("Expected { id, text, baseHash }.");
   }
-  const { text, baseHash } = body;
-  const state = await readBookState(book.id);
-  const bookTitle = state.meta?.title ?? book.fileTitle;
-  return withNotes(async (notesDir) =>
-    Response.json(await saveBoard(notesDir, { bookId: book.id, bookTitle }, { chapter, labels: parseLabels(body.labels, chapter), text, baseHash })),
-  );
+  const { id, text, baseHash } = body;
+  const bookTitle = await bookTitleOf(book);
+  return withNotes((notesDir) => missing(async () => Response.json(await saveBoard(notesDir, { bookId: book.id, bookTitle }, { id, text, baseHash }))));
 });
 
 /**
- * Asks the tutor about a board: `{ op: "review" | "check" | "edit", chapter, labels, provider, scene, image, instruction? }`.
- * `scene` is the compact scene. A check is a draw-it-back, and its result is recorded for retention.
+ * Changes the book's list of boards, or asks the tutor about one:
+ * - `{ op: "chapter", chapter, labels }`: the chapter's board, added the first time.
+ * - `{ op: "create", title, chapter, labels, text?, source? }`: a new board of the reader's, empty or with `text`. With the
+ *   chat diagram it was made from as `source`, the same diagram opens the same board.
+ * - `{ op: "rename", id, title }` and `{ op: "remove", id }`. Removing keeps the file.
+ * - `{ op: "review" | "check" | "edit", id, provider, scene, image, instruction? }`, where `scene` is the compact scene. A check
+ *   is a draw-it-back on a chapter's board, and its result is recorded for retention.
  */
 export const POST = withBook(async ({ book, request }) => {
   const body = await readBody(request);
   if (!isObject(body)) return badRequest("Expected a JSON object.");
-  const chapter = shortText(body.chapter, 500);
-  if (!chapter) return badRequest("Expected a chapter.");
+
+  if (body.op === "chapter") {
+    const chapter = shortText(body.chapter, 500);
+    if (!chapter) return badRequest("Expected a chapter.");
+    return Response.json(await chapterBoard(book.id, chapter, parseLabels(body.labels, chapter)));
+  }
+  if (body.op === "create") {
+    const title = shortText(body.title, 200);
+    if (!title) return badRequest("Give the board a title.");
+    const chapter = body.chapter === null ? null : shortText(body.chapter, 500);
+    if (body.text !== undefined && typeof body.text !== "string") return badRequest("Expected the board's text.");
+    if (body.source !== undefined && (typeof body.source !== "string" || !body.source.trim() || body.source.length > MAX_SOURCE_CHARS)) {
+      return badRequest("Expected the diagram the board was made from.");
+    }
+    const bookTitle = await bookTitleOf(book);
+    return withNotes(async (notesDir) =>
+      Response.json(
+        await createBoard(
+          notesDir,
+          { bookId: book.id, bookTitle },
+          {
+            title,
+            chapter,
+            labels: parseLabels(body.labels, chapter),
+            text: (body.text as string | undefined) ?? EMPTY_BOARD,
+            from: typeof body.source === "string" ? contentHash(body.source) : null,
+          },
+        ),
+      ),
+    );
+  }
+
+  if (!isBoardId(body.id)) return badRequest("Expected the board's id.");
+  const id = body.id;
+  if (body.op === "rename") {
+    const title = shortText(body.title, 200);
+    if (!title) return badRequest("Give the board a title.");
+    return missing(async () => Response.json(await renameBoard(book.id, id, title)));
+  }
+  if (body.op === "remove") {
+    await removeBoard(book.id, id);
+    return new Response(null, { status: 204 });
+  }
+
   if (!isProviderId(body.provider)) return badRequest("Unknown provider.");
   const scene = parseCompactScene(body.scene);
   if (!scene) return badRequest("Expected the board as a compact scene.");
@@ -62,22 +135,25 @@ export const POST = withBook(async ({ book, request }) => {
     const instruction = shortText(body.instruction, 2000);
     if (!instruction) return badRequest("Say what to change on the board.");
     ask = { kind: "edit", instruction };
-  } else return badRequest('op is "review", "check" or "edit".');
+  } else return badRequest('op is "chapter", "create", "rename", "remove", "review", "check" or "edit".');
   if (ask.kind === "check" && !scene.links.length) return badRequest("Draw arrows between the ideas first: the check is about how they connect.");
   if (ask.kind === "review" && !scene.nodes.length) return badRequest("The board is empty.");
 
-  const labels = parseLabels(body.labels, chapter);
   const [state, settings] = await Promise.all([readBookState(book.id), readSettings()]);
+  const board = state.boards.find((entry) => entry.id === id);
+  if (!board) return Response.json({ error: "That board isn't in this book any more." }, { status: 404 });
+  if (!board.chapter) return badRequest("This board isn't about a chapter, so the tutor has nothing to read it against.");
+  if (ask.kind === "check" && board.kind !== "chapter") return badRequest("Draw it back is for a chapter's own board.");
   const label = { title: state.meta?.title ?? book.fileTitle, author: state.meta?.author ?? book.fileAuthor };
   try {
     const answer = await askAboutBoard(
       PROVIDERS[body.provider],
-      { bookId: book.id, book: label, chapter, labels, scene, image: parseImage(body.image), ask },
+      { bookId: book.id, book: label, chapter: board.chapter, labels: board.labels, scene, image: parseImage(body.image), ask },
       modelFor(settings.models, body.provider),
       request.signal,
     );
     if (answer.kind !== "check") return Response.json(answer);
-    const attempts = await recordAttempt(book.id, chapter, labels, { at: new Date().toISOString(), correct: answer.check.wrong === null });
+    const attempts = await recordAttempt(book.id, id, { at: new Date().toISOString(), correct: answer.check.wrong === null });
     return Response.json({ ...answer, attempts });
   } catch (error) {
     if (request.signal.aborted) return new Response(null, { status: 499 });

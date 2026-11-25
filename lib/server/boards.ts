@@ -1,4 +1,5 @@
-import { realpath } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   isBoardFile,
@@ -7,8 +8,10 @@ import {
   parseReviewReply,
   type BoardAnswer,
   type BoardAttempt,
+  chapterBoardId,
+  type Board,
   type BoardSave,
-  type ChapterBoard,
+  type BoardSummary,
   type CompactScene,
   type OpenedBoard,
 } from "@/lib/shared/boards";
@@ -21,72 +24,145 @@ import type { BookLabel } from "./tutor/prompt";
 import type { Provider, TutorImage, TutorMessage } from "./tutor/types";
 import { safeFileName } from "./vault";
 
-/* Chapter whiteboards in the notes folder: "Whiteboards/<Book>/<Chapter>.excalidraw", a plain Excalidraw file
-   Obsidian's Excalidraw plugin opens. Like the reader's notes, a board another app changed is never overwritten:
-   the save goes to a conflict copy beside it. The book's state remembers which file is which chapter's. */
+/* Whiteboards in the notes folder: "Whiteboards/<Book>/<Title>.excalidraw", a plain Excalidraw file Obsidian's
+   Excalidraw plugin opens. Like the reader's notes, a board another app changed is never overwritten: the save goes
+   to a conflict copy beside it. The book's state lists its boards, and which file is which. */
 
 export const BOARD_FOLDER = "Whiteboards";
 const EXTENSION = ".excalidraw";
 
-/** Where a chapter's first board is saved, relative to the notes folder. A taken name gets " 1", " 2"… */
-export const boardPath = (bookTitle: string, chapter: string): string =>
-  `${BOARD_FOLDER}/${safeFileName(bookTitle, "Untitled book")}/${safeFileName(chapter, "Untitled section")}${EXTENSION}`;
+/** Where a board's first file is saved, relative to the notes folder. A taken name gets " 1", " 2"… */
+export const boardPath = (bookTitle: string, title: string): string =>
+  `${BOARD_FOLDER}/${safeFileName(bookTitle, "Untitled book")}/${safeFileName(title, "Untitled board")}${EXTENSION}`;
 
 /** A board that can't be saved as sent. */
 export class BoardError extends NotesPathError {}
+
+/** No board by that id. */
+export class NoSuchBoard extends Error {}
 
 const boardFile = (notesDir: string, rel: string) => resolveInside(notesDir, rel, [EXTENSION]);
 
 const relativeTo = async (notesDir: string, file: string) => path.relative(await realpath(notesDir), file).split(path.sep).join("/");
 
-const findBoard = (boards: readonly ChapterBoard[], chapter: string) => boards.find((board) => board.chapter === chapter);
+const findBoard = (boards: readonly Board[], id: string) => boards.find((board) => board.id === id);
 
-/** The book's boards with this chapter's changed, adding it the first time. */
-const withBoard = (boards: readonly ChapterBoard[], chapter: string, change: (board: ChapterBoard) => ChapterBoard): ChapterBoard[] => {
-  const current = findBoard(boards, chapter) ?? { chapter, labels: [chapter], path: null, attempts: [] };
-  return [...boards.filter((board) => board.chapter !== chapter), change(current)];
+const getBoard = async (bookId: BookId, id: string): Promise<Board> => {
+  const board = findBoard((await readBookState(bookId)).boards, id);
+  if (!board) throw new NoSuchBoard("That board isn't in this book any more.");
+  return board;
 };
 
-export const openBoard = async (notesDir: string, bookId: BookId, chapter: string): Promise<OpenedBoard> => {
-  const board = findBoard((await readBookState(bookId)).boards, chapter);
-  if (!board?.path) return { path: null, file: null, attempts: board?.attempts ?? [] };
+/** The book's boards with one of them changed. */
+const changeBoard = (bookId: BookId, id: string, change: (board: Board) => Board) =>
+  updateBookState(bookId, (state) => ({ ...state, boards: state.boards.map((board) => (board.id === id ? change(board) : board)) }));
+
+/** Writes a new board file under a name nothing else holds, and returns its path relative to the notes folder. */
+const createFile = async (notesDir: string, rel: string, text: string) => {
+  const { file } = await boardFile(notesDir, rel);
+  return relativeTo(notesDir, await createUnique(path.dirname(file), path.basename(file, EXTENSION), EXTENSION, text));
+};
+
+/* Boards are added one at a time per book, so two quick clicks on one diagram make one board. */
+const adding = (bookId: BookId, task: () => Promise<Board>) => serialized(`boards\n${bookId}`, task);
+
+/** The book's boards, newest file first, each with when its file last changed. */
+export const listBoards = async (notesDir: string | null, bookId: BookId): Promise<BoardSummary[]> => {
+  const { boards } = await readBookState(bookId);
+  const edited = await Promise.all(
+    boards.map(async (board) => {
+      if (!notesDir || !board.path) return null;
+      try {
+        const { file } = await boardFile(notesDir, board.path);
+        return (await stat(file)).mtime.toISOString();
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return boards.map((board, i) => ({ ...board, editedAt: edited[i] })).sort((a, b) => (b.editedAt ?? "").localeCompare(a.editedAt ?? ""));
+};
+
+export const openBoard = async (notesDir: string, bookId: BookId, id: string): Promise<OpenedBoard> => {
+  const board = await getBoard(bookId, id);
+  if (!board.path) return { board, file: null };
   const { file } = await boardFile(notesDir, board.path);
-  return { path: board.path, file: await readVersioned(file), attempts: board.attempts };
+  return { board, file: await readVersioned(file) };
+};
+
+/** A chapter's board, added to the book's list the first time it's asked for. Its file is made on its first save. */
+export const chapterBoard = (bookId: BookId, chapter: string, labels: string[]): Promise<Board> =>
+  adding(bookId, async () => {
+    const id = chapterBoardId(chapter);
+    const state = await updateBookState(bookId, (current) => {
+      const existing = findBoard(current.boards, id);
+      if (existing) return existing.labels.join("\n") === labels.join("\n") ? current : { ...current, boards: current.boards.map((b) => (b.id === id ? { ...b, labels } : b)) };
+      return { ...current, boards: [...current.boards, { id, title: chapter, kind: "chapter", chapter, labels, path: null, attempts: [] }] };
+    });
+    return findBoard(state.boards, id)!;
+  });
+
+/**
+ * Adds a board of the reader's own, with its file. One made from a chat diagram carries the diagram's hash in
+ * `from`: asked again for the same diagram, the board it made before comes back instead of a second one.
+ */
+export const createBoard = (
+  notesDir: string,
+  { bookId, bookTitle }: { bookId: BookId; bookTitle: string },
+  { title, chapter, labels, text, from }: { title: string; chapter: string | null; labels: string[]; text: string; from: string | null },
+): Promise<Board> =>
+  adding(bookId, async () => {
+    if (!isBoardFile(text)) throw new BoardError("That isn't an Excalidraw board, or it's too big to save.");
+    if (from) {
+      const made = (await readBookState(bookId)).boards.find((board) => board.from === from);
+      if (made) return made;
+    }
+    const rel = await createFile(notesDir, boardPath(bookTitle, title), text);
+    const board: Board = { id: randomUUID(), title, kind: "free", chapter, labels, path: rel, attempts: [], ...(from ? { from } : {}) };
+    await updateBookState(bookId, (state) => ({ ...state, boards: [...state.boards, board] }));
+    return board;
+  });
+
+/** Renames a board in the app. Its file keeps the name it was saved under, as a renamed chapter's board does. */
+export const renameBoard = async (bookId: BookId, id: string, title: string): Promise<Board> => {
+  await getBoard(bookId, id);
+  const state = await changeBoard(bookId, id, (board) => ({ ...board, title }));
+  return findBoard(state.boards, id)!;
+};
+
+/** Takes a board off the book's list. Its file stays in the notes folder: it is the reader's drawing. */
+export const removeBoard = async (bookId: BookId, id: string): Promise<void> => {
+  await updateBookState(bookId, (state) => ({ ...state, boards: state.boards.filter((board) => board.id !== id) }));
 };
 
 /**
- * Saves a chapter's board. `baseHash` is the version it was opened at, or null for a board with no file yet,
- * which is created under a name nothing else holds. Saves of one chapter's board queue behind each other.
+ * Saves a board. `baseHash` is the version it was opened at, or null for a board with no file yet, which is
+ * created under a name nothing else holds. Saves of one board queue behind each other.
  */
 export const saveBoard = (
   notesDir: string,
   { bookId, bookTitle }: { bookId: BookId; bookTitle: string },
-  { chapter, labels, text, baseHash }: { chapter: string; labels: string[]; text: string; baseHash: string | null },
+  { id, text, baseHash }: { id: string; text: string; baseHash: string | null },
 ): Promise<BoardSave> =>
-  serialized(`board\n${bookId}\n${chapter}`, async () => {
+  serialized(`board\n${bookId}\n${id}`, async () => {
     if (!isBoardFile(text)) throw new BoardError("That isn't an Excalidraw board, or it's too big to save.");
-    const board = findBoard((await readBookState(bookId)).boards, chapter);
+    const board = await getBoard(bookId, id);
     if (baseHash === null) {
-      const { file } = await boardFile(notesDir, board?.path ?? boardPath(bookTitle, chapter));
-      const created = await createUnique(path.dirname(file), path.basename(file, EXTENSION), EXTENSION, text);
-      const rel = await relativeTo(notesDir, created);
-      await updateBookState(bookId, (state) => ({ ...state, boards: withBoard(state.boards, chapter, (b) => ({ ...b, labels, path: rel })) }));
+      const rel = await createFile(notesDir, board.path ?? boardPath(bookTitle, board.title), text);
+      await changeBoard(bookId, id, (b) => ({ ...b, path: rel }));
       return { state: "saved", path: rel, hash: contentHash(text) };
     }
-    if (!board?.path) throw new BoardError("This board has no file yet; save it as new.");
+    if (!board.path) throw new BoardError("This board has no file yet; save it as new.");
     const { file } = await boardFile(notesDir, board.path);
     const result = await saveIfUnchanged(file, text, baseHash);
     if (result.state === "saved") return { state: "saved", path: board.path, hash: result.hash };
     return { state: "conflict", path: board.path, copy: await relativeTo(notesDir, result.copy), current: result.current };
   });
 
-/** Records a draw-it-back attempt on the chapter's board and returns its attempts. */
-export const recordAttempt = async (bookId: BookId, chapter: string, labels: string[], attempt: BoardAttempt): Promise<BoardAttempt[]> => {
-  const state = await updateBookState(bookId, (current) => ({
-    ...current,
-    boards: withBoard(current.boards, chapter, (board) => ({ ...board, labels, attempts: [...board.attempts, attempt].slice(-200) })),
-  }));
-  return findBoard(state.boards, chapter)?.attempts ?? [];
+/** Records a draw-it-back attempt on a chapter's board and returns its attempts. */
+export const recordAttempt = async (bookId: BookId, id: string, attempt: BoardAttempt): Promise<BoardAttempt[]> => {
+  const state = await changeBoard(bookId, id, (board) => ({ ...board, attempts: [...board.attempts, attempt].slice(-200) }));
+  return findBoard(state.boards, id)?.attempts ?? [];
 };
 
 /* The tutor on the board. */
