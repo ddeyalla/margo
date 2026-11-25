@@ -37,7 +37,9 @@ export interface SearchResults {
 }
 
 interface TokenSpan {
+  /** The word's stem, which is what the index stores. */
   term: string;
+  /** Where the word itself is in the text, so marks highlight the book's own words. */
   start: number;
   end: number;
 }
@@ -45,10 +47,35 @@ interface TokenSpan {
 /** Folds case and accents, so "Café" and "cafe" are one term. */
 const fold = (word: string) => word.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
 
-const tokenSpans = (text: string): TokenSpan[] =>
-  [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({ term: fold(match[0]), start: match.index, end: match.index + match[0].length }));
+const HAS_VOWEL = /[aeiouy]/;
+/* A doubled final consonant left by -ing or -ed ("stopp", "runn") is undoubled; ll, ss and zz are kept ("fall", "miss"). */
+const DOUBLED = /([bdfgmnprt])\1$/;
 
-/** The search terms in a text: runs of letters and digits, case and accents folded. No stemming and no stop words. */
+/**
+ * A light English stemmer: plurals and third-person -s, then -ing and -ed, so "stops", "stopped" and "stop" are
+ * one term, and "reading", "reads" and "read". Only plain a-z words of four letters or more change, and never
+ * below a three-letter stem, so short words, other scripts and numbers stay as they are. It does not touch -er
+ * or a final e: "reader" stays apart from "read", and "making" from "make", because those rules also merge
+ * words that differ ("letter" and "let", "care" and "car").
+ */
+export const stem = (word: string): string => {
+  if (word.length < 4 || !/^[a-z]+$/.test(word)) return word;
+  let w = word;
+  if (w.endsWith("ies") && w.length > 4) w = `${w.slice(0, -3)}y`;
+  else if (/(sses|xes|zes|ches|shes)$/.test(w)) w = w.slice(0, -2);
+  else if (w.endsWith("s") && !/(ss|us|is)$/.test(w)) w = w.slice(0, -1);
+
+  if (w.endsWith("ied") && w.length > 4) return `${w.slice(0, -3)}y`;
+  const suffix = w.endsWith("ing") ? 3 : w.endsWith("ed") && !w.endsWith("eed") ? 2 : 0;
+  const base = w.slice(0, w.length - suffix);
+  if (!suffix || base.length < 3 || !HAS_VOWEL.test(base)) return w;
+  return base.length >= 4 && DOUBLED.test(base) ? base.slice(0, -1) : base;
+};
+
+const tokenSpans = (text: string): TokenSpan[] =>
+  [...text.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({ term: stem(fold(match[0])), start: match.index, end: match.index + match[0].length }));
+
+/** The search terms in a text: runs of letters and digits, case and accents folded, then stemmed. No stop words. */
 export const tokenize = (text: string): string[] => tokenSpans(text).map((span) => span.term);
 
 /** A chunk is about this many terms. */
@@ -155,20 +182,76 @@ interface TermGroup {
   terms(source: SearchSource): string[];
 }
 
-const groupsOf = (query: string): TermGroup[] => {
-  const all = tokenize(query);
-  const words = [...new Set(all)];
+/* The start of a suffix the stemmer strips, as a word being typed shows it: "readi", "stoppin", "classe". */
+const PARTIAL_SUFFIX = /^(?:i|in|ing|e|ed|es)$/;
+const PARTIAL_IES = /^(?:i|ie|ies|ied)$/;
+
+/**
+ * Whether a word still being typed can end as a word with this stem: the stem starts with it, it is the word's
+ * own stem, or it is the stem plus the start of a stripped suffix ("readi", "stoppi", "stori" for "story").
+ */
+const typedMatches = (word: string, wordStem: string, term: string): boolean => {
+  if (term.startsWith(word) || term === wordStem) return true;
+  if (term.length < PREFIX_MIN) return false;
+  if (word.startsWith(term)) {
+    const rest = word.slice(term.length);
+    return PARTIAL_SUFFIX.test(rest) || (rest[0] === term.at(-1) && PARTIAL_SUFFIX.test(rest.slice(1)));
+  }
+  const base = term.slice(0, -1);
+  return term.endsWith("y") && word.startsWith(base) && PARTIAL_IES.test(word.slice(base.length));
+};
+
+/**
+ * The query's term groups, and the query as a sequence of indexes into them (for the phrase boost). The last
+ * word, while it is being typed, matches every stem it could still become (`typedMatches`).
+ */
+const groupsOf = (query: string): { groups: TermGroup[]; sequence: number[] } => {
+  const raw = [...query.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => fold(match[0]));
   /* Only the word under the cursor is unfinished: the query ends in it, with no space after. */
-  const typing = /[\p{L}\p{N}]$/u.test(query) ? all.at(-1) : undefined;
-  return words.map((word) => {
-    if (word === typing && word.length >= PREFIX_MIN) {
-      return {
-        matches: (term) => term.startsWith(word),
-        terms: (source) => [...source.postings.keys()].filter((term) => term.startsWith(word)),
-      };
+  const typing = /[\p{L}\p{N}]$/u.test(query) && raw.at(-1)!.length >= PREFIX_MIN ? raw.length - 1 : -1;
+  const keys = raw.map((word, i) => (i === typing ? `${word}*` : stem(word)));
+  const unique = [...new Set(keys)];
+  const groups = unique.map((key): TermGroup => {
+    if (key.endsWith("*")) {
+      const word = key.slice(0, -1);
+      const wordStem = stem(word);
+      const matches = (term: string) => typedMatches(word, wordStem, term);
+      return { matches, terms: (source) => [...source.postings.keys()].filter(matches) };
     }
-    return { matches: (term) => term === word, terms: (source) => (source.postings.has(word) ? [word] : []) };
+    return { matches: (term) => term === key, terms: (source) => (source.postings.has(key) ? [key] : []) };
   });
+  return { groups, sequence: keys.map((key) => unique.indexOf(key)) };
+};
+
+/** How many of the best BM25 documents the phrase boost looks at: re-reading a document's words costs, so it is bounded. */
+const PHRASE_POOL = 300;
+/** A document holding the whole query, in order and adjacent, scores up to this much more (×2). */
+const PHRASE_WEIGHT = 1;
+
+/**
+ * The share of the query's weight (summed idf over its words) covered by the longest-weighing run of query words
+ * that a document holds adjacent and in order, within one part. Two words at least make a run; 0 when none.
+ * Weighting by idf keeps a run of common words ("is only") from counting like a run of rare ones.
+ */
+const phraseShare = (doc: SearchDoc, groups: readonly TermGroup[], sequence: readonly number[], idf: readonly number[]): number => {
+  const total = sequence.reduce((sum, g) => sum + idf[g], 0);
+  if (!total) return 0;
+  let best = 0;
+  for (const part of doc.parts) {
+    const terms = tokenize(part.text);
+    for (let p = 0; p < terms.length; p += 1) {
+      for (let i = 0; i + 1 < sequence.length; i += 1) {
+        let weight = 0;
+        let length = 0;
+        while (i + length < sequence.length && p + length < terms.length && groups[sequence[i + length]].matches(terms[p + length])) {
+          weight += idf[sequence[i + length]];
+          length += 1;
+        }
+        if (length >= 2 && weight > best) best = weight;
+      }
+    }
+  }
+  return best / total;
 };
 
 export interface ScoredHit extends SearchHit {
@@ -205,7 +288,7 @@ const snippetOf = (text: string, spans: TokenSpan[], matched: (term: string) => 
  * query (rarest terms first), and results that land on the same place are kept once.
  */
 export const searchSources = (sources: readonly SearchSource[], query: string, limit = 60): ScoredHit[] => {
-  const groups = groupsOf(query);
+  const { groups, sequence } = groupsOf(query);
   if (!groups.length) return [];
   const total = sources.reduce((sum, source) => sum + source.docs.length, 0);
   if (!total) return [];
@@ -239,6 +322,13 @@ export const searchSources = (sources: readonly SearchSource[], query: string, l
     for (const [doc, score] of scores) scored.push({ source: s, doc, score });
   });
   scored.sort((a, b) => b.score - a.score);
+  /* Phrase boost: BM25 ignores word order, so lift the best documents that hold the query's words side by side. */
+  if (sequence.length >= 2 && new Set(sequence).size >= 2) {
+    for (const entry of scored.slice(0, PHRASE_POOL)) {
+      entry.score *= 1 + PHRASE_WEIGHT * phraseShare(sources[entry.source].docs[entry.doc], groups, sequence, idf);
+    }
+    scored.sort((a, b) => b.score - a.score);
+  }
 
   const seen = new Set<string>();
   const hits: ScoredHit[] = [];

@@ -114,7 +114,8 @@ Questions joined by "and" still slip through; see `scripts/work-eval/README.md`.
 - [x] Electron shell around the Next server. Reference: learnharness `electron/`,
       `docs/desktop-release.md`.
 - [x] Folder picker instead of `BOOKS_DIR`, Dock icon.
-- [ ] Signed DMG. Unsigned for now: the first open needs right-click, Open.
+- [ ] Signed DMG. *Paused:* the project is open source and ships from GitHub unsigned, so the
+      first open needs right-click, Open.
 - [x] No auto-update, no Windows or Linux builds.
 
 ## Phase 9 — Voice input · M
@@ -515,15 +516,36 @@ in the book. Reference, not code — that repo is GPL-3.0.
       (exact words, but common ones, ranked #48: a phrase or proximity boost would fix it);
       "reader bored stops reading copy" (#26: *reader*/*reading*, *stops*/*stop*: stemming would
       fix it). Rerun with `node scripts/search-misses.mjs <queries.json> --data <DATA_DIR>`.
-- [ ] If vectors land: hybrid = BM25 + vector, merged by reciprocal rank fusion, which needs no
+- [ ] ~~If vectors land: hybrid = BM25 + vector, merged by reciprocal rank fusion, which needs no
       reranker. Say the *similarity*, higher is better, and test that ordering on five queries
       before shipping. `anything` stores sqlite-vec's distance (lower is better) and then filters
-      `>= 0.3` and sorts descending, so it keeps its worst matches (`rag/search.ts:115`).
-- [ ] Wire the vector path at startup and prove it runs. `anything` exports a
+      `>= 0.3` and sorts descending, so it keeps its worst matches (`rag/search.ts:115`).~~
+      *Not needed:* the gate measured 3 of 20 misses, and only one is a vocabulary gap, the one
+      kind only vectors fix. No vectors land.
+- [ ] ~~Wire the vector path at startup and prove it runs. `anything` exports a
       `configureSearch()` that nothing ever calls, so its "semantic search" silently falls back
-      to BM25 on every query. Same trap: a test that catches the fallback, not just the result.
-- [ ] One copy of the vectors. A chunk's embedding goes in one place, not in the book's data and
-      a side database both.
+      to BM25 on every query. Same trap: a test that catches the fallback, not just the result.~~
+      *Not needed:* no vector path (same reason).
+- [ ] ~~One copy of the vectors. A chunk's embedding goes in one place, not in the book's data and
+      a side database both.~~ *Not needed:* no vectors (same reason).
+- [x] **Phrase boost.** BM25 ignores word order, so the 300 best BM25 documents are re-read and
+      scored up to twice as high for the longest run of query words they hold adjacent and in
+      order, weighted by those words' idf so a run of common words lifts little
+      (`lib/shared/search.ts`). *Measured 2026-11-25, same 20 queries and data copy:* "life is
+      only suffering" #48 → **#1**.
+- [x] **Light stemming.** A small suffix-stripping stemmer (plurals, -ing, -ed; no -er or final
+      e, no dependency) runs in `tokenize`, on the book's text and the query alike, so
+      *stops*/*stop* and *reading*/*reads*/*read* meet. Marks still highlight the book's own
+      words, and the word being typed still matches as a prefix ("readi" finds *reading*). The
+      saved indexes hold raw text and terms are built at load, so no format bump or rebuild.
+      *Measured 2026-11-25:* "reader bored stops reading copy" #26 → **#50**, still a miss. The
+      roadmap's diagnosis was wrong: by score the passage was already #2 before stemming (#3
+      after); it ranks low only because results are grouped by book, and two other copywriting
+      books' hits (all of them) show first. Totals: **2 of 20 missed** (was 3); the 17 earlier
+      hits all stay in the top 5.
+- [ ] Display order: a book's group shows every hit before the next book, so one book with many
+      good hits buries a better passage elsewhere (the miss above). Cap each book's hits in the
+      grouped list, or order groups by more than their single best hit.
 
 Done when a phrase you half-remember from any book, note or highlight is two keystrokes away and
 lands on the exact paragraph.
