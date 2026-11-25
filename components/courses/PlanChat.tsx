@@ -98,8 +98,11 @@ export function PlanChat({
   });
 
   useEffect(() => {
+    /* Measured at the last message, not the page: the composer and padding below it would otherwise make the
+       follow-scroll itself read as "scrolled away". */
     const onScroll = () => {
-      following.current = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 96;
+      const end = bottom.current?.getBoundingClientRect().bottom;
+      following.current = end === undefined || end <= window.innerHeight + 96;
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);

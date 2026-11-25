@@ -511,6 +511,8 @@
   inset: 0;
   overflow: clip;
   line-height: 1;
+  /* pdf.js sizes each span from an unspaced canvas measurement; inherited tracking would shift selections. */
+  letter-spacing: 0;
   text-align: initial;
   text-size-adjust: none;
   forced-color-adjust: none;

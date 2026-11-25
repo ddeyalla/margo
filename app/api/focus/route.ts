@@ -18,7 +18,8 @@ export async function GET() {
 /** Starts a session: { title, minutes }. Three refusing it is not an error; the answer says nothing is blocked. */
 export async function POST(request: Request) {
   const body = await readObject(request);
-  const title = shortText(body?.title, 500);
+  /* A long title is trimmed, not refused: refusing it would cost the session its blocking. */
+  const title = typeof body?.title === "string" ? shortText(body.title.slice(0, 500), 500) : null;
   const minutes = clampFocusMinutes(body?.minutes);
   if (!title || minutes === null) {
     return Response.json({ error: `Send a title and whole minutes from ${MIN_FOCUS_MINUTES} to ${MAX_FOCUS_MINUTES}.` }, { status: 400 });

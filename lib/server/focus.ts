@@ -135,8 +135,9 @@ export async function startFocus(run: ThreeRun | null, { title, minutes }: { tit
       if (!taskId) return off("Three didn’t keep the reading task, so nothing is blocked.");
     }
     await run(["start", taskId, "--min", String(minutes)]);
-    const session = parseRunning(await run(["status", "--json"]));
-    const blocking = parseBlocking(await run(["block", "status", "--json"]));
+    /* The session is running from here, so a failed read must not lose its id: End early needs it to stop Three. */
+    const session = parseRunning(await run(["status", "--json"]).catch(() => ""));
+    const blocking = await run(["block", "status", "--json"]).then(parseBlocking, () => ({ state: "off", reason: "Three is running the session, but its block list couldn’t be read." }) as const);
     return { sessionId: session?.id ?? null, endsAt: session?.plannedEnd ?? null, blocking };
   } catch (error) {
     return off(`Three said: ${(error as Error).message} Nothing is blocked; the timer still runs.`);

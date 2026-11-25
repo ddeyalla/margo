@@ -110,3 +110,13 @@ describe("focus sessions through Three", () => {
     expect(clampFocusMinutes("30")).toBeNull();
   });
 });
+
+describe("a session Three started but couldn't describe", () => {
+  it("keeps its id when the block list can't be read, so End early can still stop it", async () => {
+    const three = fakeThree();
+    const run: ThreeRun = (args) => (args[0] === "block" ? Promise.reject(new Error("timed out")) : three.run(args));
+    const started = await startFocus(run, { title: "Deep Work", minutes: 30 });
+    expect(started.sessionId).toBe("session-1");
+    expect(started.blocking.state).toBe("off");
+  });
+});
