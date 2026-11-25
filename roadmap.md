@@ -473,8 +473,8 @@ in the book. Reference, not code — that repo is GPL-3.0.
       cards in one index. No model, no download, no network. It answers exact terms and names,
       which is most of what you search for in your own books. `lib/shared/search.ts` scores
       every source at once, so a term's rarity is judged across the library and a note ranks
-      on the same scale as book text. Case and accents fold; no stemming. The last word, while
-      it is still being typed, also matches as a prefix. Highlights, notes and cards are read
+      on the same scale as book text. Case and accents fold, and words are lightly stemmed (see
+      below). The last word, while it is still being typed, also matches as a prefix. Highlights, notes and cards are read
       from each book's state at query time (cached by the state file's mtime), not stored in
       the index, because they change with every edit.
 - [x] **Chunk on the anchors we already have**, not on fixed windows: EPUB CFI
@@ -529,14 +529,17 @@ in the book. Reference, not code — that repo is GPL-3.0.
 - [ ] ~~One copy of the vectors. A chunk's embedding goes in one place, not in the book's data and
       a side database both.~~ *Not needed:* no vectors (same reason).
 - [x] **Phrase boost.** BM25 ignores word order, so the 300 best BM25 documents are re-read and
-      scored up to twice as high for the longest run of query words they hold adjacent and in
-      order, weighted by those words' idf so a run of common words lifts little
-      (`lib/shared/search.ts`). *Measured 2026-11-25, same 20 queries and data copy:* "life is
+      scored up to twice as high for their highest-idf run of query words held adjacent and in
+      order (the run's summed idf over the whole query's), so a run of common words lifts little.
+      The result lands on the part holding that run (`lib/shared/search.ts`). *Measured 2026-11-25, same 20 queries and data copy:* "life is
       only suffering" #48 → **#1**.
 - [x] **Light stemming.** A small suffix-stripping stemmer (plurals, -ing, -ed; no -er or final
-      e, no dependency) runs in `tokenize`, on the book's text and the query alike, so
-      *stops*/*stop* and *reading*/*reads*/*read* meet. Marks still highlight the book's own
-      words, and the word being typed still matches as a prefix ("readi" finds *reading*). The
+      e, no dependency; consonant-y becomes -ie so *story*/*stories* and *movie*/*movies* both
+      meet; *does*/*goes* map to *do*/*go*) runs in `tokenize`, on the book's text and the query
+      alike, so *stops*/*stop* and *reading*/*reads*/*read* meet. Marks still highlight the book's
+      own words. The word being typed matches as a prefix, and when it isn't a term yet, also the
+      stems it could still become ("stopp" finds *stop*), while a word that is a term stays
+      itself ("care" doesn't reach *car*). The
       saved indexes hold raw text and terms are built at load, so no format bump or rebuild.
       *Measured 2026-11-25:* "reader bored stops reading copy" #26 → **#50**, still a miss. The
       roadmap's diagnosis was wrong: by score the passage was already #2 before stemming (#3

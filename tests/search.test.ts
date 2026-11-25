@@ -24,7 +24,14 @@ describe("tokenize", () => {
   it("stems plurals, -ing and -ed, so a word's forms are one term", () => {
     expect(tokenize("read reads reading readings")).toEqual(["read", "read", "read", "read"]);
     expect(tokenize("stop stops stopped stopping")).toEqual(["stop", "stop", "stop", "stop"]);
-    expect(tokenize("story stories copied classes boxes")).toEqual(["story", "story", "copy", "class", "box"]);
+    expect(tokenize("story stories copied copying classes boxes")).toEqual(["storie", "storie", "copie", "copie", "class", "box"]);
+  });
+
+  it("keeps -ie words apart from -y words, and stems do and go", () => {
+    expect(tokenize("movie movies")).toEqual(["movie", "movie"]);
+    expect(tokenize("play plays played")).toEqual(["play", "play", "play"]);
+    expect(tokenize("do does doing go goes going")).toEqual(["do", "do", "do", "go", "go", "go"]);
+    expect(tokenize("constructor valueof hasownproperty")).toEqual(["constructor", "valueof", "hasownpropertie"]);
   });
 
   it("leaves short words, -ss/-us/-is, stems without a vowel and other scripts alone", () => {
@@ -98,6 +105,34 @@ describe("searchSources", () => {
     expect(marked("studies")).toEqual(["studied"]);
     expect(marked("their")).toEqual([]);
     expect(marked("cart")).toEqual([]);
+  });
+
+  it("keeps a stemmed word's results at every keystroke, through a doubled consonant", () => {
+    const sources = [makeSource(ID, [doc("text", "they stopped short")])];
+    for (const typed of ["sto", "stop", "stopp", "stoppe", "stopped", "stoppi", "stoppin", "stopping"]) {
+      expect(searchSources(sources, typed), typed).toHaveLength(1);
+    }
+  });
+
+  it("does not stretch a word that is a term into a shorter one while it is typed", () => {
+    const sources = [makeSource(ID, [doc("text", "they cared for the car"), doc("text", "she was making it"), doc("text", "begin with care, make it")])];
+    const marked = (query: string) => searchSources(sources, query).flatMap((hit) => hit.marks.map(([start, end]) => hit.snippet.slice(start, end)));
+    expect(marked("care").sort()).toEqual(["care"]);
+    expect(marked("make")).toEqual(["make"]);
+    expect(marked("begin")).toEqual(["begin"]);
+    expect(marked("makin")).toEqual(["making"]);
+  });
+
+  it("matches -ie plurals both ways", () => {
+    const sources = [makeSource(ID, [doc("text", "two movies tonight")])];
+    expect(searchSources(sources, "movie night ")).toHaveLength(1);
+    expect(searchSources(sources, "movie")).toHaveLength(1);
+  });
+
+  it("lands a phrase-boosted result on the part that holds the phrase", () => {
+    const chunk = doc("text", "suffering, suffering: only life is suffering only", "they say life is only suffering");
+    const [hit] = searchSources([makeSource(ID, [chunk, doc("text", "other words")])], "life is only suffering");
+    expect(hit.anchor).toEqual(chunk.parts[1].anchor);
   });
 
   it("ranks a document holding the query as a phrase above one with the same words apart", () => {
