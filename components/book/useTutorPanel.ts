@@ -47,9 +47,15 @@ export function useTutorPanel() {
     setBookOpen(!layout.isCollapsed(BOOK_PANE_ID));
   };
 
-  /* A layout restored from an earlier visit may start with the panel collapsed; read it once the group has attached. */
+  /* Set once the group has attached and the panes can be moved. */
+  const [attached, setAttached] = useState(false);
+
+  /* A layout restored from an earlier visit may start with the panel collapsed, or a board pane open with no board in it; read it once the group has attached. */
   useEffect(() => {
-    const frame = requestAnimationFrame(sync);
+    const frame = requestAnimationFrame(() => {
+      sync();
+      setAttached(true);
+    });
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, after the group attaches
   }, [layout]);
@@ -63,27 +69,54 @@ export function useTutorPanel() {
     else if (now < 35) layout.resize(id, "45%");
   };
 
+  /**
+   * Folds the tutor panel away. Its room goes to the book, or to the board when the book is folded: the pane next to
+   * it may be the board's empty slot, which can't take it, and the fold would otherwise be refused.
+   */
+  const collapsePanel = () => {
+    layout.collapse(PANEL_ID);
+    if (!isOpen()) return;
+    const sizes = [...Object.values(layout.getLayout())];
+    const to = layout.isCollapsed(BOOK_PANE_ID) ? INDEX[BOARD_PANE_IDS[boardShownAt("left") ? "left" : "right"]] : INDEX[BOOK_PANE_ID];
+    sizes[to] += sizes[INDEX[PANEL_ID]];
+    sizes[INDEX[PANEL_ID]] = 0;
+    layout.setLayout(sizes);
+  };
+
   return {
     layout,
+    attached,
     open,
     isOpen,
     /** Reads the panes' state again after the layout changed. */
     sync,
-    toggle: () => (isOpen() ? layout.collapse(PANEL_ID) : layout.expand(PANEL_ID)),
+    toggle: () => (isOpen() ? collapsePanel() : layout.expand(PANEL_ID)),
     expand: () => {
       if (!isOpen()) layout.expand(PANEL_ID);
     },
-    collapse: () => layout.collapse(PANEL_ID),
+    collapse: collapsePanel,
     boardOpen,
     boardSide,
     bookOpen,
     isBookOpen: () => !layout.isCollapsed(BOOK_PANE_ID),
     /** Whether neither board slot is open. */
     isBoardClosed: () => !moving.current && !boardShownAt("left") && !boardShownAt("right"),
-    /** Opens the board pane on its side. */
+    /** Opens the board pane on its side. Where the window has no room for the book, the board and the chat at once, the board takes the book's place. */
     showBoard: () => {
       if (boardShownAt(boardSide)) return;
-      openAt(boardSide);
+      const chatOpen = isOpen();
+      moving.current = true;
+      try {
+        openAt(boardSide);
+        /* Opening squeezed the chat shut, or found no room at all: the book makes way instead. */
+        if ((!boardShownAt(boardSide) || (chatOpen && !isOpen())) && !layout.isCollapsed(BOOK_PANE_ID)) {
+          layout.collapse(BOOK_PANE_ID);
+          openAt(boardSide);
+        }
+        if (chatOpen && !isOpen()) layout.expand(PANEL_ID);
+      } finally {
+        moving.current = false;
+      }
       sync();
     },
     /** Closes the board pane and gives the book its room back. */

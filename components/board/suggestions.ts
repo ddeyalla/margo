@@ -56,6 +56,17 @@ const nameOf = (element: Element, elements: readonly Element[]) => {
   return words ? quoted(words) : element.type === "arrow" ? "this link" : "this shape";
 };
 
+/* Roughly how wide the hand font draws a character at the board's size, and how tall a line is. */
+const CHAR = 10;
+const LINE = 25;
+
+/** A box big enough for its words: wider for a long label, up to a limit, then taller. */
+const nodeSize = (text: string) => {
+  const width = Math.min(320, Math.max(NODE.width, Math.ceil(text.length / 2) * CHAR + 30));
+  const lines = Math.ceil((text.length * CHAR) / (width - 30));
+  return { width, height: Math.max(NODE.height, lines * LINE + 20) };
+};
+
 const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 16);
 
 const tag = (elements: readonly Element[], data: SuggestionData): Element[] => elements.map((element) => newElementWith(element, { locked: true, customData: data }));
@@ -93,10 +104,11 @@ export const suggestionsFor = (ops: readonly BoardOp[], ids: Record<string, stri
     if (op.op === "add_node") {
       const at = op.x !== undefined && op.y !== undefined ? { x: op.x, y: op.y } : positions.get(op.id)!;
       const id = newId();
-      const skeleton: ExcalidrawElementSkeleton = { type: "rectangle", id, ...at, ...NODE, ...style, roundness: { type: 3 }, label: { text: op.text, strokeColor: SUGGESTION_COLOR } };
+      const size = nodeSize(op.text);
+      const skeleton: ExcalidrawElementSkeleton = { type: "rectangle", id, ...at, ...size, ...style, roundness: { type: 3 }, label: { text: op.text, strokeColor: SUGGESTION_COLOR } };
       /* Keep the id: links to this idea are drawn against it. */
       added.push(...tag(convertToExcalidrawElements([skeleton], { regenerateIds: false }), { suggestion, kind: "add_node", label: `Add ${quoted(op.text)}` }));
-      newNodes.set(op.id, { id, box: { ...at, ...NODE } });
+      newNodes.set(op.id, { id, box: { ...at, ...size } });
       continue;
     }
     if (op.op === "add_link") {

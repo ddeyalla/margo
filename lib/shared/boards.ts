@@ -263,7 +263,7 @@ export type BoardOp =
   | { op: "update"; id: string; text: string }
   | { op: "delete"; id: string };
 
-export const MAX_OPS = 30;
+export const MAX_OPS = 60;
 const NEW_ID = /^[a-z][a-z0-9_-]{0,23}$/;
 
 const text = (value: unknown, max = MAX_TEXT): string | null => (typeof value === "string" && value.trim() ? value.replace(/\s+/g, " ").trim().slice(0, max) : null);
@@ -403,6 +403,76 @@ export const boardOpsIn = (answer: string, scene: CompactScene): BoardOp[] | str
   const ops = validateOps(Array.isArray(value) ? value : (value as { ops?: unknown } | null)?.ops, scene);
   if (typeof ops === "string") return ops;
   return ops.length ? ops : null;
+};
+
+/* A diagram from the chat, put on a board that already exists. */
+
+const sameWords = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/**
+ * The ops that put a diagram on a board without drawing anything twice. An idea already on the board, by its words,
+ * is reused, so a diagram that expands or corrects the board adds only what is new: new ideas where the diagram had
+ * them, new links, and new wording for a link the board already has. Nothing on the board is removed.
+ */
+export const diagramOps = (diagram: CompactScene, board: CompactScene): BoardOp[] => {
+  const onBoard = new Map<string, string>();
+  for (const node of board.nodes) {
+    const key = sameWords(node.text);
+    if (key && !onBoard.has(key)) onBoard.set(key, node.id);
+  }
+  const ref = new Map<string, string>();
+  const ops: BoardOp[] = [];
+  let made = 0;
+  for (const node of diagram.nodes) {
+    const key = sameWords(node.text);
+    if (!key) continue;
+    const existing = onBoard.get(key);
+    if (existing) {
+      ref.set(node.id, existing);
+      continue;
+    }
+    const id = `d${++made}`;
+    onBoard.set(key, id);
+    ref.set(node.id, id);
+    ops.push({ op: "add_node", id, text: node.text, x: node.x, y: node.y });
+  }
+  const links = new Map(board.links.map((link) => [`${link.from}>${link.to}`, link]));
+  for (const link of diagram.links) {
+    const from = ref.get(link.from);
+    const to = ref.get(link.to);
+    if (!from || !to || from === to) continue;
+    const existing = links.get(`${from}>${to}`);
+    if (existing) {
+      if (link.label && link.label !== existing.label && !ops.some((op) => op.op === "update" && op.id === existing.id)) ops.push({ op: "update", id: existing.id, text: link.label });
+      continue;
+    }
+    links.set(`${from}>${to}`, { id: "", from, to });
+    ops.push({ op: "add_link", from, to, ...(link.label ? { label: link.label } : {}) });
+  }
+  return ops;
+};
+
+const MERMAID_WORDS = new Set(["graph", "flowchart", "subgraph", "end", "classdef", "class", "style", "linkstyle", "click", "direction"]);
+const STOP_WORDS = new Set(["the", "and", "for", "with", "from", "into", "that", "this", "are", "how", "what", "why", "when", "its", "not", "but", "can", "use", "uses", "used", "via", "per", "you", "your", "our", "out", "vs"]);
+const topicWords = (text: string): Set<string> =>
+  new Set((sameWords(text).match(/[\p{L}\p{N}]{3,}/gu) ?? []).filter((word) => !MERMAID_WORDS.has(word) && !STOP_WORDS.has(word)));
+
+/**
+ * The board a chat diagram most likely belongs on, by the words its title shares with the diagram: at least two of
+ * them, or all of a short title's. Null when no board is about the same thing, and the diagram gets a board of its own.
+ */
+export const relatedBoard = <B extends Pick<Board, "id" | "title">>(source: string, boards: readonly B[]): B | null => {
+  const drawn = topicWords(`${diagramTitle(source)} ${source.replace(/^\s*%%.*$/gm, "")}`);
+  let best: { board: B; score: number } | null = null;
+  for (const board of boards) {
+    const title = topicWords(board.title);
+    if (!title.size) continue;
+    const shared = [...title].filter((word) => drawn.has(word)).length;
+    if (shared < Math.min(2, title.size)) continue;
+    const score = shared / title.size + shared / 10;
+    if (!best || score > best.score) best = { board, score };
+  }
+  return best?.board ?? null;
 };
 
 /** The tutor's read of a board drawn with the book open. */

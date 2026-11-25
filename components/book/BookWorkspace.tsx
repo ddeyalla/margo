@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useEffectEvent, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
@@ -133,7 +133,7 @@ export function BookWorkspace({
   const boardError = useStableCallback((text: string) => setToast({ text, action: false }));
   const boards = useBoards(book.id, initialState.boards, boardContext, boardError);
   /* The chat and the open board reach each other here; an answer's changes to a board go on it as it finishes. */
-  const boardLink = useCreateBoardLink(boards.show);
+  const boardLink = useCreateBoardLink(book.id, boards.show);
   const placeAnswer = useStableCallback((thread: Thread) => {
     const changes = answerChanges(thread.id, thread.messages, thread.messages.length - 1);
     if (changes && typeof changes.ops !== "string") boardLink.place(changes.key, changes.board, changes.ops);
@@ -329,7 +329,8 @@ export function BookWorkspace({
   /* The board pane is open exactly while a board, or the list of them, is. */
   const boardPaneShown = boards.open !== null;
   const placeBoardPane = useEffectEvent((shown: boolean) => (shown ? panel.showBoard() : panel.hideBoard()));
-  useEffect(() => placeBoardPane(boardPaneShown), [boardPaneShown]);
+  /* Again once the layout attaches: one saved with a board open has none in it now. */
+  useEffect(() => placeBoardPane(boardPaneShown), [boardPaneShown, panel.attached]);
   /* Dragged shut, the pane closes its board, which saves it; the book is never folded away with nothing in its place. */
   const layoutChanged = () => {
     if (boards.open && panel.isBoardClosed()) boards.close();
@@ -350,7 +351,15 @@ export function BookWorkspace({
     }
   };
 
-  const openDiagram = useStableCallback((source: string) => void boards.fromDiagram(source));
+  /* A chat diagram goes on the board it's for, as suggestions, or on a board of its own. */
+  const addDiagram = useStableCallback(async (source: string, boardId: string | null) => {
+    if (!boardId) {
+      await boards.fromDiagram(source);
+      return null;
+    }
+    return (await boardLink.addDiagram(boardId, source)).added;
+  });
+  const diagramBoards = useMemo(() => ({ boards: boards.boards, add: addDiagram }), [boards.boards, addDiagram]);
   /* Words from the board go into the chat's composer, with the board attached, for the reader to finish. */
   const answerFromBoard = useStableCallback((text: string) => {
     showTab("chat");
@@ -373,7 +382,7 @@ export function BookWorkspace({
     const here = panel.boardSide === side && panel.boardOpen;
     const handle = <ResizableHandle aria-label="Resize the whiteboard" disabled={!here} className={here ? HANDLE : HANDLE.replace("w-2", "w-0")} />;
     const pane = (
-      <ResizablePanel id={BOARD_PANE_IDS[side]} defaultSize="0px" minSize="400px" collapsible className="min-w-0 overflow-hidden">
+      <ResizablePanel id={BOARD_PANE_IDS[side]} defaultSize="0px" minSize="340px" collapsible className="min-w-0 overflow-hidden">
         {/* Drawn only while open: a canvas in a closed pane has no size. */}
         {boardPaneShown && here ? (
           <div data-board-pane className={clsx("flex h-full min-w-0 flex-col overflow-hidden bg-page", !bare && "rounded-xl shadow-canvas")}>
@@ -570,7 +579,7 @@ export function BookWorkspace({
           className="min-w-0 overflow-hidden"
         >
           <BoardLinkContext value={boardLink}>
-          <OpenAsBoard value={openDiagram}>
+          <OpenAsBoard value={diagramBoards}>
             <SidePanel
               tab={tab}
               onTabChange={chooseTab}

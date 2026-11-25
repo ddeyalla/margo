@@ -362,6 +362,21 @@ library was read, so a failure there left an unanswered message.
       Phase 14's signal summary ("1 held", "1 misconception") sits above it.*
 - [x] Books outside a Course are never gated.
       *They get no quizzes, notices or locks at all.*
+- [x] **One board per topic, not one per diagram.** A chat diagram goes on the board that is
+      open, or else the board whose title it shares words with, and only otherwise on a board
+      of its own ("New board" is always offered). On an existing board it adds only what is
+      new, as suggestions: ideas already drawn are reused by their words, so a diagram that
+      corrects or grows the board adds the missing ideas and links and rewords links. With a
+      board attached, the tutor draws, expands and corrects on that board through ops (now
+      up to 60) instead of drawing a separate diagram.
+      *Suggestions left undecided when a board closes come back when it reopens in the same
+      visit, and which answers' changes went on a board is remembered in the browser, so a
+      reload doesn't offer them twice. Suggested ideas are sized to their words.*
+- [x] **Panes that hold up.** The board opens even when the window has no room for the book,
+      the board and the chat together, by taking the book's place. The chat folds away with
+      the board on either side, and a layout saved with a board open no longer comes back as
+      an empty pane. In a narrow pane, Excalidraw's tool bar scrolls instead of hanging off
+      both edges.
 - [x] **One design system.** `components/ui` holds the primitives every surface uses:
       `Field`, `TextArea`, `Surface`, `PaneHeader` and `Divider` beside `Button`. Edges are
       hairlines (`line`, `line-strong`); only floating surfaces get elevation. Excalidraw's

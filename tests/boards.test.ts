@@ -6,7 +6,9 @@ import {
   boardRecall,
   chapterBoardId,
   compactScene,
+  diagramOps,
   diagramTitle,
+  relatedBoard,
   normalizeBoard,
   isBoardFile,
   parseCheckReply,
@@ -129,7 +131,7 @@ describe("the tutor's ops", () => {
     expect(validateOps([{ op: "add_link", from: "n1", to: "n2" }, { op: "delete", id: "n2" }], scene)).toMatch(/being removed/);
     expect(validateOps([{ op: "add_node", id: "far", text: "x", x: 1e9 }], scene)).toMatch(/within/);
     expect(validateOps([{ op: "paint" }], scene)).toMatch(/"op" must be/);
-    expect(validateOps(Array.from({ length: 31 }, (_, i) => ({ op: "add_node", id: `x${i}`, text: "x" })), scene)).toMatch(/at most 30/);
+    expect(validateOps(Array.from({ length: 61 }, (_, i) => ({ op: "add_node", id: `x${i}`, text: "x" })), scene)).toMatch(/at most 60/);
   });
 
 });
@@ -456,5 +458,52 @@ describe("asking the tutor about a board", () => {
     const hopeless = tutor(["nope", "still nope"]);
     await expect(ask(hopeless.provider, "check")).rejects.toThrow(/couldn't be read/);
     expect(hopeless.turns).toHaveLength(2);
+  });
+});
+
+describe("a chat diagram on a board", () => {
+  const board: CompactScene = {
+    nodes: [
+      { id: "n1", text: "Tokens", x: 0, y: 0 },
+      { id: "n2", text: "Embeddings", x: 200, y: 0 },
+    ],
+    links: [{ id: "l1", from: "n1", to: "n2" }],
+    loose: 0,
+    sketches: 0,
+  };
+
+  it("reuses the ideas already drawn and adds only what is new", () => {
+    const diagram: CompactScene = {
+      nodes: [
+        { id: "n1", text: "tokens", x: 900, y: 0 },
+        { id: "n2", text: "Embeddings", x: 1100, y: 0 },
+        { id: "n3", text: "Attention", x: 1300, y: 0 },
+      ],
+      links: [
+        { id: "l1", from: "n1", to: "n2", label: "look up" },
+        { id: "l2", from: "n2", to: "n3" },
+      ],
+      loose: 0,
+      sketches: 0,
+    };
+    expect(diagramOps(diagram, board)).toEqual([
+      { op: "add_node", id: "d1", text: "Attention", x: 1300, y: 0 },
+      { op: "update", id: "l1", text: "look up" },
+      { op: "add_link", from: "n2", to: "d1" },
+    ]);
+  });
+
+  it("adds nothing for a diagram already on the board", () => {
+    expect(diagramOps(board, board)).toEqual([]);
+  });
+
+  it("finds the board about the same thing, and none for another topic", () => {
+    const boards = [
+      { id: "a", title: "Autoregressive vs masked LMs: use cases" },
+      { id: "b", title: "Attention heads" },
+    ];
+    expect(relatedBoard("%% Masked LMs in practice\nflowchart TD\n A[Masked LM] --> B[Classify]", boards)?.id).toBe("a");
+    expect(relatedBoard("flowchart TD\n A[Query] --> B[Attention heads]", boards)?.id).toBe("b");
+    expect(relatedBoard("flowchart TD\n A[Tokenizer] --> B[Vocabulary]", boards)).toBeNull();
   });
 });

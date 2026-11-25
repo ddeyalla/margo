@@ -7,7 +7,7 @@ import type { AppState, BinaryFiles, ExcalidrawImperativeAPI, ExcalidrawInitialD
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, Check, ChevronDown, ChevronLeft, Eye, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RotateCcw, X } from "lucide-react";
 import { Button, IconButton, Divider, PaneHeader, Spinner } from "@/components/ui";
-import { compactScene, type BoardCheck, type BoardOp, type BoardReview, type OpenedBoard } from "@/lib/shared/boards";
+import { compactScene, diagramOps, isSuggestion, type BoardCheck, type BoardOp, type BoardReview, type OpenedBoard } from "@/lib/shared/boards";
 import type { BookId, ProviderId } from "@/lib/shared/types";
 import { askBoard, fetchBoard, putBoard, settling, type BoardRequest } from "./api";
 import { useBoardLink, type OpenBoard } from "./link";
@@ -233,12 +233,19 @@ export default function Whiteboard(props: WhiteboardProps) {
 
   const onChange = (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
     const list = pendingSuggestions(elements);
+    if (mode === "board" && savedVersion.current !== null) undecided.current = elements.filter((element) => !element.isDeleted && isSuggestion(element));
     setPending((current) => (pendingKey(current) === pendingKey(list) ? current : list));
     if (mode !== "board" || conflicted.current) return;
     latest.current = { elements, appState, files };
     const version = hashElementsVersion(readerElements(elements.filter((element) => !element.isDeleted)));
     if (savedVersion.current === null) {
       savedVersion.current = version;
+      /* Suggestions left undecided when this board last closed come back with it. */
+      const held = link?.held.get(boardId);
+      if (held?.length && api.current) {
+        link?.held.delete(boardId);
+        api.current.updateScene({ elements: [...elements, ...held], captureUpdate: CaptureUpdateAction.NEVER });
+      }
       /* The whole drawing in view when it opens, however small the panel. */
       const live = elements.filter((element) => !element.isDeleted);
       if (live.length && api.current) {
@@ -270,7 +277,12 @@ export default function Whiteboard(props: WhiteboardProps) {
     const board = api.current;
     if (!board) return { added: 0, dropped: ops.length };
     const { added, dropped } = suggestionsFor(ops, ids, board.getSceneElementsIncludingDeleted());
-    if (added.length) board.updateScene({ elements: [...board.getSceneElementsIncludingDeleted(), ...added], captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+    if (added.length) {
+      board.updateScene({ elements: [...board.getSceneElementsIncludingDeleted(), ...added], captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+      board.scrollToContent(added, { animate: true, fitToViewport: true, viewportZoomFactor: 0.8 });
+      /* Their labels were measured as they were made, maybe before the hand font was ready: measured again, none draws clipped. */
+      void remeasureText(board);
+    }
     setNotice(
       dropped
         ? `${dropped} suggestion${dropped === 1 ? " was" : "s were"} left out: ${dropped === 1 ? "it was" : "they were"} about something you changed meanwhile.`
@@ -279,11 +291,34 @@ export default function Whiteboard(props: WhiteboardProps) {
     return { added: new Set(added.map((element) => element.customData?.suggestion)).size, dropped };
   };
 
+  /**
+   * Puts a chat diagram on the board. A flowchart goes on as suggestions, reusing the ideas already drawn, so a
+   * diagram that corrects or grows the board adds only what is new; a kind that comes in as one picture goes on as it is.
+   */
+  const addDiagram = async (source: string) => {
+    const board = api.current;
+    if (!board) return { added: 0, dropped: 0 };
+    const { mermaidElements } = await import("./mermaid");
+    const current = board.getSceneElements();
+    const { elements, files } = await mermaidElements(source, readerElements(current));
+    const drawn = compactScene(elements).scene;
+    if (!drawn.nodes.length) {
+      if (files.length) board.addFiles(files);
+      board.updateScene({ elements: [...board.getSceneElementsIncludingDeleted(), ...elements], captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+      board.scrollToContent(elements, { animate: true, fitToViewport: true, viewportZoomFactor: 0.8 });
+      return { added: elements.length ? 1 : 0, dropped: 0 };
+    }
+    const { scene, ids } = compactScene(current);
+    return suggest(diagramOps(drawn, scene), ids);
+  };
+
   /* The board as the chat reaches it: read and changed only while it is the reader's board, not a draw-it-back. */
   const titleRef = useRef("Whiteboard");
   const suggestRef = useRef(suggest);
+  const addDiagramRef = useRef(addDiagram);
   useEffect(() => {
     suggestRef.current = suggest;
+    addDiagramRef.current = addDiagram;
   });
   const handle = useRef<OpenBoard>({
     id: boardId,
@@ -292,7 +327,16 @@ export default function Whiteboard(props: WhiteboardProps) {
     },
     mention: () => ({ id: boardId, title: titleRef.current, ...compactScene(api.current?.getSceneElements() ?? []) }),
     suggest: (ops, ids) => suggestRef.current(ops, ids),
+    addDiagram: (source) => addDiagramRef.current(source),
   });
+  /* Suggestions aren't saved until kept; ones still undecided as the board closes wait for it in the link. */
+  const undecided = useRef<readonly ExcalidrawElement[]>([]);
+  useEffect(
+    () => () => {
+      if (link && undecided.current.length) link.held.set(boardId, undecided.current);
+    },
+    [link, boardId],
+  );
   useEffect(() => {
     const ours = handle.current;
     if (mode === "recall") link?.attach(null);
@@ -603,7 +647,7 @@ function SuggestionBar({
             >
               <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ backgroundColor: SUGGESTION_COLOR }} />
               <span className="truncate">
-                {pending.length} {pending.length === 1 ? "suggestion" : "suggestions"} from the tutor
+                {pending.length} {pending.length === 1 ? "suggestion" : "suggestions"}
               </span>
               <ChevronDown aria-hidden className={listed ? "size-3.5 shrink-0 rotate-180 text-dim transition-transform" : "size-3.5 shrink-0 text-dim transition-transform"} />
             </button>

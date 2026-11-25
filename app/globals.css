@@ -669,3 +669,16 @@ div.board-canvas .excalidraw.theme--dark {
 .board-canvas .excalidraw .Island {
   box-shadow: var(--elevation-float);
 }
+
+/* In a narrow pane the tool bar is wider than the room it has: it scrolls sideways instead of hanging off both edges. */
+.board-canvas .excalidraw .App-top-bar :is(div:has(.App-toolbar), .App-toolbar) {
+  max-width: 100%;
+  min-width: 0;
+}
+.board-canvas .excalidraw .App-top-bar .App-toolbar-container {
+  display: flex;
+}
+.board-canvas .excalidraw .App-toolbar {
+  overflow-x: auto;
+  scrollbar-width: none;
+}

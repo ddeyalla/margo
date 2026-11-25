@@ -182,7 +182,7 @@ export function BoardPane({
           <LineForm label="New board" placeholder="New board, by title" button={<Plus />} onSend={(title) => void boards.create(title)} />
           <p className="flex items-start gap-2 px-1 text-caption leading-relaxed text-dim">
             <MessageSquare aria-hidden className="mt-px size-3.5 shrink-0" />
-            <span>To have the tutor draw one, ask in the chat: “Draw how attention works.” Its diagram opens as a board.</span>
+            <span>To have the tutor draw one, ask in the chat: “Draw how attention works.” With a board open, it draws on that board; otherwise its diagram goes on the board about the same thing, or a new one.</span>
           </p>
         </div>
         {others.length ? (

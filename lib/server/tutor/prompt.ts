@@ -132,7 +132,7 @@ export const boardNote = (board: BoardMention, latest: boolean): string =>
     ? [
         `My whiteboard “${board.title}” is open beside the book. Here it is as JSON: each node's text and position, each link's ends and label.`,
         `<board>\n${JSON.stringify(board.scene)}\n</board>`,
-        `Answer about the board in words. Only when I ask you to change it, add to it or fix it, end your answer with the change as a \`\`\`${BOARD_FENCE} fence holding a JSON list of ops, and say in a sentence what you changed. Never mention the ops or their ids in your words.`,
+        `Answer about the board in words. When I ask you to draw, change, add to, expand or fix it, or when your answer corrects something drawn on it, put the change on this board: end your answer with a \`\`\`${BOARD_FENCE} fence holding a JSON list of ops, and say in a sentence what you changed. Don't draw a separate Mermaid diagram for it, and don't redraw what is already there: reuse its nodes by id. Place new nodes near the ones they link to, in the board's own layout. Never mention the ops or their ids in your words.`,
         BOARD_OPS_GUIDE,
       ].join("\n\n")
     : `(This message was about my whiteboard “${board.title}”, as it was then.)`;

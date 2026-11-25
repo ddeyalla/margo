@@ -3,8 +3,10 @@
 import { createContext, useContext, useEffect, useId, useState } from "react";
 import { Shapes } from "lucide-react";
 import { Button } from "@/components/ui";
-import { diagramTitle } from "@/lib/shared/boards";
-import { OpenAsBoard } from "@/components/board/WhiteboardSheet";
+import { diagramTitle, relatedBoard } from "@/lib/shared/boards";
+import { OpenAsBoard, type DiagramBoards } from "@/components/board/WhiteboardSheet";
+import { useBoardLink, type OpenBoard } from "@/components/board/link";
+import { createStore, useStore } from "@/components/ui/store";
 import { drawnDiagram, renderDiagram } from "./mermaid";
 
 /** Saves a diagram's source to the reader's notes, where the answer allows it. */
@@ -67,16 +69,50 @@ export function Diagram({ source, codeClass }: { source: string; codeClass: stri
           </button>
         </div>
       ) : null}
-      {/* Every diagram is a whiteboard waiting to be opened, as an artifact is: the reader's own to change and keep. */}
-      {toBoard ? (
-        <figcaption className="flex items-center gap-2 border-t border-line px-3 py-1.5">
-          <Shapes className="size-3.5 shrink-0 text-dim" />
-          <span className="min-w-0 flex-1 truncate text-caption text-fog">{diagramTitle(source)}</span>
-          <Button size="sm" variant="ghost" onClick={() => toBoard(source)}>
-            Open as whiteboard
-          </Button>
-        </figcaption>
-      ) : null}
+      {/* Every diagram can go on a whiteboard: the one open, the one about the same thing, or one of its own. */}
+      {toBoard ? <ToBoard source={source} boards={toBoard} /> : null}
     </figure>
+  );
+}
+
+const noBoard = createStore<OpenBoard | null>(null);
+
+/**
+ * Where a diagram goes on a board. It goes on the board that's open, or else the board about the same thing, as
+ * suggestions that reuse what is already drawn; only a diagram no board is about gets a board of its own.
+ */
+function ToBoard({ source, boards }: { source: string; boards: DiagramBoards }) {
+  const link = useBoardLink();
+  const open = useStore(link?.open ?? noBoard, (board) => board);
+  const target = open ? { id: open.id, title: open.title } : relatedBoard(source, boards.boards);
+  const [state, setState] = useState<{ busy: true } | { done: string } | null>(null);
+  const add = (boardId: string | null, title: string | null) => {
+    setState({ busy: true });
+    boards.add(source, boardId).then(
+      (added) => setState(added === null || !title ? null : { done: added ? `Added to “${title}”` : `Already on “${title}”` }),
+      (failure: unknown) => setState({ done: failure instanceof Error ? failure.message : "The diagram couldn't go on the board." }),
+    );
+  };
+  return (
+    <figcaption className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line px-3 py-1.5">
+      <span className="flex min-w-40 flex-1 items-center gap-2">
+        <Shapes className="size-3.5 shrink-0 text-dim" aria-hidden />
+        <span className="min-w-0 truncate text-caption text-fog">{state && "done" in state ? state.done : diagramTitle(source)}</span>
+      </span>
+      {target ? (
+        <span className="ml-auto flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap">
+          <Button size="sm" variant="ghost" disabled={state !== null && "busy" in state} onClick={() => add(null, null)}>
+            New board
+          </Button>
+          <Button size="sm" disabled={state !== null && "busy" in state} onClick={() => add(target.id, target.title)} title={`Adds what's new to “${target.title}”, as suggestions to keep or drop`}>
+            <span className="max-w-48 truncate">Add to “{target.title}”</span>
+          </Button>
+        </span>
+      ) : (
+        <Button size="sm" variant="ghost" disabled={state !== null && "busy" in state} onClick={() => add(null, null)}>
+          Open as whiteboard
+        </Button>
+      )}
+    </figcaption>
   );
 }
