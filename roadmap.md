@@ -114,7 +114,8 @@ Questions joined by "and" still slip through; see `scripts/work-eval/README.md`.
 - [x] Electron shell around the Next server. Reference: learnharness `electron/`,
       `docs/desktop-release.md`.
 - [x] Folder picker instead of `BOOKS_DIR`, Dock icon.
-- [ ] Signed DMG. Unsigned for now: the first open needs right-click, Open.
+- [ ] Signed DMG. *Paused:* the project is open source and ships from GitHub unsigned, so the
+      first open needs right-click, Open.
 - [x] No auto-update, no Windows or Linux builds.
 
 ## Phase 9 — Voice input · M
@@ -472,8 +473,8 @@ in the book. Reference, not code — that repo is GPL-3.0.
       cards in one index. No model, no download, no network. It answers exact terms and names,
       which is most of what you search for in your own books. `lib/shared/search.ts` scores
       every source at once, so a term's rarity is judged across the library and a note ranks
-      on the same scale as book text. Case and accents fold; no stemming. The last word, while
-      it is still being typed, also matches as a prefix. Highlights, notes and cards are read
+      on the same scale as book text. Case and accents fold, and words are lightly stemmed (see
+      below). The last word, while it is still being typed, also matches as a prefix. Highlights, notes and cards are read
       from each book's state at query time (cached by the state file's mtime), not stored in
       the index, because they change with every edit.
 - [x] **Chunk on the anchors we already have**, not on fixed windows: EPUB CFI
@@ -515,15 +516,39 @@ in the book. Reference, not code — that repo is GPL-3.0.
       (exact words, but common ones, ranked #48: a phrase or proximity boost would fix it);
       "reader bored stops reading copy" (#26: *reader*/*reading*, *stops*/*stop*: stemming would
       fix it). Rerun with `node scripts/search-misses.mjs <queries.json> --data <DATA_DIR>`.
-- [ ] If vectors land: hybrid = BM25 + vector, merged by reciprocal rank fusion, which needs no
+- [ ] ~~If vectors land: hybrid = BM25 + vector, merged by reciprocal rank fusion, which needs no
       reranker. Say the *similarity*, higher is better, and test that ordering on five queries
       before shipping. `anything` stores sqlite-vec's distance (lower is better) and then filters
-      `>= 0.3` and sorts descending, so it keeps its worst matches (`rag/search.ts:115`).
-- [ ] Wire the vector path at startup and prove it runs. `anything` exports a
+      `>= 0.3` and sorts descending, so it keeps its worst matches (`rag/search.ts:115`).~~
+      *Not needed:* the gate measured 3 of 20 misses, and only one is a vocabulary gap, the one
+      kind only vectors fix. No vectors land.
+- [ ] ~~Wire the vector path at startup and prove it runs. `anything` exports a
       `configureSearch()` that nothing ever calls, so its "semantic search" silently falls back
-      to BM25 on every query. Same trap: a test that catches the fallback, not just the result.
-- [ ] One copy of the vectors. A chunk's embedding goes in one place, not in the book's data and
-      a side database both.
+      to BM25 on every query. Same trap: a test that catches the fallback, not just the result.~~
+      *Not needed:* no vector path (same reason).
+- [ ] ~~One copy of the vectors. A chunk's embedding goes in one place, not in the book's data and
+      a side database both.~~ *Not needed:* no vectors (same reason).
+- [x] **Phrase boost.** BM25 ignores word order, so the 300 best BM25 documents are re-read and
+      scored up to twice as high for their highest-idf run of query words held adjacent and in
+      order (the run's summed idf over the whole query's), so a run of common words lifts little.
+      The result lands on the part holding that run (`lib/shared/search.ts`). *Measured 2026-11-25, same 20 queries and data copy:* "life is
+      only suffering" #48 → **#1**.
+- [x] **Light stemming.** A small suffix-stripping stemmer (plurals, -ing, -ed; no -er or final
+      e, no dependency; consonant-y becomes -ie so *story*/*stories* and *movie*/*movies* both
+      meet; *does*/*goes* map to *do*/*go*) runs in `tokenize`, on the book's text and the query
+      alike, so *stops*/*stop* and *reading*/*reads*/*read* meet. Marks still highlight the book's
+      own words. The word being typed matches as a prefix, and when it isn't a term yet, also the
+      stems it could still become ("stopp" finds *stop*), while a word that is a term stays
+      itself ("care" doesn't reach *car*). The
+      saved indexes hold raw text and terms are built at load, so no format bump or rebuild.
+      *Measured 2026-11-25:* "reader bored stops reading copy" #26 → **#50**, still a miss. The
+      roadmap's diagnosis was wrong: by score the passage was already #2 before stemming (#3
+      after); it ranks low only because results are grouped by book, and two other copywriting
+      books' hits (all of them) show first. Totals: **2 of 20 missed** (was 3); the 17 earlier
+      hits all stay in the top 5.
+- [ ] Display order: a book's group shows every hit before the next book, so one book with many
+      good hits buries a better passage elsewhere (the miss above). Cap each book's hits in the
+      grouped list, or order groups by more than their single best hit.
 
 Done when a phrase you half-remember from any book, note or highlight is two keystrokes away and
 lands on the exact paragraph.
