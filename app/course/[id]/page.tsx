@@ -46,9 +46,9 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1.5">
         <h1 className="text-display text-paper">{course.name}</h1>
-        <p className="text-[14px] leading-relaxed text-fog">{course.goal}</p>
+        <p className="text-callout leading-relaxed text-fog">{course.goal}</p>
         <RoadmapFacts roadmap={course} />
-        <p className="text-[14px] font-medium tabular-nums text-paper" title="Covered: chapters whose quiz you passed. Retained: predicted recall of this Course's cards and quiz questions today.">
+        <p className="text-callout font-medium tabular-nums text-paper" title="Covered: chapters whose quiz you passed. Retained: predicted recall of this Course's cards and quiz questions today.">
           {masteryLine(mastery)}
         </p>
         <p className="text-label tabular-nums text-dim">
@@ -75,11 +75,11 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
       </section>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-dim">Units</h2>
+        <h2 className="text-body font-semibold uppercase tracking-wide text-dim">Units</h2>
         <ol className="flex flex-col gap-4">
           {course.units.map((unit, index) => (
             <li key={index} className="flex flex-col gap-2 rounded-xl bg-panel px-4 py-3 shadow-canvas">
-              <p className="text-[14px] font-medium text-paper">
+              <p className="text-callout font-medium text-paper">
                 {index + 1}. {unit.title}
                 {unit.weeks ? <span className="font-normal text-dim"> · {unit.weeks} wk</span> : null}
               </p>
@@ -88,7 +88,7 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
                 const book = books.get(reading.book);
                 return (
                   <div key={r} className="flex flex-col gap-0.5">
-                    <p className="text-[13px] text-fog">{book?.title ?? reading.book}</p>
+                    <p className="text-body text-fog">{book?.title ?? reading.book}</p>
                     <ul className="flex flex-col gap-0.5 pl-3">
                       {reading.chapters.map((chapter, c) => (
                         <li key={c} className={`flex items-baseline gap-2 text-label leading-snug ${chapter.inBook || !book?.bookId ? "text-prose/80" : "text-dim"}`}>
@@ -116,7 +116,7 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-dim">Books</h2>
+        <h2 className="text-body font-semibold uppercase tracking-wide text-dim">Books</h2>
         <div className="flex flex-col rounded-xl bg-panel px-4 py-2 shadow-canvas">
           {course.books.map((book) => (
             <CourseBookLine key={book.key} book={book} progress={book.bookId ? (progress.get(book.bookId) ?? null) : undefined} />

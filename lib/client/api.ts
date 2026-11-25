@@ -1,3 +1,4 @@
+import type { FocusBlocking, FocusStart } from "@/lib/shared/focus";
 import type { BookId, Position, SettingsChange } from "@/lib/shared/types";
 
 interface StatePatch {
@@ -54,3 +55,29 @@ export const relinkBook = (id: BookId, targetId: BookId) => send("/api/library/m
 
 /** Moves what the data folder keeps for a missing book to its forgotten folder. Returns the server's message when it refuses, otherwise null. */
 export const forgetBook = (id: BookId) => send(`/api/library/missing/${id}`, "DELETE", undefined, "Forgetting");
+
+/** What a focus session would block right now; a server that can't be reached blocks nothing. */
+export const fetchFocusPreview = async (): Promise<FocusBlocking> => {
+  try {
+    const response = await fetch("/api/focus");
+    if (!response.ok) throw new Error(String(response.status));
+    return ((await response.json()) as { blocking: FocusBlocking }).blocking;
+  } catch {
+    return { state: "off", reason: "The app couldn’t check Three, so nothing is blocked." };
+  }
+};
+
+/** Starts a focus session. It always starts: when Three can't block, the answer says so and the timer runs on. */
+export const startFocusSession = async (title: string, minutes: number): Promise<FocusStart> => {
+  try {
+    const response = await fetch("/api/focus", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, minutes }) });
+    if (!response.ok) throw new Error(String(response.status));
+    return (await response.json()) as FocusStart;
+  } catch {
+    return { sessionId: null, endsAt: null, blocking: { state: "off", reason: "The app couldn’t reach Three, so nothing is blocked." } };
+  }
+};
+
+/** Ends this app's Three session early. Three leaves any other session alone. */
+export const stopFocusSession = (sessionId: string) =>
+  fetch("/api/focus", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) }).catch(() => undefined);

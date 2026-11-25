@@ -49,26 +49,26 @@ function Question({ quiz, index, onMark, onJump }: { quiz: ChapterQuiz; index: n
       <p className="text-label text-dim tabular-nums">
         Question {index + 1} of {quiz.questions.length} · {question.kind === "why" ? "Explain why" : "Recall"}
       </p>
-      <div className="text-[18px] font-medium leading-snug text-paper">
+      <div className="text-headline font-medium leading-snug text-paper">
         <Markdown text={question.question} />
       </div>
       {revealed ? (
         <div className="animate-rise flex flex-col gap-4">
           {thinking.trim() ? <p className="text-label text-dim">You answered: “{thinking.trim()}”</p> : null}
-          <div className="text-[14px] leading-relaxed text-prose">
+          <div className="text-callout leading-relaxed text-prose">
             <Markdown text={question.answer} />
           </div>
           <button type="button" onClick={() => onJump(question.anchor)} className="press text-left" title="Go to this place in the chapter">
-            <span className="line-clamp-3 border-l border-line-strong pl-3 font-reading text-[12px] leading-relaxed text-dim">{question.quote}</span>
+            <span className="line-clamp-3 border-l border-line-strong pl-3 font-reading text-label leading-relaxed text-dim">{question.quote}</span>
           </button>
           <div className="grid grid-cols-2 gap-2 pt-1">
             <Button size="md" variant="outline" onClick={() => mark(false)} className="flex-col !h-auto gap-0.5 py-2">
               <span>I missed it</span>
-              <span className="text-[11px] font-normal opacity-70">1</span>
+              <span className="text-caption font-normal opacity-70">1</span>
             </Button>
             <Button size="md" variant="outline" onClick={() => mark(true)} className="flex-col !h-auto gap-0.5 py-2">
               <span>I got it</span>
-              <span className="text-[11px] font-normal opacity-70">2</span>
+              <span className="text-caption font-normal opacity-70">2</span>
             </Button>
           </div>
         </div>
@@ -100,7 +100,7 @@ function Result({ quiz, answers, onRetake, onClose, onJump }: { quiz: ChapterQui
   return (
     <div className="flex w-full max-w-[560px] flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <p className="text-[18px] font-medium text-paper">{passed ? "Passed. The chapter is done." : "Not passed yet."}</p>
+        <p className="text-headline font-medium text-paper">{passed ? "Passed. The chapter is done." : "Not passed yet."}</p>
         <p className="text-label text-dim tabular-nums">
           {right} of {quiz.questions.length} right · {need} to pass
           {passed ? "" : ". Reread what you missed and take it again whenever you like."}
@@ -111,7 +111,7 @@ function Result({ quiz, answers, onRetake, onClose, onJump }: { quiz: ChapterQui
         <ul className="flex flex-col gap-3">
           {missed.map((q) => (
             <li key={q.id} className="flex flex-col gap-1.5 rounded-lg bg-tint px-3 py-2.5">
-              <p className="text-[13px] font-medium text-paper">{q.question}</p>
+              <p className="text-body font-medium text-paper">{q.question}</p>
               <div className="text-label leading-relaxed text-prose">
                 <Markdown text={q.answer} />
               </div>
@@ -207,7 +207,7 @@ export function QuizSheet({ quizzes, chapter, onClose, onJump }: { quizzes: Quiz
           )
         ) : (
           <div className="flex max-w-[44ch] flex-col items-center gap-3 text-center">
-            <p className="text-[15px] font-medium text-paper">{writing ? "The quiz is being written." : "This chapter’s quiz isn’t written yet."}</p>
+            <p className="text-title font-medium text-paper">{writing ? "The quiz is being written." : "This chapter’s quiz isn’t written yet."}</p>
             <p className="text-label leading-relaxed text-dim">
               {writing
                 ? "Keep reading; it shows up here when it’s ready, usually within a minute."

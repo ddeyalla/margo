@@ -27,11 +27,12 @@ import { patchBookState } from "@/lib/client/api";
 import { hasUnsentText } from "@/lib/client/unsent";
 import type { CourseContext } from "@/lib/shared/courses";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
-import type { Anchor, BookFormat, BookId, BookState, CardSet, Highlight, PanelTab, QuotedPassage, ReadingFont, ReadingTheme, SelectionContext } from "@/lib/shared/types";
+import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext } from "@/lib/shared/types";
 import { BookHeader, READ_ALOUD_SHORTCUT, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
 import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
 import type { PlaceStore, ReadingSpot } from "./place";
+import { FocusClock, FocusRecap } from "./FocusSession";
 import { ReadAloudBar } from "./ReadAloudBar";
 import { OpenFailed, PageTurn, SpotlightExit } from "./ReaderChrome";
 import { ReadingFooter } from "./ReadingFooter";
@@ -44,6 +45,7 @@ import { usePositionSaver } from "./usePositionSaver";
 import { useRefreshOnReturn } from "./useRefreshOnReturn";
 import { useShortcuts, type Shortcut } from "./useShortcuts";
 import { useSpotlight } from "./useSpotlight";
+import { useFocusSession } from "./useFocusSession";
 import { useTutorActions } from "./useTutorActions";
 import { PANEL_ID, useTutorPanel } from "./useTutorPanel";
 
@@ -133,7 +135,10 @@ export function BookWorkspace({
   });
   const search = useBookSearch(book, navigate);
   const { on: spotlight, end: endSpotlight, toggle: toggleSpotlight } = useSpotlight(panel, book.format === "epub" && !error, dismissNotice);
-  const noticeExit = useNoticeExit(notice, spotlight || reviewing);
+  const focus = useFocusSession(book.id, title, panel);
+  /* The spotlight and a focus session both clear the chrome away; only the spotlight dims the page. */
+  const bare = spotlight || focus.active;
+  const noticeExit = useNoticeExit(notice, bare || reviewing);
   /* Read-along, null while its controls are closed. Its voice and speed are settings, remembered for every book. */
   const [readAloud, setReadAloud] = useState<{ playing: boolean } | null>(null);
   const toggleReadAloud = useCallback(() => {
@@ -149,7 +154,7 @@ export function BookWorkspace({
   /* The book's own title and author replace the file name once it has been opened. */
   const handleReady = (next: ReaderMeta) => {
     setToc(next.toc);
-    const merged = { title: next.title ?? meta.title, author: next.author ?? meta.author };
+    const merged = { title: next.title ? tidyTitle(next.title) : meta.title, author: next.author ?? meta.author };
     setMeta(merged);
     const stored = initialState.meta;
     const title = merged.title ?? book.fileTitle;
@@ -304,6 +309,16 @@ export function BookWorkspace({
   const seek = useCallback((fraction: number) => navigate((reader) => reader.seek(fraction)), [navigate]);
   const reply = useStableCallback((draft: MessageDraft) => provider && tutor.reply(draft, provider));
   const retry = useStableCallback(() => provider && tutor.retry(provider));
+  /* The recall from a focus session goes to the tutor as the reader's own message, to be checked against the book. */
+  const askRecall = (text: string, minutes: number) => {
+    showTab("chat");
+    reply({
+      text: `I just finished a ${minutes}-minute reading session. From memory, the ideas worth keeping:\n\n${text}\n\nDid I get them right? Correct anything I misremembered and tell me what I missed.`,
+      attachments: [],
+      quotes: [],
+    });
+    focus.dismiss(true);
+  };
 
   const readerProps: ReaderProps = {
     ref: readerRef,
@@ -352,6 +367,8 @@ export function BookWorkspace({
         onSpotlight={toggleSpotlight}
         readingAloud={!!readAloud}
         onReadAloud={toggleReadAloud}
+        focusing={focus.active}
+        onFocus={focus.start}
         panelId={PANEL_ID}
         panelOpen={panel.open}
         onTogglePanel={panel.toggle}
@@ -361,15 +378,15 @@ export function BookWorkspace({
         controller={panel.layout}
         autoSaveId="rigg-learn.book-layout"
         onLayoutChange={panel.sync}
-        className={clsx("min-h-0 flex-1", !spotlight && "px-2 pb-2")}
+        className={clsx("min-h-0 flex-1", !bare && "px-2 pb-2")}
       >
         <ResizablePanel id="reader-panel" minSize="360px" className="min-w-0">
           <div ref={readerPaneRef} style={{ "--toc-width": `${TOC_WIDTH}px` } as CSSProperties} className="flex h-full min-w-0">
             {tocDocked && !error ? (
               <div
-                inert={!tocOpen || spotlight}
+                inert={!tocOpen || bare}
                 className="h-full shrink-0 overflow-hidden"
-                style={{ width: tocOpen && !spotlight ? TOC_WIDTH : 0 }}
+                style={{ width: tocOpen && !bare ? TOC_WIDTH : 0 }}
               >
                 <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen} docked onSelect={openEntry} onClose={closeToc} />
               </div>
@@ -378,7 +395,7 @@ export function BookWorkspace({
               ref={readerAreaRef}
               data-dark-pages={(book.format === "pdf" && pageTheme(pdfTheme) === "dark") || undefined}
               data-reading-theme={book.format === "epub" && epubTheme !== "auto" ? epubTheme : undefined}
-              className={clsx("relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-page", !spotlight && "rounded-xl shadow-canvas")}
+              className={clsx("relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-page", !bare && "rounded-xl shadow-canvas")}
             >
               {annotations.error ? <ErrorBanner message={annotations.error} onDismiss={annotations.dismissError} /> : null}
               {error ? (
@@ -422,7 +439,24 @@ export function BookWorkspace({
                 </>
               )}
               {spotlight ? <SpotlightExit shortcut={SPOTLIGHT_SHORTCUT} onExit={toggleSpotlight} /> : null}
-              {noticeExit.shown && !spotlight && !reviewing ? (
+              {focus.session.phase === "running" || focus.session.phase === "starting" ? (
+                <FocusClock
+                  remaining={focus.remaining}
+                  blocking={focus.session.phase === "running" ? focus.session.blocking : null}
+                  starting={focus.session.phase === "starting"}
+                  onEnd={focus.end}
+                />
+              ) : null}
+              {focus.session.phase === "done" ? (
+                <FocusRecap
+                  minutes={focus.session.minutes}
+                  early={focus.session.early}
+                  askBlocked={!provider ? "Choose a tutor first" : (unavailable ?? (tutor.sending ? "The tutor is still answering" : null))}
+                  onAsk={(text) => askRecall(text, focus.session.phase === "done" ? focus.session.minutes : 0)}
+                  onSkip={() => focus.dismiss()}
+                />
+              ) : null}
+              {noticeExit.shown && !bare && !reviewing ? (
                 <OpeningNotice
                   notice={noticeExit.shown}
                   tutorReady={!!provider && !unavailable && !tutor.sending}
@@ -454,7 +488,7 @@ export function BookWorkspace({
               ) : null}
               {quizChapter && !reviewing ? <QuizSheet quizzes={quizzes} chapter={quizChapter} onClose={closeQuiz} onJump={jumpTo} /> : null}
               {!tocDocked && !error ? (
-                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !spotlight && !reviewing && !quizChapter} docked={false} onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
             </main>
           </div>

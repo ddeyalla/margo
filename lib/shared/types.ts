@@ -58,6 +58,13 @@ export interface SelectionContext {
   rect: { top: number; left: number; width: number; height: number };
 }
 
+/**
+ * A title without the brackets some publishers leave empty when they stamp the buyer's name into a book, as in
+ * "Build a Large Language Model (From Scratch) (for )", often padded with zero-width spaces. Anything else in
+ * brackets stays.
+ */
+export const tidyTitle = (title: string): string => title.replace(/\s*\([\s\u200b-\u200d\u2060\ufeff]*(?:for[\s\u200b-\u200d\u2060\ufeff]*)?\)/gi, "").trim() || title;
+
 export interface BookMeta {
   title: string;
   author: string | null;
@@ -342,6 +349,11 @@ export type PanelTab = "chat" | "notes" | "highlights" | "cards";
 
 export const isPanelTab = (value: unknown): value is PanelTab => value === "chat" || value === "notes" || value === "highlights" || value === "cards";
 
+/** How the library shows its books: a grid of covers, or a shelf of spines that turn into 3D books. */
+export type LibraryView = "grid" | "shelf";
+
+export const isLibraryView = (value: unknown): value is LibraryView => value === "grid" || value === "shelf";
+
 export interface AppSettings {
   provider: ProviderId | null;
   models: Partial<Record<ProviderId, string>>;
@@ -358,13 +370,15 @@ export interface AppSettings {
   /** Read-along: the voice that reads the book, and how fast. */
   readAloudVoice: string | null;
   readAloudRate: ReadAloudRate;
+  /** The library's look. The shelf unless the grid was chosen. */
+  libraryView: LibraryView;
   /** Absolute folder of books and of the markdown notes copy, chosen in the app. BOOKS_DIR and NOTES_DIR win over them. */
   booksDir: string | null;
   notesDir: string | null;
 }
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "readAloudVoice" | "readAloudRate" | "booksDir" | "notesDir">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "readAloudVoice" | "readAloudRate" | "libraryView" | "booksDir" | "notesDir">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 

@@ -20,22 +20,22 @@ export interface Shelf {
 }
 
 /** Read this far and the book counts as finished; the last pages are often notes and an index. */
-const FINISHED = 0.99;
+export const FINISHED = 0.99;
 
-const formatSize = (bytes: number) =>
+export const formatSize = (bytes: number) =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 /** A muted hue of its own for each book, so a shelf of books without covers isn't one flat colour. */
-const toneOf = (id: BookId) => `oklch(0.3 0.04 ${parseInt(id.slice(0, 4), 16) % 360})`;
+export const toneOf = (id: BookId) => `oklch(0.3 0.04 ${parseInt(id.slice(0, 4), 16) % 360})`;
 
 /** The book's cover over a plain panel with its title and author, which shows when the book has no cover. */
 function Cover({ book }: { book: ShelfBook }) {
   return (
-    <div className="relative aspect-[2/3] overflow-hidden rounded-md shadow-[0_6px_16px_-8px_rgba(0,0,0,0.45)]">
+    <div className="relative aspect-[2/3] overflow-hidden rounded-sm shadow-[0_6px_16px_-8px_rgba(0,0,0,0.45)]">
       <div aria-hidden className="absolute inset-0 flex flex-col p-3.5" style={{ backgroundColor: toneOf(book.id) }}>
         <span className="h-px w-6 bg-white/25" />
         <p className="mt-3 line-clamp-6 font-reading text-[15px] leading-[1.25] text-white/90">{book.title}</p>
-        {book.author ? <p className="mt-auto line-clamp-2 text-[11px] leading-snug text-white/60">{book.author}</p> : null}
+        {book.author ? <p className="mt-auto line-clamp-2 text-caption leading-snug text-white/60">{book.author}</p> : null}
       </div>
       <CoverImage src={book.cover} />
       <span aria-hidden className="absolute inset-0 rounded-md ring-1 ring-inset ring-black/[0.06]" />
@@ -71,7 +71,7 @@ function BookCard({ book }: { book: ShelfBook }) {
     >
       <Cover book={book} />
       <div className="flex min-w-0 flex-col gap-1 px-1">
-        <h3 className="line-clamp-2 text-[13px] font-semibold leading-snug text-paper">{book.title}</h3>
+        <h3 className="line-clamp-2 text-body font-semibold leading-snug text-paper">{book.title}</h3>
         {book.author ? <p className="truncate text-label text-dim">{book.author}</p> : null}
         <div className="mt-0.5">
           <Progress book={book} />
@@ -81,7 +81,7 @@ function BookCard({ book }: { book: ShelfBook }) {
   );
 }
 
-export const GRID = "grid grid-cols-[repeat(auto-fill,minmax(164px,1fr))] gap-4";
+const GRID = "grid grid-cols-[repeat(auto-fill,minmax(164px,1fr))] gap-4";
 
 function Grid({ books }: { books: ShelfBook[] }) {
   return (

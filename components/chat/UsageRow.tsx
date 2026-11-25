@@ -27,7 +27,7 @@ export function UsageRow({ thread }: { thread: Thread }) {
     <Popover>
       <PopoverTrigger
         title="What this thread has used"
-        className="press -mt-1.5 mb-1.5 ml-4 mr-auto flex max-w-[calc(100%-2rem)] items-center gap-1.5 rounded-xs px-1 text-[11px] tabular-nums text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:text-fog focus-visible:outline-2 focus-visible:outline-accent data-[open]:text-fog"
+        className="press -mt-1.5 mb-1.5 ml-4 mr-auto flex max-w-[calc(100%-2rem)] items-center gap-1.5 rounded-xs px-1 text-caption tabular-nums text-dim outline-none transition-colors duration-[var(--duration-fast)] hover:text-fog focus-visible:outline-2 focus-visible:outline-accent data-[open]:text-fog"
       >
         <span className="truncate">{contextLabel(latest?.contextTokens ?? null, latest?.contextWindow ?? null)}</span>
         <span aria-hidden>·</span>
@@ -62,7 +62,7 @@ function UsageDetail({ usage }: { usage: ReturnType<typeof threadUsage> }) {
         </ol>
       ) : null}
       {summaries.length ? (
-        <p className="flex items-baseline gap-2 text-[11px] tabular-nums">
+        <p className="flex items-baseline gap-2 text-caption tabular-nums">
           <span className="flex-1 text-fog">
             {summaries.length === 1 ? "1 summary" : `${summaries.length} summaries`} of earlier turns
           </span>
@@ -70,15 +70,15 @@ function UsageDetail({ usage }: { usage: ReturnType<typeof threadUsage> }) {
         </p>
       ) : null}
       {unreported ? (
-        <p className="text-[11px] leading-relaxed text-dim">
+        <p className="text-caption leading-relaxed text-dim">
           {unreported === 1 ? "1 answer has" : `${unreported} answers have`} no usage: the tutor didn&rsquo;t report it, or it was saved before
           usage was kept.
         </p>
       ) : null}
       {sessionTotals ? (
-        <p className="text-[11px] leading-relaxed text-dim">Codex reports a running total for its session. Each Codex line is the change since the one before.</p>
+        <p className="text-caption leading-relaxed text-dim">Codex reports a running total for its session. Each Codex line is the change since the one before.</p>
       ) : null}
-      {listPriced ? <p className="text-[11px] leading-relaxed text-dim">Your Claude plan pays for Claude Code. Its cost is what the same tokens would cost on the API.</p> : null}
+      {listPriced ? <p className="text-caption leading-relaxed text-dim">Your Claude plan pays for Claude Code. Its cost is what the same tokens would cost on the API.</p> : null}
     </>
   );
 }
@@ -86,7 +86,7 @@ function UsageDetail({ usage }: { usage: ReturnType<typeof threadUsage> }) {
 function UsageLine({ row }: { row: TurnRow }) {
   const { usage, tokens } = row;
   return (
-    <li className="flex flex-col gap-0.5 py-1.5 text-[11px] tabular-nums">
+    <li className="flex flex-col gap-0.5 py-1.5 text-caption tabular-nums">
       <span className="flex items-baseline gap-2">
         <span className="text-fog">Answer {row.answer}</span>
         <span className="min-w-0 flex-1 truncate text-dim">{usage.model ?? PROVIDER_NAMES[usage.provider]}</span>

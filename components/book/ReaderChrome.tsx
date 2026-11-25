@@ -44,7 +44,7 @@ export function SpotlightExit({ shortcut, onExit }: { shortcut: string; onExit()
 export function OpenFailed({ failure }: { failure: OpenFailure }) {
   return (
     <EmptyState icon={<FileWarning />} title="This book could not be opened" body={failure.message}>
-      {failure.detail ? <p className="mt-2 max-w-[48ch] font-mono text-[11px] leading-relaxed text-dim [overflow-wrap:anywhere]">{failure.detail}</p> : null}
+      {failure.detail ? <p className="mt-2 max-w-[48ch] font-mono text-caption leading-relaxed text-dim [overflow-wrap:anywhere]">{failure.detail}</p> : null}
       <Link href="/" className="press mt-3 rounded-full bg-accent px-3.5 py-1.5 text-label font-semibold text-on-accent transition-colors duration-[var(--duration-fast)] hover:bg-accent/90">
         Back to library
       </Link>

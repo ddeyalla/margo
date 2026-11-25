@@ -35,6 +35,14 @@ describe("settings", () => {
     expect(await readSettings()).toMatchObject({ chaptersOpen: false, panelTab: "chat" });
   });
 
+  it("shows the library as a shelf until the grid is chosen, and ignores views it doesn't know", async () => {
+    expect(await readSettings()).toMatchObject({ libraryView: "shelf" });
+    await saveSettings({ libraryView: "grid" });
+    expect(await readSettings()).toMatchObject({ libraryView: "grid" });
+    await writeFile(path.join(dir, "data", "settings.json"), JSON.stringify({ libraryView: "carousel" }));
+    expect(await readSettings()).toMatchObject({ libraryView: "shelf" });
+  });
+
   it("starts both page colours on auto, following the app's theme", async () => {
     expect(await readSettings()).toMatchObject({ epubPage: "auto", pdfPage: "auto" });
   });

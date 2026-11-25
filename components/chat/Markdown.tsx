@@ -60,10 +60,10 @@ function Link(props: JSX.IntrinsicElements["a"] & ExtraProps) {
 /* Raw HTML in a reply stays text (no rehype-raw), and react-markdown drops unsafe link protocols. */
 const components: Components = {
   p: styled("p", "my-2 first:mt-0 last:mb-0"),
-  h1: styled("h3", "mb-1.5 mt-4 text-[14px] font-semibold text-paper first:mt-0"),
-  h2: styled("h3", "mb-1.5 mt-4 text-[13px] font-semibold text-paper first:mt-0"),
-  h3: styled("h4", "mb-1 mt-3 text-[13px] font-semibold text-paper first:mt-0"),
-  h4: styled("h4", "mb-1 mt-3 text-[13px] font-medium text-fog first:mt-0"),
+  h1: styled("h3", "mb-1.5 mt-4 text-callout font-semibold text-paper first:mt-0"),
+  h2: styled("h3", "mb-1.5 mt-4 text-body font-semibold text-paper first:mt-0"),
+  h3: styled("h4", "mb-1 mt-3 text-body font-semibold text-paper first:mt-0"),
+  h4: styled("h4", "mb-1 mt-3 text-body font-medium text-fog first:mt-0"),
   ul: styled("ul", "my-2 list-disc space-y-1 pl-4 marker:text-dim"),
   ol: styled("ol", "my-2 list-decimal space-y-1 pl-5 marker:text-dim"),
   li: styled("li", "pl-0.5"),

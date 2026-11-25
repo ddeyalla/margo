@@ -240,7 +240,7 @@ function ParkedList({
 }) {
   return (
     <section aria-label="Parked questions" className="mb-2">
-      <p className="px-2 pb-1.5 pt-1 text-[11px] text-dim">Parked · {parked.length}</p>
+      <p className="px-2 pb-1.5 pt-1 text-caption text-dim">Parked · {parked.length}</p>
       <ul className="flex flex-col gap-0.5">
         {parked.map((thread, index) => {
           const place = placeLabel(thread.chapterTitle, thread.anchor);
@@ -251,7 +251,7 @@ function ParkedList({
                 type="button"
                 onClick={() => onJump(thread.anchor)}
                 title={place ? `Go to this passage · ${place}` : "Go to this passage"}
-                className="press line-clamp-2 rounded-xs text-left font-reading text-[13px] leading-snug text-dim transition-colors duration-[var(--duration-fast)] hover:text-fog"
+                className="press line-clamp-2 rounded-xs text-left font-reading text-body leading-snug text-dim transition-colors duration-[var(--duration-fast)] hover:text-fog"
               >
                 {thread.quote}
               </button>
@@ -261,7 +261,7 @@ function ParkedList({
                   <Send />
                   Ask now
                 </Button>
-                <span className="min-w-0 flex-1 truncate px-1 text-[11px] text-dim">{place}</span>
+                <span className="min-w-0 flex-1 truncate px-1 text-caption text-dim">{place}</span>
                 <IconButton label="Delete this parked question" size="sm" onClick={() => onDiscard(thread.id)}>
                   <Trash2 />
                 </IconButton>
@@ -304,7 +304,7 @@ function ThreadList({
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
       {parked.length ? <ParkedList parked={parked} row={row} unavailable={unavailable} sending={sending} onJump={onJump} onSend={onSend} onDiscard={onDiscard} /> : null}
       {threads.length ? (
-        <p className="px-2 pb-1.5 pt-1 text-[11px] text-dim">
+        <p className="px-2 pb-1.5 pt-1 text-caption text-dim">
           {threads.length} {threads.length === 1 ? "thread" : "threads"} in this book
         </p>
       ) : null}
@@ -322,7 +322,7 @@ function ThreadList({
                 className="press flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left transition-colors duration-[var(--duration-fast)] hover:bg-tint focus-visible:bg-tint"
               >
                 {thread.kind === "passage" ? (
-                  <span className="line-clamp-2 font-reading text-[13px] leading-snug text-prose">{thread.quote}</span>
+                  <span className="line-clamp-2 font-reading text-body leading-snug text-prose">{thread.quote}</span>
                 ) : (
                   <span className="line-clamp-2 text-body leading-snug text-paper">
                     {thread.messages[0]?.attachments?.length ? (
@@ -331,7 +331,7 @@ function ThreadList({
                     {first}
                   </span>
                 )}
-                <span className="flex min-w-0 items-center gap-2 text-[11px] text-dim">
+                <span className="flex min-w-0 items-center gap-2 text-caption text-dim">
                   <span className="min-w-0 flex-1 truncate">
                     {label}
                     {place ? ` · ${place}` : ""}
@@ -430,8 +430,8 @@ function ThreadView({
             title="Go to this passage"
             className="group block w-full rounded-lg bg-panel-raised p-3 text-left shadow-chip transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover"
           >
-            <span className="line-clamp-6 whitespace-pre-line font-reading text-[14px] leading-relaxed text-prose">{thread.quote}</span>
-            <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] text-dim group-hover:text-fog">
+            <span className="line-clamp-6 whitespace-pre-line font-reading text-callout leading-relaxed text-prose">{thread.quote}</span>
+            <span className="mt-2 flex min-w-0 items-center gap-1.5 text-caption text-dim group-hover:text-fog">
               <CornerDownRight className="size-3 shrink-0" aria-hidden />
               <span className="truncate">{placeLabel(thread.chapterTitle, thread.anchor) ?? "Go to passage"}</span>
             </span>
@@ -443,7 +443,7 @@ function ThreadView({
         <div className="mt-4 flex flex-col gap-4">
           {thread.messages.flatMap((message, index) => [
             index === thread.compaction?.keepFrom ? (
-              <p key="summarized" className="flex items-center gap-3 text-[11px] text-dim">
+              <p key="summarized" className="flex items-center gap-3 text-caption text-dim">
                 <span aria-hidden className="h-px flex-1 bg-line-strong" />
                 The tutor reads the turns above as a summary
                 <span aria-hidden className="h-px flex-1 bg-line-strong" />
@@ -453,7 +453,7 @@ function ThreadView({
               <div key={index} className={clsx("flex flex-col items-end gap-1.5 pl-8", index >= firstSent && "animate-rise")}>
                 {message.quotes?.length ? <MessageQuotes quotes={message.quotes} first={firstQuoteNumber(thread.messages, index)} /> : null}
                 {message.attachments?.length ? <MessageImages bookId={bookId} images={message.attachments} onOpen={setViewing} /> : null}
-                <p className="min-w-0 whitespace-pre-wrap break-words rounded-[14px] rounded-br-[5px] bg-panel-raised px-3.5 shadow-chip py-2.5 text-body text-paper">
+                <p className="min-w-0 whitespace-pre-wrap break-words rounded-lg rounded-br-xs bg-panel-raised px-3.5 shadow-chip py-2.5 text-body text-paper">
                   {message.content}
                 </p>
               </div>
@@ -461,7 +461,7 @@ function ThreadView({
               <div key={index}>
                 <Markdown text={message.content} />
                 <AnswerSources text={message.content} />
-                {message.partial ? <p className="mt-1.5 text-[11px] text-dim">Stopped before the answer finished.</p> : null}
+                {message.partial ? <p className="mt-1.5 text-caption text-dim">Stopped before the answer finished.</p> : null}
               </div>
             ),
           ])}
@@ -469,7 +469,7 @@ function ThreadView({
           {failure ? (
             <FailureNote failure={failure} onRetry={unanswered ? onRetry : null} />
           ) : unanswered ? (
-            <p className="flex items-center gap-2 text-[11px] text-dim">
+            <p className="flex items-center gap-2 text-caption text-dim">
               Stopped before the tutor answered.
               <button
                 type="button"
@@ -545,13 +545,13 @@ function StreamingAnswer({ live, threadId, onGrow }: { live: LiveAnswer; threadI
 /** The head of a thread with no passage: where the reader was when they asked, as a way back there. */
 function AskedAt({ thread, onJump }: { thread: GeneralThread; onJump(): void }) {
   const place = thread.anchor && (placeLabel(thread.chapterTitle, thread.anchor) ?? "where you were reading");
-  if (!place) return <p className="text-[11px] text-dim">Asked without a passage</p>;
+  if (!place) return <p className="text-caption text-dim">Asked without a passage</p>;
   return (
     <button
       type="button"
       onClick={onJump}
       title="Go back to where you asked"
-      className="press flex max-w-full items-center gap-1.5 rounded-xs text-[11px] text-dim transition-colors duration-[var(--duration-fast)] hover:text-fog"
+      className="press flex max-w-full items-center gap-1.5 rounded-xs text-caption text-dim transition-colors duration-[var(--duration-fast)] hover:text-fog"
     >
       <CornerDownRight className="size-3 shrink-0" aria-hidden />
       <span className="truncate">Asked at {place}</span>
@@ -580,7 +580,7 @@ function QueuedNote({
   const link =
     "press shrink-0 rounded-xs px-1 text-fog underline decoration-dim underline-offset-2 transition-colors duration-[var(--duration-fast)] hover:text-paper";
   return (
-    <div role="status" className="flex shrink-0 items-center gap-2 px-4 pb-1.5 text-[11px] text-dim">
+    <div role="status" className="flex shrink-0 items-center gap-2 px-4 pb-1.5 text-caption text-dim">
       <span className="min-w-0 flex-1 truncate">
         {sending ? "Queued, sends after this answer" : "Not sent, the answer before it failed"}
         {elsewhere ? (queued.kind === "general" ? " (a new question)" : " (in another thread)") : ""}: <span className="text-fog">“{words}”</span>

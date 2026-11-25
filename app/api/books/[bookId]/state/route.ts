@@ -1,7 +1,7 @@
 import { readBookState, saveBookPosition, updateBookState } from "@/lib/server/store";
 import { isObject, parsePosition, shortText } from "@/lib/server/validate";
 import { readObject, withBook } from "@/lib/server/with-book";
-import type { BookMeta, Position } from "@/lib/shared/types";
+import { tidyTitle, type BookMeta, type Position } from "@/lib/shared/types";
 
 export const GET = withBook(async ({ book }) => Response.json(await readBookState(book.id)));
 
@@ -21,7 +21,7 @@ export const PATCH = withBook(async ({ book, request }) => {
   if ("meta" in body) {
     if (!isObject(body.meta)) return Response.json({ error: "Invalid meta." }, { status: 400 });
     meta = {
-      title: shortText(body.meta.title, 500) ?? book.fileTitle,
+      title: tidyTitle(shortText(body.meta.title, 500) ?? book.fileTitle),
       author: shortText(body.meta.author, 500),
       format: book.format,
       relPath: book.relPath,

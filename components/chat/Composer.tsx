@@ -101,7 +101,7 @@ export function Composer({
         {quoted.length ? <DraftQuotes quotes={quoted} onRemove={unquote} /> : null}
         {images.images.length ? <DraftImages images={images.images} onRemove={images.remove} /> : null}
         {problem ? (
-          <p role="alert" className="px-3.5 pt-2 text-[11px] leading-relaxed text-danger">
+          <p role="alert" className="px-3.5 pt-2 text-caption leading-relaxed text-danger">
             {problem}
           </p>
         ) : null}
@@ -159,7 +159,7 @@ export function Composer({
           >
             <ImagePlus className="size-4" aria-hidden />
           </button>
-          <span aria-hidden className="min-w-0 flex-1 truncate text-[11px] text-dim">
+          <span aria-hidden className="min-w-0 flex-1 truncate text-caption text-dim">
             {sending
               ? waiting
                 ? "Answering…"
