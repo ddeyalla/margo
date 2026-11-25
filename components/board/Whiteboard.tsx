@@ -5,11 +5,12 @@ import { CaptureUpdateAction, Excalidraw, exportToBlob, hashElementsVersion, Mai
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI, ExcalidrawInitialDataState } from "@excalidraw/excalidraw/types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, ChevronLeft, Eye, Maximize2, PanelRight, RotateCcw, Send, X } from "lucide-react";
+import { Check, ChevronLeft, Eye, PanelLeftClose, PanelLeftOpen, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import { Button, IconButton, Spinner } from "@/components/ui";
 import { compactScene, type BoardCheck, type BoardReview, type OpenedBoard } from "@/lib/shared/boards";
 import type { BookId, ProviderId } from "@/lib/shared/types";
 import { askBoard, fetchBoard, putBoard, settling, type BoardRequest } from "./api";
+import { remeasureText } from "./remeasure";
 import { acceptSuggestion, pendingSuggestions, readerElements, rejectSuggestion, suggestionsFor, type Suggestion } from "./suggestions";
 
 /* Excalidraw fetches its fonts from a CDN unless told where they are; the app serves its own copies, offline. */
@@ -18,8 +19,6 @@ if (typeof window !== "undefined") (window as unknown as { EXCALIDRAW_ASSET_PATH
 export interface WhiteboardProps {
   bookId: BookId;
   boardId: string;
-  /** Over the book with the tutor's tools beside it, or small in the side panel, for drawing alone. */
-  layout: "full" | "panel";
   provider: ProviderId | null;
   /** Why the tutor can't be asked right now, or null. */
   unavailable: string | null;
@@ -28,8 +27,11 @@ export interface WhiteboardProps {
   onRecall(active: boolean): void;
   /** Sends a message to the tutor's chat. */
   onAnswer(text: string): void;
-  /** Moves the board to the other place, the panel or the full view, once its edits are saved. */
-  onMove(): void;
+  /** The book is beside the board, rather than hidden for the board to take its room. */
+  bookShown: boolean;
+  onToggleBook(): void;
+  /** Back to the list of boards, once the edits are saved. */
+  onBack(): void;
   onClose(): void;
 }
 
@@ -91,13 +93,13 @@ const picture = async (api: ExcalidrawImperativeAPI): Promise<string | null> => 
 const pendingKey = (list: readonly Suggestion[]) => list.map((s) => s.id).join(",");
 
 /**
- * A whiteboard, over the book or in the side panel. The reader draws; the board saves itself to the notes folder as they go.
+ * A whiteboard in its own pane, beside the book or in its place, with the chat still open. The reader draws; the board saves itself to the notes folder as they go.
  * The tutor can review it against the chapter, or change it when asked, and what it sends back arrives as
  * suggestions the reader takes or leaves one at a time. "Draw it back" swaps in a blank board with the book
  * closed: redrawn from memory, the tutor points at the first link that doesn't hold, and says nothing more.
  */
 export default function Whiteboard(props: WhiteboardProps) {
-  const { bookId, boardId, layout, provider, unavailable, theme, onRecall, onAnswer, onMove, onClose } = props;
+  const { bookId, boardId, provider, unavailable, theme, bookShown, onRecall, onAnswer, onToggleBook, onBack, onClose } = props;
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [mode, setMode] = useState<"board" | "recall">("board");
   const [save, setSave] = useState<Save>({ state: "saved" });
@@ -115,6 +117,7 @@ export default function Whiteboard(props: WhiteboardProps) {
   const [pending, setPending] = useState<Suggestion[]>([]);
   const [instruction, setInstruction] = useState("");
   const [answer, setAnswer] = useState("");
+  const [tutorOpen, setTutorOpen] = useState(false);
 
   const api = useRef<ExcalidrawImperativeAPI | null>(null);
   const hash = useRef<string | null>(null);
@@ -233,7 +236,10 @@ export default function Whiteboard(props: WhiteboardProps) {
       savedVersion.current = version;
       /* The whole drawing in view when it opens, however small the panel. */
       const live = elements.filter((element) => !element.isDeleted);
-      if (live.length) api.current?.scrollToContent(live, { fitToViewport: true, viewportZoomFactor: 0.85 });
+      if (live.length && api.current) {
+        api.current.scrollToContent(live, { fitToViewport: true, viewportZoomFactor: 0.85 });
+        if (mode === "board") void remeasureText(api.current);
+      }
       return;
     }
     if (version === savedVersion.current || version === failedVersion.current) return;
@@ -357,37 +363,24 @@ export default function Whiteboard(props: WhiteboardProps) {
     onClose();
   };
 
-  const move = async () => {
+  const back = async () => {
+    if (mode === "recall") onRecall(false);
     await flush();
-    onMove();
+    onBack();
   };
 
   const board = load.state === "ready" ? load.board.board : null;
   const title = board?.title ?? "Whiteboard";
 
+  /* Saved is the quiet default and says nothing; the file's place is in the title's tooltip. */
   const saveLine =
-    save.state === "saving"
-      ? "Saving…"
-      : save.state === "unsaved"
-        ? "Edited"
-        : save.state === "failed"
-          ? save.error
-          : save.state === "conflict"
-            ? "Not saved"
-            : path
-              ? "Saved to your notes"
-              : "";
-  const askBlocked = !provider
-    ? (unavailable ?? "No tutor is available.")
-    : board && !board.chapter
-      ? "This board isn’t about a chapter, so the tutor has nothing to read it against."
-      : null;
-  const saveState =
-    mode === "board" && saveLine ? (
-      <span title={path ?? undefined} className={save.state === "failed" || save.state === "conflict" ? "shrink-0 text-label text-danger" : "shrink-0 text-label text-dim"}>
-        {saveLine}
-      </span>
-    ) : null;
+    save.state === "saving" ? "Saving…" : save.state === "unsaved" ? "Edited" : save.state === "failed" ? save.error : save.state === "conflict" ? "Not saved" : "";
+  /* The tutor reads a board against its chapter: a board about none has nothing for it to do. */
+  const tutorShown = !!board?.chapter && mode === "board";
+  const askBlocked = !provider ? (unavailable ?? "No tutor is available.") : null;
+  /* The tutor's side opens on demand, and on its own whenever it has something to show. */
+  const railShown =
+    mode === "recall" || (mode === "board" && (tutorOpen || !!review || !!pending.length || !!busy || save.state === "conflict" || !!error || !!notice));
   const canvas = (
     <div className="board-canvas relative min-w-0 flex-1">
       {load.state === "ready" ? (
@@ -436,50 +429,20 @@ export default function Whiteboard(props: WhiteboardProps) {
     </div>
   );
 
-  if (layout === "panel") {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex h-9 shrink-0 items-center gap-1 pl-1 pr-1.5">
-          <IconButton size="sm" label="All boards" onClick={() => void close()}>
-            <ChevronLeft />
-          </IconButton>
-          <span className="min-w-0 truncate text-label font-medium text-paper">{title}</span>
-          {saveState}
-          <span className="flex-1" />
-          <IconButton size="sm" label="Open over the book, with the tutor" disabled={load.state !== "ready"} onClick={() => void move()}>
-            <Maximize2 />
-          </IconButton>
-        </div>
-        {canvas}
-      </div>
-    );
-  }
-
   return (
-    <div role="dialog" aria-modal aria-label={`Whiteboard: ${title}`} className="animate-fade absolute inset-0 z-30 flex flex-col bg-page">
-      <div className="flex h-11 shrink-0 items-center gap-2 px-3">
-        <span className="min-w-0 truncate text-label text-fog">{mode === "recall" ? `Draw it back · ${board?.chapter ?? title}` : title}</span>
-        {saveState}
+    <div aria-label={`Whiteboard: ${title}`} role="region" className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-1 pl-1 pr-1.5">
+        <IconButton size="sm" label="All boards" onClick={() => void back()}>
+          <ChevronLeft />
+        </IconButton>
+        <span title={path ?? undefined} className="min-w-0 truncate text-label font-medium text-paper">
+          {mode === "recall" ? `Draw it back · ${board?.chapter ?? title}` : title}
+        </span>
+        {mode === "board" && saveLine ? (
+          <span className={save.state === "failed" || save.state === "conflict" ? "shrink-0 text-caption text-danger" : "shrink-0 text-caption text-dim"}>{saveLine}</span>
+        ) : null}
         <span className="flex-1" />
-        {mode === "board" ? (
-          <>
-            <span title={askBlocked ?? undefined} className="inline-flex">
-              <Button size="sm" disabled={!!askBlocked || !!busy || load.state !== "ready"} onClick={() => void ask("review")}>
-                {busy === "review" ? <Spinner /> : <Eye />}
-                Review with the tutor
-              </Button>
-            </span>
-            {board?.kind === "chapter" ? (
-              <Button size="sm" disabled={!!busy} onClick={() => void startRecall()}>
-                <RotateCcw />
-                Draw it back
-              </Button>
-            ) : null}
-            <IconButton label="Move to the side panel" disabled={load.state !== "ready"} onClick={() => void move()}>
-              <PanelRight />
-            </IconButton>
-          </>
-        ) : (
+        {mode === "recall" ? (
           <>
             <span title={askBlocked ?? undefined} className="inline-flex">
               <Button size="sm" variant="primary" disabled={!!askBlocked || !!busy} onClick={() => void ask("check")}>
@@ -491,116 +454,136 @@ export default function Whiteboard(props: WhiteboardProps) {
               Back to my board
             </Button>
           </>
-        )}
-        <IconButton label="Close the whiteboard" onClick={() => void close()}>
+        ) : tutorShown ? (
+          <Button size="sm" variant={railShown ? "outline" : "ghost"} aria-pressed={railShown} disabled={load.state !== "ready"} onClick={() => setTutorOpen(!railShown)}>
+            <Sparkles />
+            Tutor
+          </Button>
+        ) : null}
+        <IconButton size="sm" label={bookShown ? "Hide the book" : "Show the book"} active={!bookShown} disabled={mode === "recall"} onClick={onToggleBook}>
+          {bookShown ? <PanelLeftClose /> : <PanelLeftOpen />}
+        </IconButton>
+        <IconButton size="sm" label="Close the whiteboard" onClick={() => void close()}>
           <X />
         </IconButton>
       </div>
       <div className="flex min-h-0 flex-1">
         {canvas}
-        <aside aria-label="Tutor" className="flex w-[300px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-line px-4 py-4">
-          {mode === "recall" ? (
-            <RecallRail check={check} busy={busy === "check"} onShow={(link) => check && show(check.ids[link])} />
-          ) : (
-            <>
-              {save.state === "conflict" ? (
-                <div className="flex flex-col gap-2 rounded-lg bg-tint px-3 py-2.5">
-                  <p className="text-label text-paper">This board changed in another app while it was open, so the app stopped saving over it.</p>
-                  <p className="text-label text-dim">Your version is saved beside it as “{save.copy.split("/").pop()}”.</p>
-                  <Button size="sm" className="self-start" onClick={open}>
-                    Open the file’s version
-                  </Button>
-                </div>
-              ) : null}
-              {!review && !pending.length && !busy ? (
-                <p className="text-label leading-relaxed text-dim">
-                  Draw ideas in boxes and join them with arrows for how they connect. The tutor can review the board against{" "}
-                  {board?.chapter ? `“${board.chapter}”` : "its chapter"}; anything it adds shows up in its own colour for you to keep or drop.
-                </p>
-              ) : null}
-              {busy === "review" || busy === "edit" ? (
-                <p className="flex items-center gap-2 text-label text-dim">
-                  <Spinner /> The tutor is reading the board…
-                </p>
-              ) : null}
-              {review ? (
-                <ReviewRail
-                  review={review.review}
-                  answer={answer}
-                  onAnswer={setAnswer}
-                  onShow={(link) => show(review.ids[link])}
-                  onSend={() => {
-                    onAnswer(`On my whiteboard “${title}”, you asked: ${review.review.question}\n\nMy answer: ${answer.trim()}`);
-                    setAnswer("");
-                  }}
-                />
-              ) : null}
-              {pending.length ? (
-                <section className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-label font-medium text-paper">Suggestions</h3>
-                    <span className="flex-1" />
-                    <button type="button" className="press text-label text-dim hover:text-paper" onClick={() => decide(null, false)}>
-                      Drop all
-                    </button>
-                    <button type="button" className="press text-label text-dim hover:text-paper" onClick={() => decide(null, true)}>
-                      Keep all
-                    </button>
+        {railShown ? (
+          <aside aria-label="Tutor" className="flex w-[272px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-line px-3.5 py-3.5">
+            {mode === "recall" ? (
+              <RecallRail check={check} busy={busy === "check"} onShow={(link) => check && show(check.ids[link])} />
+            ) : (
+              <>
+                {save.state === "conflict" ? (
+                  <div className="flex flex-col gap-2 rounded-lg bg-tint px-3 py-2.5">
+                    <p className="text-label text-paper">This board changed in another app while it was open, so the app stopped saving over it.</p>
+                    <p className="text-label text-dim">Your version is saved beside it as “{save.copy.split("/").pop()}”.</p>
+                    <Button size="sm" className="self-start" onClick={open}>
+                      Open the file’s version
+                    </Button>
                   </div>
-                  <ul className="flex flex-col gap-1">
-                    {pending.map((suggestion) => (
-                      <li key={suggestion.id} className="flex items-center gap-1 rounded-md bg-tint py-1 pl-2.5 pr-1">
-                        <span className="min-w-0 flex-1 text-label text-prose">{suggestion.label}</span>
-                        <IconButton size="sm" label="Drop this suggestion" onClick={() => decide(suggestion.id, false)}>
-                          <X />
-                        </IconButton>
-                        <IconButton size="sm" label="Keep this suggestion" onClick={() => decide(suggestion.id, true)}>
-                          <Check />
-                        </IconButton>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-caption text-dim">Suggestions are saved only once you keep them.</p>
-                </section>
-              ) : null}
-              <span className="flex-1" />
-              <form
-                className="flex flex-col gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (instruction.trim()) void ask("edit");
-                }}
-              >
-                <label htmlFor="board-ask" className="text-label text-fog">
-                  Ask the tutor to change the board
-                </label>
-                <div className="flex items-end gap-1.5">
-                  <textarea
-                    id="board-ask"
-                    rows={2}
-                    value={instruction}
-                    onChange={(event) => setInstruction(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        event.currentTarget.form?.requestSubmit();
-                      }
+                ) : null}
+                {tutorShown && !review && !busy ? (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-label leading-relaxed text-dim">The tutor reads the board against “{board?.chapter}”. Whatever it adds shows in its own colour, for you to keep or drop.</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span title={askBlocked ?? undefined} className="inline-flex">
+                        <Button size="sm" disabled={!!askBlocked || load.state !== "ready"} onClick={() => void ask("review")}>
+                          <Eye />
+                          Review it
+                        </Button>
+                      </span>
+                      {board?.kind === "chapter" ? (
+                        <Button size="sm" onClick={() => void startRecall()}>
+                          <RotateCcw />
+                          Draw it back
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+                {busy === "review" || busy === "edit" ? (
+                  <p className="flex items-center gap-2 text-label text-dim">
+                    <Spinner /> The tutor is reading the board…
+                  </p>
+                ) : null}
+                {review ? (
+                  <ReviewRail
+                    review={review.review}
+                    answer={answer}
+                    onAnswer={setAnswer}
+                    onShow={(link) => show(review.ids[link])}
+                    onSend={() => {
+                      onAnswer(`On my whiteboard “${title}”, you asked: ${review.review.question}\n\nMy answer: ${answer.trim()}`);
+                      setAnswer("");
                     }}
-                    placeholder="Add what the chapter says causes this"
-                    className="min-w-0 flex-1 resize-none rounded-md bg-panel px-2.5 py-1.5 text-label text-paper shadow-chip outline-none placeholder:text-dim focus-visible:ring-1 focus-visible:ring-line-strong"
                   />
-                  <span title={askBlocked ?? undefined} className="inline-flex">
-                    <IconButton label="Send to the tutor" type="submit" disabled={!instruction.trim() || !!askBlocked || !!busy}>
-                      {busy === "edit" ? <Spinner /> : <Send />}
-                    </IconButton>
-                  </span>
-                </div>
-              </form>
-            </>
-          )}
-          {notice ? <p className="text-label text-dim">{notice}</p> : null}
-          {error ? <p className="text-label text-danger">{error}</p> : null}
-        </aside>
+                ) : null}
+                {pending.length ? (
+                  <section className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-label font-medium text-paper">Suggestions</h3>
+                      <span className="flex-1" />
+                      <button type="button" className="press text-label text-dim hover:text-paper" onClick={() => decide(null, false)}>
+                        Drop all
+                      </button>
+                      <button type="button" className="press text-label text-dim hover:text-paper" onClick={() => decide(null, true)}>
+                        Keep all
+                      </button>
+                    </div>
+                    <ul className="flex flex-col gap-1">
+                      {pending.map((suggestion) => (
+                        <li key={suggestion.id} className="flex items-center gap-1 rounded-md bg-tint py-1 pl-2.5 pr-1">
+                          <span className="min-w-0 flex-1 text-label text-prose">{suggestion.label}</span>
+                          <IconButton size="sm" label="Drop this suggestion" onClick={() => decide(suggestion.id, false)}>
+                            <X />
+                          </IconButton>
+                          <IconButton size="sm" label="Keep this suggestion" onClick={() => decide(suggestion.id, true)}>
+                            <Check />
+                          </IconButton>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-caption text-dim">Suggestions are saved only once you keep them.</p>
+                  </section>
+                ) : null}
+                <span className="flex-1" />
+                {tutorShown ? (
+                  <form
+                    className="flex items-end gap-1.5"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (instruction.trim()) void ask("edit");
+                    }}
+                  >
+                    <textarea
+                      aria-label="Ask the tutor to change the board"
+                      rows={2}
+                      value={instruction}
+                      onChange={(event) => setInstruction(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          event.currentTarget.form?.requestSubmit();
+                        }
+                      }}
+                      placeholder="Ask for a change: add what causes this…"
+                      className="min-w-0 flex-1 resize-none rounded-md bg-panel px-2.5 py-1.5 text-label text-paper outline-none ring-1 ring-inset ring-line placeholder:text-dim focus-visible:ring-line-strong"
+                    />
+                    <span title={askBlocked ?? undefined} className="inline-flex">
+                      <IconButton label="Send to the tutor" type="submit" disabled={!instruction.trim() || !!askBlocked || !!busy}>
+                        {busy === "edit" ? <Spinner /> : <Send />}
+                      </IconButton>
+                    </span>
+                  </form>
+                ) : null}
+              </>
+            )}
+            {notice ? <p className="text-label text-dim">{notice}</p> : null}
+            {error ? <p className="text-label text-danger">{error}</p> : null}
+          </aside>
+        ) : null}
       </div>
     </div>
   );

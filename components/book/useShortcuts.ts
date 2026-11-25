@@ -17,7 +17,7 @@ const PAGE_KEYS: Record<string, 1 | -1> = { ArrowRight: 1, ArrowDown: 1, PageDow
 
 /** Lists, toolbars, the progress bar and the side panel use the arrow keys themselves, so those keys don't turn pages there. */
 const usesArrows = (target: EventTarget | null, panelId: string) =>
-  target instanceof Element && !!target.closest(`nav, [role="toolbar"], [role="tablist"], [role="menu"], [role="slider"], #${panelId}`);
+  target instanceof Element && !!target.closest(`nav, [role="toolbar"], [role="tablist"], [role="menu"], [role="slider"], [data-board-pane], #${panelId}`);
 
 /**
  * The book page's keys, listened for on the window; keys from the EPUB's frame are forwarded there too.

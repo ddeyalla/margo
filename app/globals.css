@@ -627,6 +627,9 @@
 }
 
 /* The whiteboard has no shape library: Excalidraw's library browses a website, and boards stay local. */
-.board-canvas .default-sidebar-trigger {
+/* Excalidraw's own stylesheet loads after this one, so these carry its `.excalidraw` class to win. Its hints line repeats
+   what the toolbar already shows. */
+.board-canvas .excalidraw .default-sidebar-trigger,
+.board-canvas .excalidraw .HintViewer {
   display: none;
 }

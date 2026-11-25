@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Shapes, Sparkles, Trash2 } from "lucide-react";
+import { Pencil, Plus, Shapes, Sparkles, Trash2, X } from "lucide-react";
 import { Button, EmptyState, IconButton } from "@/components/ui";
 import type { BoardSummary } from "@/lib/shared/boards";
 import type { BookId, ProviderId } from "@/lib/shared/types";
@@ -35,7 +35,7 @@ function LineForm({ label, placeholder, button, disabled, onSend }: { label: str
   );
 }
 
-function BoardRow({ board, current, onOpen, onRename, onRemove }: { board: BoardSummary; current: boolean; onOpen(): void; onRename(title: string): void; onRemove(): void }) {
+function BoardRow({ board, onOpen, onRename, onRemove }: { board: BoardSummary; onOpen(): void; onRename(title: string): void; onRemove(): void }) {
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(board.title);
   if (renaming) {
@@ -72,19 +72,13 @@ function BoardRow({ board, current, onOpen, onRename, onRemove }: { board: Board
       <button type="button" onClick={onOpen} className="press min-w-0 flex-1 text-left">
         <span className="block truncate text-label font-medium text-paper">{board.title}</span>
         <span className="mt-0.5 flex items-center gap-1.5 text-caption text-dim">
-          {current ? (
-            <span className="shrink-0 text-fog">Open over the book</span>
-          ) : (
+          <span className="shrink-0">{board.kind === "chapter" ? "Chapter board" : board.from ? "From the chat" : "Your board"}</span>
+          {board.kind !== "chapter" && board.chapter ? (
             <>
-              <span className="shrink-0">{board.kind === "chapter" ? "Chapter board" : board.from ? "From the chat" : "Your board"}</span>
-              {board.kind !== "chapter" && board.chapter ? (
-                <>
-                  <span aria-hidden className="size-0.5 shrink-0 rounded-full bg-dim/60" />
-                  <span className="min-w-0 truncate">{board.chapter}</span>
-                </>
-              ) : null}
+              <span aria-hidden className="size-0.5 shrink-0 rounded-full bg-dim/60" />
+              <span className="min-w-0 truncate">{board.chapter}</span>
             </>
-          )}
+          ) : null}
         </span>
       </button>
       <span className="flex shrink-0 opacity-0 transition-opacity duration-[var(--duration-fast)] focus-within:opacity-100 group-hover/board:opacity-100">
@@ -103,25 +97,25 @@ function BoardRow({ board, current, onOpen, onRename, onRemove }: { board: Board
 }
 
 /**
- * The side panel's whiteboards: the book's boards, or the open one, drawn small beside the book. A board expands
- * over the book, where the tutor can review it. New boards start empty or come from the tutor: asked to draw, it
- * answers in the chat with a diagram that opens as a board.
+ * The board pane, beside the book or in its place, with the chat still open: the book's boards, or the one being
+ * drawn on. New boards start empty or come from the tutor: asked to draw, it answers in the chat with a diagram that
+ * opens as a board.
  */
-export function BoardsTab({
+export function BoardPane({
   boards,
-  shown,
   bookId,
   spot,
   context,
   provider,
   unavailable,
   theme,
+  bookShown,
+  onToggleBook,
+  onRecall,
   onDraw,
   onAnswer,
 }: {
   boards: BoardsApi;
-  /** The tab can be seen: its board is drawn only then, as a hidden canvas has no size. */
-  shown: boolean;
   bookId: BookId;
   /** The reading place, followed so the chapter's board is the chapter being read. */
   spot: PlaceStore;
@@ -129,28 +123,33 @@ export function BoardsTab({
   provider: ProviderId | null;
   unavailable: string | null;
   theme: "light" | "dark";
+  bookShown: boolean;
+  onToggleBook(): void;
+  /** Draw it back closes the book and the chat while it lasts. */
+  onRecall(active: boolean): void;
   /** Asks the tutor, in the chat, to draw something. */
   onDraw(text: string): void;
   onAnswer(text: string): void;
 }) {
   const open = boards.open;
   const entry = useChapter(spot);
-  if (open?.place === "panel") {
-    return shown ? (
+  if (open?.id) {
+    return (
       <WhiteboardSheet
         key={open.id}
         bookId={bookId}
         boardId={open.id}
-        layout="panel"
         provider={provider}
         unavailable={unavailable}
         theme={theme}
-        onRecall={() => undefined}
+        bookShown={bookShown}
+        onToggleBook={onToggleBook}
+        onRecall={onRecall}
         onAnswer={onAnswer}
-        onMove={() => boards.show(open.id, "full")}
+        onBack={boards.list}
         onClose={boards.close}
       />
-    ) : null;
+    );
   }
 
   const chapter = entry ? (context()?.chapter ?? null) : null;
@@ -159,50 +158,56 @@ export function BoardsTab({
   const others = boards.boards.filter((board) => board.id !== chapterId);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-col gap-2 px-3 pb-3">
-        {chapter ? (
-          <button
-            type="button"
-            onClick={() => void boards.openChapter("panel")}
-            className="press flex items-center gap-2.5 rounded-lg bg-tint px-3 py-2.5 text-left hover:bg-tint-strong"
-          >
-            <Shapes className="size-4 shrink-0 text-fog" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-label font-medium text-paper">This chapter’s board</span>
-              <span className="block truncate text-caption text-dim">{chapter}</span>
-            </span>
-            {open && open.id === chapterId ? <span className="shrink-0 text-caption text-fog">Open over the book</span> : null}
-          </button>
-        ) : null}
-        <LineForm
-          label="Ask the tutor to draw"
-          placeholder="Ask the tutor to draw… (how attention works)"
-          button={<Sparkles />}
-          disabled={drawBlocked}
-          onSend={onDraw}
-        />
-        <LineForm label="New board" placeholder="New board, by title" button={<Plus />} onSend={(title) => void boards.create(title)} />
+      <div className="flex h-10 shrink-0 items-center gap-1 pl-3 pr-1.5">
+        <span className="min-w-0 flex-1 truncate text-label font-medium text-paper">Whiteboards</span>
+        <IconButton size="sm" label="Close the whiteboards" onClick={boards.close}>
+          <X />
+        </IconButton>
       </div>
-      {others.length ? (
-        <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-          {others.map((board) => (
-            <BoardRow
-              key={board.id}
-              board={board}
-              current={open?.id === board.id}
-              onOpen={() => boards.show(board.id, open?.id === board.id ? "full" : "panel")}
-              onRename={(title) => void boards.rename(board.id, title)}
-              onRemove={() => void boards.remove(board.id)}
-            />
-          ))}
-        </ul>
-      ) : (
-        <EmptyState
-          icon={<Shapes />}
-          title="Draw to remember"
-          body="Sketch how ideas connect, in boxes and arrows. Boards are saved to your notes as Excalidraw files. Ask the tutor to draw something and it answers in the chat with a diagram you can open as a board."
-        />
-      )}
+      <div className="mx-auto flex w-full max-w-[520px] min-h-0 flex-1 flex-col">
+        <div className="flex flex-col gap-2 px-3 pb-3">
+          {chapter ? (
+            <button
+              type="button"
+              onClick={() => void boards.openChapter()}
+              className="press flex items-center gap-2.5 rounded-lg bg-tint px-3 py-2.5 text-left hover:bg-tint-strong"
+            >
+              <Shapes className="size-4 shrink-0 text-fog" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-label font-medium text-paper">This chapter’s board</span>
+                <span className="block truncate text-caption text-dim">{chapter}</span>
+              </span>
+            </button>
+          ) : null}
+          <LineForm
+            label="Ask the tutor to draw"
+            placeholder="Ask the tutor to draw… (how attention works)"
+            button={<Sparkles />}
+            disabled={drawBlocked}
+            onSend={onDraw}
+          />
+          <LineForm label="New board" placeholder="New board, by title" button={<Plus />} onSend={(title) => void boards.create(title)} />
+        </div>
+        {others.length ? (
+          <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+            {others.map((board) => (
+              <BoardRow
+                key={board.id}
+                board={board}
+                onOpen={() => boards.show(board.id)}
+                onRename={(title) => void boards.rename(board.id, title)}
+                onRemove={() => void boards.remove(board.id)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <EmptyState
+            icon={<Shapes />}
+            title="Draw to remember"
+            body="Sketch how ideas connect, in boxes and arrows. Boards are saved to your notes as Excalidraw files. Ask the tutor to draw something and it answers in the chat with a diagram you can open as a board."
+          />
+        )}
+      </div>
     </div>
   );
 }

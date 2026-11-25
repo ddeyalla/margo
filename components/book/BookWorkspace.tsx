@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
-import { OpenAsBoard, WhiteboardSheet } from "@/components/board/WhiteboardSheet";
+import { BoardPane } from "@/components/board/BoardPane";
+import { OpenAsBoard } from "@/components/board/WhiteboardSheet";
 import { useBoards } from "@/components/board/useBoards";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
@@ -49,9 +50,13 @@ import { useShortcuts, type Shortcut } from "./useShortcuts";
 import { useSpotlight } from "./useSpotlight";
 import { useFocusSession } from "./useFocusSession";
 import { useTutorActions } from "./useTutorActions";
-import { PANEL_ID, useTutorPanel } from "./useTutorPanel";
+import { BOARD_PANE_ID, BOOK_PANE_ID, PANEL_ID, useTutorPanel } from "./useTutorPanel";
 
 /** A sheet opened from a link leaves the link once closed, so a reload opens the book. */
+/* The bar between two panes, drawn only while it's hovered, focused or dragged. */
+const HANDLE =
+  "group relative z-10 w-2 shrink-0 outline-none before:absolute before:left-1/2 before:top-1/2 before:h-10 before:w-[3px] before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors before:duration-[var(--duration-fast)] before:content-[''] focus-visible:before:bg-fog data-[dragging]:before:bg-fog data-[hovering]:before:bg-line-strong";
+
 const dropParam = (name: string) => {
   const url = new URL(window.location.href);
   if (!url.searchParams.has(name)) return;
@@ -128,8 +133,8 @@ export function BookWorkspace({
   const boards = useBoards(book.id, initialState.boards, boardContext, boardError);
   const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
-  /* Whether the tutor panel was open when Draw it back folded it away. */
-  const panelBeforeRecall = useRef(false);
+  /* What Draw it back folded away, the book and the tutor panel, to open again after. */
+  const beforeRecall = useRef({ panel: false, book: false });
   useActivity(book.id, quizChapter ? "quiz" : reviewing ? "review" : "reading", spot);
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
@@ -261,8 +266,8 @@ export function BookWorkspace({
   useShortcuts({
     shortcuts,
     /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
-    /* A board in the side panel keeps the page keys: the panel's own keys never reach them. */
-    plainKeysOff: reviewing || !!quizChapter || boards.open?.place === "full",
+    /* A board keeps the page keys for the book beside it: keys pressed on the board itself never reach them. */
+    plainKeysOff: reviewing || !!quizChapter,
     /* The highlight menu goes first and alone, so the same press doesn't also dismiss the greeting or the spotlight. */
     closeFirst: menu ? closeMenu : null,
     /* Esc takes one thing away at a time: the selection, then the greeting, then the spotlight. */
@@ -313,22 +318,31 @@ export function BookWorkspace({
   const reply = useStableCallback((draft: MessageDraft) => provider && tutor.reply(draft, provider));
   const retry = useStableCallback(() => provider && tutor.retry(provider));
   /* The recall from a focus session goes to the tutor as the reader's own message, to be checked against the book. */
-  /** Opens a board over the book: the reader leaves a quiz or a review for it. */
-  const boardOverBook = (open: () => Promise<void>) => {
-    setQuizChapter(null);
-    setReviewing(false);
-    void open();
+  /* The board pane is open exactly while a board, or the list of them, is. */
+  const boardPaneShown = boards.open !== null;
+  const placeBoardPane = useEffectEvent((shown: boolean) => (shown ? panel.showBoard() : panel.hideBoard()));
+  useEffect(() => placeBoardPane(boardPaneShown), [boardPaneShown]);
+  /* Dragged shut, the pane closes its board, which saves it; the book is never folded away with nothing in its place. */
+  const layoutChanged = () => {
+    if (boards.open && panel.layout.isCollapsed(BOARD_PANE_ID)) boards.close();
+    if (panel.layout.isCollapsed(BOOK_PANE_ID) && panel.layout.isCollapsed(BOARD_PANE_ID)) panel.showBook();
+    panel.sync();
   };
+  const toggleBook = () => (panel.isBookOpen() ? panel.hideBook() : panel.showBook());
 
-  /* Draw it back closes the book, the chat included, and opens it again after. */
+  /* Draw it back closes the book, the chat included, and opens them again after. */
   const recallBoard = (active: boolean) => {
     if (active) {
-      panelBeforeRecall.current = panel.isOpen();
+      beforeRecall.current = { panel: panel.isOpen(), book: panel.isBookOpen() };
       panel.collapse();
-    } else if (panelBeforeRecall.current) panel.expand();
+      panel.hideBook();
+    } else {
+      if (beforeRecall.current.panel) panel.expand();
+      if (beforeRecall.current.book) panel.showBook();
+    }
   };
 
-  const openDiagram = useStableCallback((source: string) => boardOverBook(() => boards.fromDiagram(source)));
+  const openDiagram = useStableCallback((source: string) => void boards.fromDiagram(source));
   /* A message from a board goes to the open thread, or starts one at the reader's place when none is open. */
   const sayFromBoard = (text: string) => {
     showTab("chat");
@@ -395,7 +409,8 @@ export function BookWorkspace({
         onSpotlight={toggleSpotlight}
         focusing={focus.active}
         onFocus={focus.start}
-        onBoard={() => boardOverBook(() => boards.openChapter("full"))}
+        boardOpen={boardPaneShown}
+        onBoard={() => (boards.open ? boards.close() : boards.list())}
         panelId={PANEL_ID}
         panelOpen={panel.open}
         onTogglePanel={panel.toggle}
@@ -403,11 +418,11 @@ export function BookWorkspace({
       />
       <Resizable
         controller={panel.layout}
-        autoSaveId="rigg-learn.book-layout"
-        onLayoutChange={panel.sync}
+        autoSaveId="rigg-learn.book-layout.v2"
+        onLayoutChange={layoutChanged}
         className={clsx("min-h-0 flex-1", !bare && "px-2 pb-2")}
       >
-        <ResizablePanel id="reader-panel" minSize="360px" className="min-w-0">
+        <ResizablePanel id={BOOK_PANE_ID} minSize="360px" collapsible className="min-w-0">
           <div ref={readerPaneRef} style={{ "--toc-width": `${TOC_WIDTH}px` } as CSSProperties} className="flex h-full min-w-0">
             {tocDocked && !error ? (
               <div
@@ -490,34 +505,35 @@ export function BookWorkspace({
                 />
               ) : null}
               {quizChapter && !reviewing ? <QuizSheet quizzes={quizzes} chapter={quizChapter} onClose={closeQuiz} onJump={jumpTo} /> : null}
-              {boards.open?.place === "full" ? (
-                <WhiteboardSheet
-                  key={boards.open.id}
-                  bookId={book.id}
-                  boardId={boards.open.id}
-                  layout="full"
-                  provider={provider}
-                  unavailable={unavailable}
-                  theme={appTheme}
-                  onRecall={recallBoard}
-                  onAnswer={answerFromBoard}
-                  onMove={() => {
-                    if (boards.open) boards.show(boards.open.id, "panel");
-                    showTab("board");
-                  }}
-                  onClose={boards.close}
-                />
-              ) : null}
               {!tocDocked && !error ? (
-                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter && boards.open?.place !== "full"} docked={false} onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
             </main>
           </div>
         </ResizablePanel>
-        <ResizableHandle
-          aria-label="Resize the tutor panel"
-          className="group relative z-10 w-2 shrink-0 outline-none before:absolute before:left-1/2 before:top-1/2 before:h-10 before:w-[3px] before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors before:duration-[var(--duration-fast)] before:content-[''] focus-visible:before:bg-fog data-[dragging]:before:bg-fog data-[hovering]:before:bg-line-strong"
-        />
+        <ResizableHandle aria-label="Resize the whiteboard" disabled={!panel.boardOpen} className={clsx(HANDLE, !panel.boardOpen && "w-0")} />
+        <ResizablePanel id={BOARD_PANE_ID} defaultSize="0px" minSize="400px" collapsible className="min-w-0 overflow-hidden">
+          {/* Drawn only while open: a canvas in a closed pane has no size. */}
+          {boardPaneShown && panel.boardOpen ? (
+            <div data-board-pane className={clsx("flex h-full min-w-0 flex-col overflow-hidden bg-page", !bare && "rounded-xl shadow-canvas")}>
+              <BoardPane
+                boards={boards}
+                bookId={book.id}
+                spot={spot}
+                context={boardContext}
+                provider={provider}
+                unavailable={unavailable}
+                theme={appTheme}
+                bookShown={panel.bookOpen}
+                onToggleBook={toggleBook}
+                onRecall={recallBoard}
+                onDraw={drawInChat}
+                onAnswer={answerFromBoard}
+              />
+            </div>
+          ) : null}
+        </ResizablePanel>
+        <ResizableHandle aria-label="Resize the tutor panel" className={HANDLE} />
         <ResizablePanel
           id={PANEL_ID}
           defaultSize="380px"
@@ -549,13 +565,6 @@ export function BookWorkspace({
               onReview={startReview}
               onRemakeCards={provider ? remakeCards : null}
               panelOpen={panel.open}
-              boards={boards}
-              spot={spot}
-              boardContext={boardContext}
-              provider={provider}
-              theme={appTheme}
-              onDraw={drawInChat}
-              onAnswerFromBoard={answerFromBoard}
             />
           </OpenAsBoard>
         </ResizablePanel>

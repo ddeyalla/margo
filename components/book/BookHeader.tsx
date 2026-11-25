@@ -48,6 +48,7 @@ export function BookHeader({
   onSpotlight,
   focusing,
   onFocus,
+  boardOpen,
   onBoard,
   panelId,
   panelOpen,
@@ -74,7 +75,9 @@ export function BookHeader({
   /** A focus session is on: the header clears away, as for the spotlight. */
   focusing: boolean;
   onFocus(minutes: number): void;
-  /** Opens the whiteboard of the chapter being read. */
+  /** The whiteboards are open beside the book. */
+  boardOpen: boolean;
+  /** Opens or closes the whiteboards. */
   onBoard(): void;
   panelId: string;
   panelOpen: boolean;
@@ -114,6 +117,7 @@ export function BookHeader({
       <div className="shrink-0">
         <ProviderPicker providers={providers} current={provider} onSelect={onProvider} models={models} onModel={onModel} />
       </div>
+      <Divider />
       <Segmented label="Reading mode" options={MODES} value={settings.readingMode} onChange={(mode) => choose("readingMode", mode)} />
       {format === "epub" ? (
         <ReadingSettings
@@ -128,9 +132,7 @@ export function BookHeader({
       ) : (
         <Segmented label="Page colours" options={PDF_THEMES} value={settings.pdfPage} onChange={(theme) => choose("pdfPage", theme)} />
       )}
-      <IconButton label="Whiteboard: draw this chapter’s ideas and how they connect" disabled={failed} onClick={onBoard}>
-        <Shapes />
-      </IconButton>
+      <Divider />
       <FocusButton disabled={failed} onStart={onFocus} />
       {/* A disabled button takes no pointer, so the reason it is off sits on this wrapper. */}
       <span title={format === "epub" ? undefined : "Spotlight works in EPUB books for now"} className="inline-flex">
@@ -143,6 +145,11 @@ export function BookHeader({
           <Focus />
         </IconButton>
       </span>
+      <Divider />
+      {/* The panes beside the book, in the order they open: the whiteboards, then the tutor. */}
+      <IconButton label={boardOpen ? "Close the whiteboards" : "Whiteboards: draw ideas and how they connect"} active={boardOpen} disabled={failed} onClick={onBoard}>
+        <Shapes />
+      </IconButton>
       <IconButton
         label={panelOpen ? "Hide the tutor panel (⌘\\)" : "Show the tutor panel (⌘\\)"}
         active={panelOpen}
@@ -153,6 +160,11 @@ export function BookHeader({
       </IconButton>
     </header>
   );
+}
+
+/** A thin rule between groups of header controls. */
+function Divider() {
+  return <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line" />;
 }
 
 /** The chapter being read, beside the title. Subscribes on its own, so only a new chapter re-renders it. */

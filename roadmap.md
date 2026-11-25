@@ -630,19 +630,21 @@ tldraw is out because its SDK needs a production licence.
       new ideas it joins; dropping an idea drops its links. They are never saved until kept.*
 - [x] Mermaid from chat converts to an editable board.
       *Every chat diagram carries an "Open as whiteboard" bar. It opens as a new board of the
-      reader's own, over the book with the chat beside it, as an artifact opens. The same
+      reader's own, in the board pane with the chat beside it, as an artifact opens. The same
       diagram opens the same board. Flowcharts become shapes and bound arrows; other kinds
       come in as one picture. Asked to draw, the tutor names its diagram in a `%%` first line,
       which titles the board.*
-- [x] **Many boards per book, in the side panel.** A Board tab beside Chat, Notes,
-      Highlights and Cards lists the book's boards: the chapter's own, new ones by title, and
-      ones from the chat. It draws a board small beside the book and expands it over the
-      book, where the tutor's review and edits are.
+- [x] **Many boards per book, in their own pane.** The board pane opens between the book
+      and the chat, so all three show at once; it can also hide the book and take its room.
+      It lists the book's boards (the chapter's own, new ones by title, and ones from the
+      chat) and draws the open one. The tutor's review, edits and Draw it back sit in a rail
+      that opens on demand, or by itself when it has something to show.
       *Each board is its own file, `Whiteboards/<Book>/<Title>.excalidraw`. The book's state
       lists them by id; a board saved before keeps its file and becomes its chapter's board.
       Renaming keeps the file's name, and removing a board leaves its file in the notes.
       Draw it back stays on chapter boards, so only they count toward retention. "Ask the
-      tutor to draw" sends the request to the chat.*
+      tutor to draw" sends the request to the chat. Labels measured before Excalidraw's hand
+      font loaded are measured again when a board opens, so none draw clipped.*
 - [x] Results feed retention (Phase 18).
       *Each Draw it back check is an attempt, right when no link was wrong. A Course chapter
       with a board gains a recall item scheduled from those attempts, like a quiz.*

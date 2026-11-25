@@ -339,9 +339,9 @@ export const isReadingFont = (value: unknown): value is ReadingFont =>
   value === null || (typeof value === "string" && value.length > 0 && value.length <= 200 && value.trim() === value && !/\p{Cc}/u.test(value));
 
 /** The tab showing in the side panel. */
-export type PanelTab = "chat" | "notes" | "highlights" | "cards" | "board";
+export type PanelTab = "chat" | "notes" | "highlights" | "cards";
 
-export const isPanelTab = (value: unknown): value is PanelTab => value === "chat" || value === "notes" || value === "highlights" || value === "cards" || value === "board";
+export const isPanelTab = (value: unknown): value is PanelTab => value === "chat" || value === "notes" || value === "highlights" || value === "cards";
 
 /** How the library shows its books: a grid of covers, or a shelf of spines that turn into 3D books. */
 export type LibraryView = "grid" | "shelf";
