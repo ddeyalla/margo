@@ -147,3 +147,19 @@ describe("writing and saving a summary", () => {
     expect(await writeSummary(fakeProvider("   "), book, thread, foldPoint(thread) ?? 0, null, new AbortController().signal)).toBeNull();
   });
 });
+
+describe("a message about the whiteboard", () => {
+  const board = (text: string) => ({ id: "board-0001", title: "Habits", scene: { nodes: [{ id: "n1", text, x: 0, y: 0 }], links: [], loose: 0, sketches: 0 }, ids: { n1: "el-1" } });
+
+  it("sends the newest board as JSON with how to change it, and only names an earlier one", () => {
+    const thread = longThread(1, 10);
+    thread.messages[2] = { ...thread.messages[2], board: board("Old cue") };
+    thread.messages[4] = { ...thread.messages[4], board: board("New cue") };
+    const sent = buildTurn(book, thread, null, noImages).messages.map((message) => message.content).join("\n");
+    expect(sent).toContain('"text":"New cue"');
+    expect(sent).not.toContain("Old cue");
+    expect(sent).toContain("as it was then");
+    expect(sent).toContain("```board fence");
+    expect(sent).toContain('"op": "add_node"');
+  });
+});

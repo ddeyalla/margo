@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { saveAttachment } from "@/lib/server/attachments";
-import { readBookState } from "@/lib/server/store";
+import { readBookState, updateBookState } from "@/lib/server/store";
+import { normalizeBoard } from "@/lib/shared/boards";
 import { openTurn, parseTurnRequest, type OpenTurn, type TurnRequest } from "@/lib/server/turns";
 import type { BookId, ImageAttachment, LibraryBook, Thread } from "@/lib/shared/types";
 
@@ -147,6 +148,16 @@ describe("chat requests", () => {
     expect(await send([ids[0], ids[0]])).toBe("Attach up to 4 images to a message.");
     expect(await send(ids)).toBe("Attach up to 4 images to a message.");
     expect(await send("not a list")).toBe("Attach up to 4 images to a message.");
+  });
+
+  it("carries the whiteboard a message is about, when it is one of this book's, with words", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-requests-"));
+    await updateBookState(bookId, (state) => ({ ...state, boards: [normalizeBoard({ id: "board-0001", title: "Habits", kind: "free", chapter: null })] }), dir);
+    const board = { id: "board-0001", title: "Habits", scene: { nodes: [{ id: "n1", text: "Cue", x: 0, y: 0 }], links: [], loose: 0, sketches: 0 }, ids: { n1: "el-1" } };
+    expect(reply(await parseTurnRequest({ kind: "reply", threadId: "t1", text: "Add the reward", board }, book, "claude", dir)).board).toEqual(board);
+    expect(await parseTurnRequest({ kind: "reply", threadId: "t1", text: "Add it", board: { ...board, id: "board-9999" } }, book, "claude", dir)).toMatch(/isn't in this book/);
+    expect(await parseTurnRequest({ kind: "reply", threadId: "t1", text: "Add it", board: { ...board, ids: {} } }, book, "claude", dir)).toMatch(/couldn't be read/);
+    expect(await parseTurnRequest({ kind: "reply", threadId: "t1", text: " ", board }, book, "claude", dir)).toBe("Write a message or attach an image.");
   });
 
   it("needs words or an image", async () => {

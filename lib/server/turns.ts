@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { MAX_IMAGES_PER_MESSAGE } from "@/lib/shared/attachments";
+import { parseBoardMention, type BoardMention } from "@/lib/shared/boards";
 import { MAX_QUOTES_PER_MESSAGE, quoteMessage } from "@/lib/shared/quotes";
 import type { BookFormat, BookId, BookState, ChatMessage, Compaction, ImageAttachment, LibraryBook, ProviderId, Thread, TurnUsage } from "@/lib/shared/types";
 import { readAttachment } from "./attachments";
@@ -24,15 +25,26 @@ const readAttachments = async (value: unknown, bookId: BookId, dataDir: string):
   return images.flatMap((image) => (image ? [image.attachment] : []));
 };
 
+/** The whiteboard a message is about, when it names one: a board of this book, with the scene the reader sent. */
+const readBoard = async (value: unknown, bookId: BookId, dataDir: string): Promise<BoardMention | null | string> => {
+  if (value === undefined || value === null) return null;
+  const board = parseBoardMention(value);
+  if (!board) return "The whiteboard sent with this message couldn't be read.";
+  if (!(await readBookState(bookId, dataDir)).boards.some((entry) => entry.id === board.id)) return "That whiteboard isn't in this book any more.";
+  return board;
+};
+
 /**
- * The reader's typed message with its images and quoted passages. Images or passages sent without words ask the
- * tutor to explain them.
+ * The reader's typed message with its images, quoted passages and the whiteboard it is about. Images or passages
+ * sent without words ask the tutor to explain them; a whiteboard needs words, since it is open whatever is asked.
  */
 const userMessage = async (body: Record<string, unknown>, book: { id: BookId; format: BookFormat }, dataDir: string): Promise<ChatMessage | string> => {
   const quotes = parseQuotes(body.quotes, book.format, MAX_QUOTES_PER_MESSAGE);
   if (!quotes) return `Quote up to ${MAX_QUOTES_PER_MESSAGE} passages of this book in a message.`;
   const attachments = await readAttachments(body.attachments, book.id, dataDir);
   if (typeof attachments === "string") return attachments;
+  const board = await readBoard(body.board, book.id, dataDir);
+  if (typeof board === "string") return board;
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (text.length > MAX_MESSAGE) return "This message is too long.";
   if (!text && !attachments.length && !quotes.length) return "Write a message or attach an image.";
@@ -40,6 +52,7 @@ const userMessage = async (body: Record<string, unknown>, book: { id: BookId; fo
   const message: ChatMessage = { role: "user", content: text || fallback, createdAt: new Date().toISOString() };
   if (attachments.length) message.attachments = attachments;
   if (quotes.length) message.quotes = quotes;
+  if (board) message.board = board;
   return message;
 };
 

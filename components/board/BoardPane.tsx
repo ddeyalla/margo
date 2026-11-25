@@ -1,36 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Shapes, Sparkles, Trash2, X } from "lucide-react";
-import { Button, EmptyState, IconButton } from "@/components/ui";
+import { MessageSquare, Pencil, Plus, Shapes, Trash2, X } from "lucide-react";
+import { Button, EmptyState, Field, IconButton, PaneHeader } from "@/components/ui";
 import type { BoardSummary } from "@/lib/shared/boards";
 import type { BookId, ProviderId } from "@/lib/shared/types";
 import { useChapter, type PlaceStore } from "@/components/book/place";
 import type { BoardContext, BoardsApi } from "./useBoards";
 import { WhiteboardSheet } from "./WhiteboardSheet";
 
-const fieldClass =
-  "min-w-0 flex-1 rounded-sm bg-ink/60 px-2 py-1.5 text-label text-paper outline-none ring-1 ring-line placeholder:text-dim focus:ring-line-strong";
-
 /** A one-line form: a field and a button, sent with Enter, cleared once sent. */
-function LineForm({ label, placeholder, button, disabled, onSend }: { label: string; placeholder: string; button: React.ReactNode; disabled?: string | null; onSend(text: string): void }) {
+function LineForm({ label, placeholder, button, onSend }: { label: string; placeholder: string; button: React.ReactNode; onSend(text: string): void }) {
   const [text, setText] = useState("");
   return (
     <form
       className="flex items-center gap-1.5"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!text.trim() || disabled) return;
+        if (!text.trim()) return;
         onSend(text.trim());
         setText("");
       }}
     >
-      <input aria-label={label} value={text} onChange={(event) => setText(event.target.value)} placeholder={placeholder} className={fieldClass} />
-      <span title={disabled ?? undefined} className="inline-flex">
-        <Button type="submit" size="sm" disabled={!text.trim() || !!disabled}>
-          {button}
-        </Button>
-      </span>
+      <Field aria-label={label} value={text} onChange={(event) => setText(event.target.value)} placeholder={placeholder} className="flex-1" />
+      <Button type="submit" size="sm" disabled={!text.trim()}>
+        {button}
+      </Button>
     </form>
   );
 }
@@ -48,7 +43,7 @@ function BoardRow({ board, onOpen, onRename, onRemove }: { board: BoardSummary; 
             setRenaming(false);
           }}
         >
-          <input
+          <Field
             aria-label="Board title"
             autoFocus
             onFocus={(event) => event.currentTarget.select()}
@@ -61,7 +56,7 @@ function BoardRow({ board, onOpen, onRename, onRemove }: { board: BoardSummary; 
                 setRenaming(false);
               }
             }}
-            className={fieldClass + " w-full"}
+            className="w-full"
           />
         </form>
       </li>
@@ -98,7 +93,7 @@ function BoardRow({ board, onOpen, onRename, onRemove }: { board: BoardSummary; 
 
 /**
  * The board pane, beside the book or in its place, with the chat still open: the book's boards, or the one being
- * drawn on. New boards start empty or come from the tutor: asked to draw, it answers in the chat with a diagram that
+ * drawn on. New boards start empty or come from the tutor: asked in the chat to draw, it answers with a diagram that
  * opens as a board.
  */
 export function BoardPane({
@@ -114,7 +109,6 @@ export function BoardPane({
   onToggleBook,
   onSwap,
   onRecall,
-  onDraw,
   onAnswer,
 }: {
   boards: BoardsApi;
@@ -133,8 +127,7 @@ export function BoardPane({
   onSwap(): void;
   /** Draw it back closes the book and the chat while it lasts. */
   onRecall(active: boolean): void;
-  /** Asks the tutor, in the chat, to draw something. */
-  onDraw(text: string): void;
+  /** Puts words in the chat's composer, with the board attached. */
   onAnswer(text: string): void;
 }) {
   const open = boards.open;
@@ -161,24 +154,23 @@ export function BoardPane({
   }
 
   const chapter = entry ? (context()?.chapter ?? null) : null;
-  const drawBlocked = !provider ? (unavailable ?? "Choose a tutor first") : unavailable;
   const chapterId = chapter ? boards.boards.find((board) => board.kind === "chapter" && board.chapter === chapter)?.id : undefined;
   const others = boards.boards.filter((board) => board.id !== chapterId);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-1 pl-3 pr-1.5">
-        <span className="min-w-0 flex-1 truncate text-label font-medium text-paper">Whiteboards</span>
+      <PaneHeader>
+        <span className="min-w-0 flex-1 truncate pl-1.5 text-label font-medium text-paper">Whiteboards</span>
         <IconButton size="sm" label="Close the whiteboards" onClick={boards.close}>
           <X />
         </IconButton>
-      </div>
+      </PaneHeader>
       <div className="mx-auto flex w-full max-w-[520px] min-h-0 flex-1 flex-col">
-        <div className="flex flex-col gap-2 px-3 pb-3">
+        <div className="flex flex-col gap-2 px-3 py-3">
           {chapter ? (
             <button
               type="button"
               onClick={() => void boards.openChapter()}
-              className="press flex items-center gap-2.5 rounded-lg bg-tint px-3 py-2.5 text-left hover:bg-tint-strong"
+              className="press flex items-center gap-2.5 rounded-lg bg-panel-raised px-3 py-2.5 text-left shadow-chip ring-1 ring-inset ring-line transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover"
             >
               <Shapes className="size-4 shrink-0 text-fog" />
               <span className="min-w-0 flex-1">
@@ -187,14 +179,11 @@ export function BoardPane({
               </span>
             </button>
           ) : null}
-          <LineForm
-            label="Ask the tutor to draw"
-            placeholder="Ask the tutor to draw… (how attention works)"
-            button={<Sparkles />}
-            disabled={drawBlocked}
-            onSend={onDraw}
-          />
           <LineForm label="New board" placeholder="New board, by title" button={<Plus />} onSend={(title) => void boards.create(title)} />
+          <p className="flex items-start gap-2 px-1 text-caption leading-relaxed text-dim">
+            <MessageSquare aria-hidden className="mt-px size-3.5 shrink-0" />
+            <span>To have the tutor draw one, ask in the chat: “Draw how attention works.” Its diagram opens as a board.</span>
+          </p>
         </div>
         {others.length ? (
           <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
@@ -212,7 +201,7 @@ export function BoardPane({
           <EmptyState
             icon={<Shapes />}
             title="Draw to remember"
-            body="Sketch how ideas connect, in boxes and arrows. Boards are saved to your notes as Excalidraw files. Ask the tutor to draw something and it answers in the chat with a diagram you can open as a board."
+            body="Sketch how ideas connect, in boxes and arrows. Boards are saved to your notes as Excalidraw files."
           />
         )}
       </div>

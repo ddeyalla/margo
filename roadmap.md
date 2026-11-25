@@ -362,6 +362,10 @@ library was read, so a failure there left an unanswered message.
       Phase 14's signal summary ("1 held", "1 misconception") sits above it.*
 - [x] Books outside a Course are never gated.
       *They get no quizzes, notices or locks at all.*
+- [x] **One design system.** `components/ui` holds the primitives every surface uses:
+      `Field`, `TextArea`, `Surface`, `PaneHeader` and `Divider` beside `Button`. Edges are
+      hairlines (`line`, `line-strong`); only floating surfaces get elevation. Excalidraw's
+      chrome and canvas take the app's tokens, so the board reads as part of the pane.
 - [x] Results feed retention (Phase 18).
       *Every attempt keeps each answer with right or wrong, confidence and thinking, ready
       for Phase 18 to read.*
@@ -622,7 +626,11 @@ tldraw is out because its SDK needs a production licence.
 - [x] The tutor edits the board by returning JSON operations (add, update, delete),
       validated by the app. Bad JSON goes back once with the error.
       *Ops are `add_node`, `add_link`, `update` and `delete`, at most 30, checked against the
-      ids sent. "Ask the tutor to change the board" sends an instruction the same way.*
+      ids sent. Changes are asked for in the chat, not in a second box on the board: the
+      open board rides along as a chip on the message, the tutor answers in words and puts
+      its ops in a `board` fence, and they land on that board as suggestions once the
+      answer finishes, read against the board as it was sent. The chat only says where
+      they went.*
 - [x] **Agent edits are suggestions:** shown in their own colour, accepted or rejected one
       by one, so the tutor never overwrites your drawing. Undo covers the rest.
       *Suggestions are dashed, violet and locked, and carry what they would do on the
@@ -643,9 +651,13 @@ tldraw is out because its SDK needs a production licence.
       *Each board is its own file, `Whiteboards/<Book>/<Title>.excalidraw`. The book's state
       lists them by id; a board saved before keeps its file and becomes its chapter's board.
       Renaming keeps the file's name, and removing a board leaves its file in the notes.
-      Draw it back stays on chapter boards, so only they count toward retention. "Ask the
-      tutor to draw" sends the request to the chat. Labels measured before Excalidraw's hand
+      Draw it back stays on chapter boards, so only they count toward retention. To have
+      the tutor draw a new board, ask in the chat. Labels measured before Excalidraw's hand
       font loaded are measured again when a board opens, so none draw clipped.*
+- [x] **One design system.** `components/ui` holds the primitives every surface uses:
+      `Field`, `TextArea`, `Surface`, `PaneHeader` and `Divider` beside `Button`. Edges are
+      hairlines (`line`, `line-strong`); only floating surfaces get elevation. Excalidraw's
+      chrome and canvas take the app's tokens, so the board reads as part of the pane.
 - [x] Results feed retention (Phase 18).
       *Each Draw it back check is an attempt, right when no link was wrong. A Course chapter
       with a board gains a recall item scheduled from those attempts, like a quiz.*

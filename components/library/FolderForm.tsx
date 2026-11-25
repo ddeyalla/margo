@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
-import { Button } from "@/components/ui";
+import { Button, Field } from "@/components/ui";
 import { saveFolders } from "@/lib/client/api";
 
 export interface FolderValue {
@@ -93,18 +93,19 @@ function FolderField({
         <>
           <div className="flex gap-2">
             {hasPicker ? (
-              <p className="min-w-0 flex-1 truncate rounded-sm bg-panel px-2.5 py-1.5 text-label text-fog">
+              <p className="min-w-0 flex-1 truncate rounded-sm bg-panel px-2.5 py-1.5 text-label text-fog ring-1 ring-inset ring-line">
                 {value || <span className="text-dim">{placeholder}</span>}
               </p>
             ) : (
-              <input
+              <Field
                 id={inputId}
+                size="md"
                 value={value}
                 onChange={(event) => onChange(event.target.value)}
                 placeholder={placeholder}
                 spellCheck={false}
                 autoComplete="off"
-                className="h-8 min-w-0 flex-1 rounded-sm bg-panel px-2.5 text-label text-paper placeholder:text-dim focus:outline-1 focus:outline-fog/40"
+                className="flex-1"
               />
             )}
             {hasPicker ? (

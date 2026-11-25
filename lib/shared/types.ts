@@ -1,4 +1,4 @@
-import type { Board } from "./boards";
+import type { Board, BoardMention } from "./boards";
 import type { ChapterQuiz } from "./quiz";
 
 export type BookFormat = "epub" | "pdf";
@@ -134,6 +134,8 @@ export interface ChatMessage {
   attachments?: ImageAttachment[];
   /** On the reader's message, the passages they quoted. Numbered across the thread, from 1, in the order quoted. */
   quotes?: QuotedPassage[];
+  /** On the reader's message, the whiteboard it is about, as it was when they sent it. */
+  board?: BoardMention;
   /** On an answer, when its provider reported usage. */
   usage?: TurnUsage;
   /** On an answer, set once its broken diagrams went back to the tutor, so they go back only once. */

@@ -4,7 +4,7 @@ import path from "node:path";
 import {
   isBoardFile,
   parseCheckReply,
-  parseEditReply,
+  BOARD_OPS_GUIDE,
   parseReviewReply,
   type BoardAnswer,
   type BoardAttempt,
@@ -171,13 +171,6 @@ export const recordAttempt = async (bookId: BookId, id: string, attempt: BoardAt
 
 /* The tutor on the board. */
 
-const OPS_GUIDE = `Ops change the board. The reader sees each one as a suggestion in its own colour and accepts or rejects it; nothing you send replaces their drawing.
-- {"op": "add_node", "id": "habit-loop", "text": "Habit loop", "x": 420, "y": 160} adds an idea. The id is a short lowercase name of your own. Leave out x and y to let the app place it.
-- {"op": "add_link", "from": "n2", "to": "habit-loop", "label": "builds"} adds an arrow between two nodes on the board or added above. The label is optional.
-- {"op": "update", "id": "n3", "text": "..."} rewords a node, or a link's label.
-- {"op": "delete", "id": "l2"} removes a node or link.
-Nodes on the board are n1, n2…; links are l1, l2…, as the board JSON lists them.`;
-
 const BOARD_INTRO = `A reader is drawing a whiteboard of a chapter they are reading: the chapter's ideas as boxes or words, and arrows for how the ideas connect. You get the chapter's text in numbered blocks, the board as JSON (each node's text and position, each link's ends and label), and a picture of it.`;
 
 export const REVIEW_SYSTEM = `${BOARD_INTRO}
@@ -188,7 +181,7 @@ Look over the board against the chapter, as a tutor would:
 - "question": one question about a link on the board that makes the reader explain it: "Why does A lead to B?", with A and B in the board's own words.
 - "ops": the missing ideas as new nodes linked where they belong, and a fix for each wrong link. Place new nodes near what they connect to.
 
-${OPS_GUIDE}
+${BOARD_OPS_GUIDE}
 
 Reply with exactly one JSON object and nothing else:
 {"missing": ["..."], "wrong_links": [{"link": "l2", "why": "..."}], "question": "...", "ops": [...]}`;
@@ -202,18 +195,9 @@ This time the reader closed the book and redrew the chapter from memory. Check t
 Reply with exactly one JSON object and nothing else:
 {"wrong": {"link": "l3", "hint": "..."}, "note": "..."}`;
 
-export const EDIT_SYSTEM = `${BOARD_INTRO}
+export type BoardAsk = { kind: "review" } | { kind: "check" };
 
-The reader asks you to change the board. Make the change they ask for, and only that, as ops that stay true to the chapter.
-
-${OPS_GUIDE}
-
-Reply with exactly one JSON object and nothing else:
-{"ops": [...]}`;
-
-export type BoardAsk = { kind: "review" } | { kind: "check" } | { kind: "edit"; instruction: string };
-
-const SYSTEMS = { review: REVIEW_SYSTEM, check: CHECK_SYSTEM, edit: EDIT_SYSTEM } as const;
+const SYSTEMS = { review: REVIEW_SYSTEM, check: CHECK_SYSTEM } as const;
 
 export const boardRequest = (book: BookLabel, chapter: string, blocks: readonly { text: string }[], scene: CompactScene, ask: BoardAsk): string =>
   [
@@ -228,11 +212,7 @@ export const boardRequest = (book: BookLabel, chapter: string, blocks: readonly 
     JSON.stringify(scene),
     "</board>",
     "",
-    ask.kind === "review"
-      ? "Review this board."
-      : ask.kind === "check"
-        ? "Check this board, drawn from memory."
-        : `The reader asks: ${ask.instruction}`,
+    ask.kind === "review" ? "Review this board." : "Check this board, drawn from memory.",
   ].join("\n");
 
 const parse = (ask: BoardAsk, reply: string, scene: CompactScene): BoardAnswer | string => {
@@ -240,12 +220,8 @@ const parse = (ask: BoardAsk, reply: string, scene: CompactScene): BoardAnswer |
     const review = parseReviewReply(reply, scene);
     return typeof review === "string" ? review : { kind: "review", review };
   }
-  if (ask.kind === "check") {
-    const check = parseCheckReply(reply, scene);
-    return typeof check === "string" ? check : { kind: "check", check };
-  }
-  const ops = parseEditReply(reply, scene);
-  return typeof ops === "string" ? ops : { kind: "edit", ops };
+  const check = parseCheckReply(reply, scene);
+  return typeof check === "string" ? check : { kind: "check", check };
 };
 
 /**

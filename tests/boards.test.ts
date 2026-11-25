@@ -11,7 +11,8 @@ import {
   isBoardFile,
   parseCheckReply,
   parseCompactScene,
-  parseEditReply,
+  boardOpsIn,
+  parseBoardMention,
   parseReviewReply,
   validateOps,
   type BoardElement,
@@ -33,6 +34,7 @@ vi.mock("@/lib/server/search/index", () => ({
 
 const { askAboutBoard, boardPath, chapterBoard, createBoard, listBoards, openBoard, recordAttempt, removeBoard, renameBoard, saveBoard } = await import("@/lib/server/boards");
 const { readBookState } = await import("@/lib/server/store");
+const { answerChanges } = await import("@/components/board/link");
 
 const box = (id: string, x: number, y: number, extra: Partial<BoardElement> = {}): BoardElement => ({ id, type: "rectangle", x, y, width: 100, height: 40, ...extra });
 const label = (id: string, containerId: string, text: string): BoardElement => ({ id, type: "text", x: 0, y: 0, width: 10, height: 10, text, originalText: text, containerId });
@@ -130,10 +132,52 @@ describe("the tutor's ops", () => {
     expect(validateOps(Array.from({ length: 31 }, (_, i) => ({ op: "add_node", id: `x${i}`, text: "x" })), scene)).toMatch(/at most 30/);
   });
 
-  it("reads an edit reply from around prose and fences, and wants at least one op", () => {
-    expect(parseEditReply('Here:\n```json\n{"ops": [{"op": "delete", "id": "n1"}]}\n```', scene)).toEqual([{ op: "delete", id: "n1" }]);
-    expect(parseEditReply('{"ops": []}', scene)).toBe("Send at least one op.");
-    expect(parseEditReply("no json", scene)).toBe("The reply had no JSON object.");
+});
+
+describe("the board in the chat", () => {
+  const { ids } = compactScene(drawing);
+  const mention = { id: "board-0001", title: "Habits", scene, ids };
+
+  it("takes a board mention whose ids are exactly the scene's, each an element id", () => {
+    expect(parseBoardMention(mention)).toEqual(mention);
+    expect(parseBoardMention({ ...mention, id: "x" })).toBeNull();
+    expect(parseBoardMention({ ...mention, title: " " })).toBeNull();
+    expect(parseBoardMention({ ...mention, scene: { nodes: [{ id: "bad" }], links: [] } })).toBeNull();
+    const { n1: _dropped, ...missing } = ids;
+    void _dropped;
+    expect(parseBoardMention({ ...mention, ids: missing })).toBeNull();
+    expect(parseBoardMention({ ...mention, ids: { ...ids, n1: "has space" } })).toBeNull();
+    expect(parseBoardMention({ ...mention, ids: { ...ids, n99: "extra" } })).toBeNull();
+  });
+
+  it("reads an answer's last board fence, a list of ops or an object holding one, against the scene that was sent", () => {
+    const ops = '[{"op": "add_node", "id": "reward", "text": "Reward"}, {"op": "add_link", "from": "n3", "to": "reward"}]';
+    expect(boardOpsIn(`Added the reward.\n\n\`\`\`board\n${ops}\n\`\`\``, scene)).toEqual([
+      { op: "add_node", id: "reward", text: "Reward" },
+      { op: "add_link", from: "n3", to: "reward" },
+    ]);
+    expect(boardOpsIn('```board\n{"ops": [{"op": "delete", "id": "l1"}]}\n```', scene)).toEqual([{ op: "delete", id: "l1" }]);
+    expect(boardOpsIn('```board\n[{"op": "delete", "id": "l1"}]\n```\nThen:\n```board\n[{"op": "delete", "id": "l2"}]\n```', scene)).toEqual([{ op: "delete", id: "l2" }]);
+  });
+
+  it("reads an answer's changes against the board its question carried, never one stopped early", () => {
+    const fence = '```board\n[{"op": "delete", "id": "l1"}]\n```';
+    const messages = [
+      { role: "user" as const, content: "Fix the first link", createdAt: "", board: mention },
+      { role: "assistant" as const, content: `Fixed.\n\n${fence}`, createdAt: "" },
+      { role: "user" as const, content: "And now?", createdAt: "" },
+      { role: "assistant" as const, content: fence, createdAt: "" },
+    ];
+    expect(answerChanges("t1", messages, 1)).toEqual({ key: "t1:1", board: mention, ops: [{ op: "delete", id: "l1" }] });
+    expect(answerChanges("t1", messages, 3)).toBeNull();
+    expect(answerChanges("t1", [messages[0], { ...messages[1], partial: true }], 1)).toBeNull();
+  });
+
+  it("finds nothing in an answer with no board fence, and says why a fence can't be used", () => {
+    expect(boardOpsIn("A cue comes first.\n```json\n[]\n```", scene)).toBeNull();
+    expect(boardOpsIn("```board\n[]\n```", scene)).toBeNull();
+    expect(boardOpsIn("```board\n[{\n```", scene)).toMatch(/valid JSON/);
+    expect(boardOpsIn('```board\n[{"op": "delete", "id": "n9"}]\n```', scene)).toMatch(/not on the board/);
   });
 });
 
@@ -377,7 +421,8 @@ describe("asking the tutor about a board", () => {
     };
     return { provider, turns };
   };
-  const ask = (provider: Provider, kind: "review" | "check" | "edit" = "edit") =>
+  const review = (ops: string) => `{"missing": [], "wrong_links": [], "question": "Why does the cue lead to the craving?", "ops": ${ops}}`;
+  const ask = (provider: Provider, kind: "review" | "check" = "review") =>
     askAboutBoard(
       provider,
       {
@@ -387,26 +432,26 @@ describe("asking the tutor about a board", () => {
         labels: ["Habits"],
         scene,
         image: { mediaType: "image/png", data: "AAAA" },
-        ask: kind === "edit" ? { kind, instruction: "Add the reward." } : { kind },
+        ask: { kind },
       },
       null,
       new AbortController().signal,
     );
 
   it("sends the chapter's own text, the board and its picture", async () => {
-    const { provider, turns } = tutor(['{"ops": [{"op": "add_node", "id": "reward", "text": "Reward"}]}']);
-    expect(await ask(provider)).toEqual({ kind: "edit", ops: [{ op: "add_node", id: "reward", text: "Reward" }] });
+    const { provider, turns } = tutor([review('[{"op": "add_node", "id": "reward", "text": "Reward"}]')]);
+    expect(await ask(provider)).toMatchObject({ kind: "review", review: { ops: [{ op: "add_node", id: "reward", text: "Reward" }] } });
     const message = turns[0].messages[0];
     expect(message.content).toContain("A cue triggers a craving");
     expect(message.content).not.toContain("Not this chapter.");
     expect(message.content).toContain('"id":"l1"');
-    expect(message.content).toContain("The reader asks: Add the reward.");
+    expect(message.content).toContain("Review this board.");
     expect(message.images).toEqual([{ mediaType: "image/png", data: "AAAA" }]);
   });
 
   it("sends a reply that can't be used back once with the reason, then gives up", async () => {
-    const repaired = tutor(['{"ops": [{"op": "delete", "id": "n9"}]}', '{"ops": [{"op": "delete", "id": "n3"}]}']);
-    expect(await ask(repaired.provider)).toEqual({ kind: "edit", ops: [{ op: "delete", id: "n3" }] });
+    const repaired = tutor([review('[{"op": "delete", "id": "n9"}]'), review('[{"op": "delete", "id": "n3"}]')]);
+    expect(await ask(repaired.provider)).toMatchObject({ kind: "review", review: { ops: [{ op: "delete", id: "n3" }] } });
     expect(repaired.turns[1].messages.at(-1)!.content).toContain('"n9" is not on the board.');
     const hopeless = tutor(["nope", "still nope"]);
     await expect(ask(hopeless.provider, "check")).rejects.toThrow(/couldn't be read/);

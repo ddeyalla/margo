@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { Button } from "@/components/ui";
+import { Button, Field } from "@/components/ui";
 import { ModalDialog } from "@/components/ui/dialog";
 import { forgetBook, relinkBook } from "@/lib/client/api";
 import { rankCandidates, type RelinkCandidate } from "@/lib/shared/relink";
@@ -119,15 +119,15 @@ function RelinkDialog({ book, candidates, onClose }: { book: MissingBook; candid
           <label htmlFor={filterId} className="sr-only">
             Filter books
           </label>
-          <input
+          <Field
             id={filterId}
+            size="md"
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Filter by title or path"
             spellCheck={false}
             autoComplete="off"
-            className="h-8 rounded-sm bg-panel px-2.5 text-label text-paper shadow-chip placeholder:text-dim focus:outline-1 focus:outline-fog/40"
           />
           <fieldset className="-mx-1 max-h-[min(360px,50dvh)] overflow-y-auto">
             <legend className="sr-only">Books in the books folder</legend>

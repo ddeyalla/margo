@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { ArrowLeft, BookOpen, Focus, Moon, PanelRight, Search, Shapes, Sun, SunMoon, TableOfContents } from "lucide-react";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import { SEARCH_SHORTCUT } from "@/components/search/SearchDialog";
-import { IconButton, Segmented } from "@/components/ui";
+import { Divider, IconButton, Segmented } from "@/components/ui";
 import type { AppSettings, BookFormat, ProviderId, ProviderInfo, ReadingFont, ReadingMode, ReadingTheme } from "@/lib/shared/types";
 import { useChapter, type PlaceStore } from "./place";
 import { FocusButton } from "./FocusSession";
@@ -163,10 +163,6 @@ export function BookHeader({
 }
 
 /** A thin rule between groups of header controls. */
-function Divider() {
-  return <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line" />;
-}
-
 /** The chapter being read, beside the title. Subscribes on its own, so only a new chapter re-renders it. */
 function ChapterLabel({ spot }: { spot: PlaceStore }) {
   const chapter = useChapter(spot);

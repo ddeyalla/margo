@@ -77,8 +77,8 @@ export const PUT = withBook(async ({ book, request }) => {
  * - `{ op: "create", title, chapter, labels, text?, source? }`: a new board of the reader's, empty or with `text`. With the
  *   chat diagram it was made from as `source`, the same diagram opens the same board.
  * - `{ op: "rename", id, title }` and `{ op: "remove", id }`. Removing keeps the file.
- * - `{ op: "review" | "check" | "edit", id, provider, scene, image, instruction? }`, where `scene` is the compact scene. A check
- *   is a draw-it-back on a chapter's board, and its result is recorded for retention.
+ * - `{ op: "review" | "check", id, provider, scene, image }`, where `scene` is the compact scene. A check is a draw-it-back
+ *   on a chapter's board, and its result is recorded for retention. Changes the reader asks for go through the chat.
  */
 export const POST = withBook(async ({ book, request }) => {
   const body = await readBody(request);
@@ -137,13 +137,8 @@ export const POST = withBook(async ({ book, request }) => {
   if (!isProviderId(body.provider)) return badRequest("Unknown provider.");
   const scene = parseCompactScene(body.scene);
   if (!scene) return badRequest("Expected the board as a compact scene.");
-  let ask: BoardAsk;
-  if (body.op === "review" || body.op === "check") ask = { kind: body.op };
-  else if (body.op === "edit") {
-    const instruction = shortText(body.instruction, 2000);
-    if (!instruction) return badRequest("Say what to change on the board.");
-    ask = { kind: "edit", instruction };
-  } else return badRequest('op is "chapter", "create", "rename", "remove", "review", "check" or "edit".');
+  if (body.op !== "review" && body.op !== "check") return badRequest('op is "chapter", "create", "rename", "remove", "review" or "check".');
+  const ask: BoardAsk = { kind: body.op };
   if (ask.kind === "check" && !scene.links.length) return badRequest("Draw arrows between the ideas first: the check is about how they connect.");
   if (ask.kind === "review" && !scene.nodes.length) return badRequest("The board is empty.");
 

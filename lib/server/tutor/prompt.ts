@@ -1,3 +1,4 @@
+import { BOARD_FENCE, BOARD_OPS_GUIDE, type BoardMention } from "@/lib/shared/boards";
 import { placeLabel } from "@/lib/shared/place";
 import { firstQuoteNumber } from "@/lib/shared/quotes";
 import { isSixthReply } from "@/lib/shared/work";
@@ -122,6 +123,20 @@ export const quotedPassages = (quotes: readonly QuotedPassage[], first: number):
       ].join("\n")
     : "";
 
+/**
+ * The whiteboard a message is about. The latest one goes as the board JSON, with how to change it; an earlier
+ * message's board is only named, since the board has moved on since and its ops would no longer fit.
+ */
+export const boardNote = (board: BoardMention, latest: boolean): string =>
+  latest
+    ? [
+        `My whiteboard “${board.title}” is open beside the book. Here it is as JSON: each node's text and position, each link's ends and label.`,
+        `<board>\n${JSON.stringify(board.scene)}\n</board>`,
+        `Answer about the board in words. Only when I ask you to change it, add to it or fix it, end your answer with the change as a \`\`\`${BOARD_FENCE} fence holding a JSON list of ops, and say in a sentence what you changed. Never mention the ops or their ids in your words.`,
+        BOARD_OPS_GUIDE,
+      ].join("\n\n")
+    : `(This message was about my whiteboard “${board.title}”, as it was then.)`;
+
 /** How a summary of folded turns reads to the tutor, after the passage and the reader's first message. */
 export const summaryNote = (summary: string) =>
   `Our conversation has gone on for a while. Here is a summary of it up to the messages that follow, written for you:\n<summary>\n${summary}\n</summary>`;
@@ -138,6 +153,9 @@ export const buildTurn = (book: BookLabel, thread: Thread, model: string | null,
   const sent = compaction ? [thread.messages[0], ...thread.messages.slice(compaction.keepFrom)] : thread.messages;
   /* Passages keep their thread-wide numbers, so a citation means the same passage before and after a summary. */
   const quoted = (message: ChatMessage) => quotedPassages(message.quotes ?? [], firstQuoteNumber(thread.messages, thread.messages.indexOf(message)));
+  /* Only the newest board goes whole: the reader changes the board between messages. */
+  const newestBoard = sent.findLast((message) => message.board);
+  const drawn = (message: ChatMessage) => (message.board ? boardNote(message.board, message === newestBoard) : "");
   /* The summary keeps the passages quoted in the turns it folds, so the tutor can still read and cite them. */
   const folded = compaction ? thread.messages.slice(1, compaction.keepFrom) : [];
   const foldedQuotes = folded.map(quoted).filter(Boolean).join("\n\n");
@@ -145,6 +163,7 @@ export const buildTurn = (book: BookLabel, thread: Thread, model: string | null,
     [
       contextMessage(book, thread),
       quoted(thread.messages[0]),
+      drawn(thread.messages[0]),
       compaction ? summaryNote(compaction.summary) : "",
       foldedQuotes ? `Passages quoted in the summarized turns:\n${foldedQuotes}` : "",
     ]
@@ -153,7 +172,7 @@ export const buildTurn = (book: BookLabel, thread: Thread, model: string | null,
   return {
   system: TUTOR_SYSTEM,
   messages: sent.reduce<TutorMessage[]>((merged, message, index) => {
-    const base = index === 0 ? opening() : [quoted(message), message.content].filter(Boolean).join("\n\n");
+    const base = index === 0 ? opening() : [quoted(message), drawn(message), message.content].filter(Boolean).join("\n\n");
     const content = index === sent.length - 1 && isSixthReply(thread) ? `${base}\n\n${SIXTH_REPLY_NOTE}` : base;
     const attached = (message.attachments ?? []).flatMap((attachment): TutorImage[] => {
       const bytes = images.get(attachment.id);

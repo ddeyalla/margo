@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { ArrowLeft, FileText, Link2, NotebookPen, Plus, TriangleAlert } from "lucide-react";
-import { Button, EmptyState, IconButton, Spinner } from "@/components/ui";
+import { Button, EmptyState, Field, IconButton, Spinner } from "@/components/ui";
 import { ThemeControl } from "@/components/ui/theme";
 import {
   createNoteFile,
@@ -253,13 +253,13 @@ export function NotesWorkspace({ initialIndex, notesDir }: { initialIndex: Notes
           </IconButton>
         </div>
         <div className="px-2 pb-2">
-          <input
+          <Field
             type="search"
             value={filter}
             onChange={(event) => setFilter(event.currentTarget.value)}
             placeholder="Filter notes"
             aria-label="Filter notes"
-            className="h-7 w-full rounded-sm bg-ink/60 px-2.5 text-label text-paper outline-none ring-1 ring-line placeholder:text-dim focus:ring-line-strong"
+            className="w-full"
           />
         </div>
         <nav aria-label="Notes" className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">

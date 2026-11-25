@@ -6,6 +6,7 @@ import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resiza
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
 import { BoardPane } from "@/components/board/BoardPane";
 import { OpenAsBoard } from "@/components/board/WhiteboardSheet";
+import { answerChanges, BoardLinkContext, useCreateBoardLink } from "@/components/board/link";
 import { useBoards } from "@/components/board/useBoards";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
@@ -31,7 +32,7 @@ import { hasUnsentText } from "@/lib/client/unsent";
 import type { CourseContext } from "@/lib/shared/courses";
 import { boardChapter } from "@/lib/shared/boards";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
-import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext } from "@/lib/shared/types";
+import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext, type Thread } from "@/lib/shared/types";
 import { BookHeader, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
 import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
@@ -118,7 +119,7 @@ export function BookWorkspace({
     const response = await fetch(`/api/books/${book.id}/revision`, { cache: "no-store" });
     return response.ok ? ((await response.json()) as { revision: string }).revision : null;
   }, [book.id]);
-  const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId);
+
   const { providers, current: provider, choose: chooseProvider, models, chooseModel, unavailable } = useProviders(saved.provider, saved.models);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
   const cards = useCards(book.id, initialState.cardSets);
@@ -131,6 +132,13 @@ export function BookWorkspace({
   const [toast, setToast] = useToast();
   const boardError = useStableCallback((text: string) => setToast({ text, action: false }));
   const boards = useBoards(book.id, initialState.boards, boardContext, boardError);
+  /* The chat and the open board reach each other here; an answer's changes to a board go on it as it finishes. */
+  const boardLink = useCreateBoardLink(boards.show);
+  const placeAnswer = useStableCallback((thread: Thread) => {
+    const changes = answerChanges(thread.id, thread.messages, thread.messages.length - 1);
+    if (changes && typeof changes.ops !== "string") boardLink.place(changes.key, changes.board, changes.ops);
+  });
+  const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId, placeAnswer);
   const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
   /* What Draw it back folded away, the book and the tutor panel, to open again after. */
@@ -343,16 +351,12 @@ export function BookWorkspace({
   };
 
   const openDiagram = useStableCallback((source: string) => void boards.fromDiagram(source));
-  /* A message from a board goes to the open thread, or starts one at the reader's place when none is open. */
-  const sayFromBoard = (text: string) => {
+  /* Words from the board go into the chat's composer, with the board attached, for the reader to finish. */
+  const answerFromBoard = useStableCallback((text: string) => {
     showTab("chat");
-    const draft = { text, attachments: [], quotes: [] };
-    if (tutor.active) reply(draft);
-    else askAnywhere(draft);
-  };
-  const answerFromBoard = useStableCallback(sayFromBoard);
-  /* Asked from the Board tab, the tutor draws in the chat, where its diagram opens as a board. */
-  const drawInChat = useStableCallback((what: string) => sayFromBoard(`Draw this as a whiteboard for me: ${what}`));
+    panel.expand();
+    boardLink.draft.set({ text });
+  });
 
   const askRecall = (text: string, minutes: number) => {
     showTab("chat");
@@ -373,6 +377,7 @@ export function BookWorkspace({
         {/* Drawn only while open: a canvas in a closed pane has no size. */}
         {boardPaneShown && here ? (
           <div data-board-pane className={clsx("flex h-full min-w-0 flex-col overflow-hidden bg-page", !bare && "rounded-xl shadow-canvas")}>
+            <BoardLinkContext value={boardLink}>
             <BoardPane
               boards={boards}
               bookId={book.id}
@@ -386,9 +391,9 @@ export function BookWorkspace({
               onToggleBook={toggleBook}
               onSwap={panel.swapBoard}
               onRecall={recallBoard}
-              onDraw={drawInChat}
               onAnswer={answerFromBoard}
             />
+            </BoardLinkContext>
           </div>
         ) : null}
       </ResizablePanel>
@@ -564,6 +569,7 @@ export function BookWorkspace({
           collapsible
           className="min-w-0 overflow-hidden"
         >
+          <BoardLinkContext value={boardLink}>
           <OpenAsBoard value={openDiagram}>
             <SidePanel
               tab={tab}
@@ -589,6 +595,7 @@ export function BookWorkspace({
               panelOpen={panel.open}
             />
           </OpenAsBoard>
+          </BoardLinkContext>
         </ResizablePanel>
       </Resizable>
       <SelectionToolbar

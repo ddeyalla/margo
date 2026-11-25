@@ -157,6 +157,8 @@ export interface Suggestion {
   id: string;
   kind: SuggestionKind;
   label: string;
+  /** The first element drawn for it, to bring it into view. */
+  elementId: string;
 }
 
 /** The suggestions on the board, in the order they arrived. */
@@ -164,7 +166,7 @@ export const pendingSuggestions = (elements: readonly Element[]): Suggestion[] =
   const seen = new Map<string, Suggestion>();
   for (const element of live(elements)) {
     const data = dataOf(element);
-    if (data && !seen.has(data.suggestion)) seen.set(data.suggestion, { id: data.suggestion, kind: data.kind, label: data.label });
+    if (data && !seen.has(data.suggestion)) seen.set(data.suggestion, { id: data.suggestion, kind: data.kind, label: data.label, elementId: element.id });
   }
   return [...seen.values()];
 };

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { BookOpenText, Pencil, Play, RefreshCw, Trash2, X } from "lucide-react";
-import { Button, EmptyState, IconButton, Spinner } from "@/components/ui";
+import { Button, EmptyState, IconButton, Spinner, TextArea } from "@/components/ui";
 import { ChapterSections } from "@/components/annotations/ChapterSections";
 import { UNTITLED_SECTION } from "@/lib/shared/annotations";
 import { placeLabel } from "@/lib/shared/place";
@@ -12,9 +12,6 @@ import type { Anchor, CardSet, Cue } from "@/lib/shared/types";
 import { SIGNAL_LABELS, isMisleading, lastRecord, misconceptions, recordSignal } from "@/lib/shared/confidence";
 import { SIGNAL_TONE } from "./Stance";
 import type { CardsApi } from "./useCards";
-
-const fieldClass =
-  "w-full resize-none rounded-sm bg-ink/60 px-2 py-1.5 text-body leading-snug text-paper outline-none ring-1 ring-line focus:ring-line-strong placeholder:text-dim";
 
 /** Where a set stands, in a word or two. */
 const status = (set: CardSet, now: Date): string => {
@@ -41,8 +38,8 @@ function CueEditor({ cue, onSave, onCancel }: { cue: Cue; onSave(question: strin
         if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) save();
       }}
     >
-      <textarea aria-label="Question" autoFocus rows={2} value={question} onChange={(e) => setQuestion(e.target.value)} className={fieldClass} />
-      <textarea aria-label="Answer" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} className={fieldClass} />
+      <TextArea aria-label="Question" autoFocus rows={2} value={question} onChange={(e) => setQuestion(e.target.value)} className="w-full" />
+      <TextArea aria-label="Answer" rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} className="w-full" />
       <div className="flex justify-end gap-1">
         <Button variant="ghost" onClick={onCancel}>
           Cancel

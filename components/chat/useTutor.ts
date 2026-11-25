@@ -8,13 +8,15 @@ import { useUnsentText } from "@/lib/client/unsent";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
 import { isParked, parkedFirst } from "@/lib/shared/parked";
 import { repairDiagrams } from "./mermaid";
+import type { BoardMention } from "@/lib/shared/boards";
 import type { BookId, ImageAttachment, ProviderId, QuotedPassage, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
 
-/** What the reader wrote in the composer: words, images, quoted passages, or any of them together. */
+/** What the reader wrote in the composer: words, images, quoted passages, or any of them together, and the whiteboard it is about. */
 export interface MessageDraft {
   text: string;
   attachments: ImageAttachment[];
   quotes: QuotedPassage[];
+  board?: BoardMention;
 }
 
 const ids = (draft: MessageDraft) => draft.attachments.map((attachment) => attachment.id);
@@ -49,7 +51,12 @@ export const awaitsAnswer = (thread: Thread) => thread.messages.at(-1)?.role ===
  * reader's message before the tutor starts, so a thread appears as soon as the
  * stream opens; the answer streams beside it until it is saved too.
  */
-export function useTutor(bookId: BookId, initialThreads: Thread[], initialActiveId: string | null = null) {
+export function useTutor(bookId: BookId, initialThreads: Thread[], initialActiveId: string | null = null, onAnswered?: (thread: Thread) => void) {
+  /* Told once of each answer that finished in this window, with its saved thread. */
+  const answered = useRef(onAnswered);
+  useLayoutEffect(() => {
+    answered.current = onAnswered;
+  });
   const [threads, setThreads] = useState(initialThreads);
   const [activeId, setActiveIdState] = useState(initialActiveId);
   /* The open thread is remembered for the next visit to this book. */
@@ -152,6 +159,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
           finished = true;
           thread = event.thread;
           upsert(thread);
+          answered.current?.(thread);
           void fixDiagrams(thread);
         }
       }
@@ -208,11 +216,11 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
 
   /** Starts a thread with no passage, placed where the reader is. */
   const ask = useStableCallback((draft: MessageDraft, place: QuestionPlace | null, provider: ProviderId) => {
-    send({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), quotes: draft.quotes, place });
+    send({ kind: "general", bookId, provider, text: draft.text, attachments: ids(draft), quotes: draft.quotes, board: draft.board, place });
   });
 
   const reply = useStableCallback((draft: MessageDraft, provider: ProviderId) => {
-    if (activeId) send({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft), quotes: draft.quotes });
+    if (activeId) send({ kind: "reply", bookId, provider, threadId: activeId, text: draft.text, attachments: ids(draft), quotes: draft.quotes, board: draft.board });
   });
 
   /** Sends the queued message now: the one held back because the answer before it failed. */

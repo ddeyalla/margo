@@ -339,13 +339,70 @@ const parseObject = (reply: string): Record<string, unknown> | string => {
   }
 };
 
-/** The reply to "change the board": `{ "ops": [...] }` with at least one op. */
-export const parseEditReply = (reply: string, scene: CompactScene): BoardOp[] | string => {
-  const value = parseObject(reply);
-  if (typeof value === "string") return value;
-  const ops = validateOps(value.ops, scene);
+/* The board in the chat. */
+
+/** How ops are written, for any prompt that asks the tutor for them. */
+export const BOARD_OPS_GUIDE = `Ops change the board. The reader sees each one as a suggestion in its own colour and accepts or rejects it; nothing you send replaces their drawing.
+- {"op": "add_node", "id": "habit-loop", "text": "Habit loop", "x": 420, "y": 160} adds an idea. The id is a short lowercase name of your own. Leave out x and y to let the app place it.
+- {"op": "add_link", "from": "n2", "to": "habit-loop", "label": "builds"} adds an arrow between two nodes on the board or added above. The label is optional.
+- {"op": "update", "id": "n3", "text": "..."} rewords a node, or a link's label.
+- {"op": "delete", "id": "l2"} removes a node or link.
+Nodes on the board are n1, n2…; links are l1, l2…, as the board JSON lists them.`;
+
+/**
+ * The whiteboard a chat message is about, as the reader sent it: the board, its compact scene at that moment, and
+ * which element each short id stood for then. The tutor's changes in the answer are read against this scene and
+ * placed through these ids, never the board as it is later, so an edit made meanwhile can't make n3 mean another box.
+ */
+export interface BoardMention {
+  id: string;
+  title: string;
+  scene: CompactScene;
+  ids: Record<string, string>;
+}
+
+const ELEMENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** A board mention sent from the page: a board id, a title, a well-formed scene, and an element id for each of its ids. */
+export const parseBoardMention = (value: unknown): BoardMention | null => {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const title = text(raw.title, 200);
+  const scene = parseCompactScene(raw.scene);
+  if (!isBoardId(raw.id) || !title || !scene || typeof raw.ids !== "object" || raw.ids === null) return null;
+  const given = raw.ids as Record<string, unknown>;
+  const wanted = [...scene.nodes.map((node) => node.id), ...scene.links.map((link) => link.id)];
+  if (Object.keys(given).length !== wanted.length) return null;
+  const ids: Record<string, string> = {};
+  for (const id of wanted) {
+    const element = given[id];
+    if (typeof element !== "string" || !ELEMENT_ID.test(element)) return null;
+    ids[id] = element;
+  }
+  return { id: raw.id, title, scene, ids };
+};
+
+/** The language of the fence an answer puts its board changes in. */
+export const BOARD_FENCE = "board";
+
+/**
+ * The changes an answer makes to the board its question was about: the last ```board fence, a JSON list of ops (or
+ * an object holding one as "ops"), checked against the scene that was sent. Null when the answer has no such fence;
+ * the reason, when it has one that can't be used.
+ */
+export const boardOpsIn = (answer: string, scene: CompactScene): BoardOp[] | string | null => {
+  const fences = [...answer.matchAll(/```board[ \t]*\n([\s\S]*?)```/g)];
+  const body = fences.at(-1)?.[1];
+  if (body === undefined) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return "The changes to the board weren't valid JSON.";
+  }
+  const ops = validateOps(Array.isArray(value) ? value : (value as { ops?: unknown } | null)?.ops, scene);
   if (typeof ops === "string") return ops;
-  return ops.length ? ops : "Send at least one op.";
+  return ops.length ? ops : null;
 };
 
 /** The tutor's read of a board drawn with the book open. */
@@ -418,8 +475,7 @@ export const boardRecall = (board: Pick<Board, "attempts">, now: Date): RecallIt
 /** What the tutor said about a board, as the route answers it. A check also returns the board's attempts. */
 export type BoardAnswer =
   | { kind: "review"; review: BoardReview }
-  | { kind: "check"; check: BoardCheck; attempts?: BoardAttempt[] }
-  | { kind: "edit"; ops: BoardOp[] };
+  | { kind: "check"; check: BoardCheck; attempts?: BoardAttempt[] };
 
 /**
  * Which chapter's board the reader means at a place in the book: the Course chapter around it when a Course reads

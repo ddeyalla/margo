@@ -60,9 +60,7 @@ export const removeBoard = async (bookId: BookId, id: string): Promise<void> => 
   if (!response.ok) await answer(response, "Removing the board");
 };
 
-export type BoardRequest =
-  | { op: "review" | "check"; id: string; provider: ProviderId; scene: CompactScene; image: string | null }
-  | { op: "edit"; id: string; provider: ProviderId; scene: CompactScene; image: string | null; instruction: string };
+export type BoardRequest = { op: "review" | "check"; id: string; provider: ProviderId; scene: CompactScene; image: string | null };
 
 export const askBoard = async (bookId: BookId, body: BoardRequest, signal: AbortSignal): Promise<BoardAnswer> =>
   answer<BoardAnswer>(await post(bookId, body, signal), "Asking the tutor");
