@@ -13,6 +13,8 @@ export interface DayWork {
   seconds: number;
   ratings: number;
   quizzes: number;
+  /** Live card sets the library had made by the end of that day, so a day is judged by the deck it had then. */
+  cards: number;
 }
 
 /** Each study day's work across the library: time from the activity log, ratings from card histories, quiz attempts. */
@@ -20,7 +22,7 @@ export const dayWork = (activity: ActivityFile, books: readonly { cardSets: Card
   const days = new Map<string, DayWork>();
   const at = (day: string) => {
     let work = days.get(day);
-    if (!work) days.set(day, (work = { seconds: 0, ratings: 0, quizzes: 0 }));
+    if (!work) days.set(day, (work = { seconds: 0, ratings: 0, quizzes: 0, cards: 0 }));
     return work;
   };
   for (const [day, byBook] of Object.entries(activity.days)) {
@@ -30,13 +32,15 @@ export const dayWork = (activity: ActivityFile, books: readonly { cardSets: Card
     for (const set of book.cardSets) for (const record of set.history ?? []) at(studyDay(new Date(record.at))).ratings++;
     for (const quiz of book.quizzes) for (const attempt of quiz.attempts) at(studyDay(new Date(attempt.at))).quizzes++;
   }
+  const made = books.flatMap((book) => book.cardSets.filter((set) => set.cues.length).map((set) => studyDay(new Date(set.createdAt))));
+  for (const [day, work] of days) work.cards = made.filter((madeOn) => madeOn <= day).length;
   return days;
 };
 
-/** Whether a day's work meets the minimum. `cards` is how many live cards the library has, so a small deck can still make a session. */
-export const meetsMinimum = (work: DayWork | undefined, cards: number): boolean => {
+/** Whether a day's work meets the minimum. A small deck makes a session with fewer ratings, judged by the deck that day had. */
+export const meetsMinimum = (work: DayWork | undefined): boolean => {
   if (!work) return false;
-  const session = Math.min(SESSION_RATINGS, cards);
+  const session = Math.min(SESSION_RATINGS, work.cards);
   return work.seconds >= MINIMUM_MINUTES * 60 || (session > 0 && work.ratings >= session) || work.quizzes > 0;
 };
 

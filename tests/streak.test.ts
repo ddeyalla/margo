@@ -120,22 +120,31 @@ describe("the daily minimum", () => {
 
   it("is fifteen minutes of any kind together", () => {
     let activity = addActivity(emptyActivity(), "2026-03-03", "x", "reading", 600);
-    expect(meetsMinimum(dayWork(activity, []).get("2026-03-03"), 0)).toBe(false);
+    expect(meetsMinimum(dayWork(activity, []).get("2026-03-03"))).toBe(false);
     activity = addActivity(activity, "2026-03-03", "y", "review", 300);
-    expect(meetsMinimum(dayWork(activity, []).get("2026-03-03"), 0)).toBe(true);
+    expect(meetsMinimum(dayWork(activity, []).get("2026-03-03"))).toBe(true);
   });
   it("or a review session of five ratings, fewer for a small deck", () => {
     const work = dayWork(emptyActivity(), [{ cardSets: [card(3)], quizzes: [] }]).get("2026-03-03");
-    expect(work?.ratings).toBe(3);
-    expect(meetsMinimum(work, 20)).toBe(false);
-    expect(meetsMinimum(work, 3)).toBe(true);
-    expect(meetsMinimum({ seconds: 0, ratings: 0, quizzes: 0 }, 0)).toBe(false);
+    expect(work).toMatchObject({ ratings: 3, cards: 1 });
+    expect(meetsMinimum(work)).toBe(true);
+    expect(meetsMinimum({ ...work!, cards: 20 })).toBe(false);
+    expect(meetsMinimum({ seconds: 0, ratings: 0, quizzes: 0, cards: 0 })).toBe(false);
+  });
+  it("judges a past day by the deck it had, so making cards later never un-meets it", () => {
+    const later = (set: CardSet, i: number): CardSet => ({ ...set, id: `later${i}`, history: [], createdAt: new Date(2026, 2, 9, 12).toISOString() });
+    const deck = [card(1), { ...card(1), id: "t" }];
+    const before = dayWork(emptyActivity(), [{ cardSets: deck, quizzes: [] }]).get("2026-03-03");
+    const after = dayWork(emptyActivity(), [{ cardSets: [...deck, ...Array.from({ length: 8 }, (_, i) => later(card(0), i))], quizzes: [] }]).get("2026-03-03");
+    expect(before).toMatchObject({ ratings: 2, cards: 2 });
+    expect(after).toMatchObject({ ratings: 2, cards: 2 });
+    expect(meetsMinimum(after)).toBe(true);
   });
   it("or a chapter quiz taken", () => {
     const quiz = { chapter: "One", questions: [], createdAt: "", attempts: [{ at: at.toISOString(), answers: [], passed: false }] };
-    expect(meetsMinimum(dayWork(emptyActivity(), [{ cardSets: [], quizzes: [quiz] }]).get("2026-03-03"), 0)).toBe(true);
+    expect(meetsMinimum(dayWork(emptyActivity(), [{ cardSets: [], quizzes: [quiz] }]).get("2026-03-03"))).toBe(true);
   });
   it("is not met on a day with nothing", () => {
-    expect(meetsMinimum(undefined, 10)).toBe(false);
+    expect(meetsMinimum(undefined)).toBe(false);
   });
 });

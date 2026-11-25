@@ -437,15 +437,19 @@ over time is covered by unit tests with a moved clock, since the live data is an
 - [x] Daily minimum (one review session or 15 minutes). Meeting it keeps the streak.
       *`lib/shared/streak.ts`. 15 minutes of reading, reviewing and quizzing together from
       Phase 18's log, or a review session: five card ratings that day (or every card, in a
-      library with fewer than five), or a chapter quiz taken. Ratings and attempts are read
-      from their own timestamps, so nothing new is logged.*
+      library with fewer than five, counting the cards it had that day), or a chapter quiz
+      taken. Ratings and attempts are read from their own timestamps, so nothing new is
+      logged.*
 - [x] Streak freeze and a rest-day token, so one missed day doesn't erase weeks.
       *One rest day a week (weeks start Monday) covers the first miss automatically; a
       freeze, earned every seven days met in a row and banked up to two, covers the next.
       Covered days keep the streak without adding to it; today never breaks it while open;
       misses with no streak running spend nothing. All of it is recomputed from the days
-      met each time (`streakOf`, a pure function with edge-case tests), so nothing is
-      stored that could drift.*
+      met each time (`streakOf`, a pure function with edge-case tests); no streak is
+      stored. Making more cards later never un-meets a past day. Left: a day met only by
+      ratings, with under 15 minutes logged, can drop out if its card set is deleted or
+      the set's history passes 50 ratings, since history is where ratings are kept.
+      Logging a day's rating count in the activity file would close that.*
 
 Tried **2026-11-25** on the scratch data with Phase 18's seeded week. Today read "7 days
 streak · 1 freeze · rest day available" with the minimum met: every day of the week met
@@ -453,7 +457,8 @@ it, two of them only through a single rating, since the scratch library has one 
 With that set made due, the button read "Review 1 card" and opened the book straight into
 the review; closing it dropped `?review=1` from the address. With a written, unpassed quiz
 for Chapter Two it read "Take the quiz"; with neither, "Keep reading" and about 245
-minutes left. Not checked live: a broken streak, rest and freeze days spent (the unit
+minutes left. The final review caught past days being judged by today's deck size, so
+making cards could have broken a streak; each day now counts the deck it had. Not checked live: a broken streak, rest and freeze days spent (the unit
 tests walk those), and a library whose current book isn't indexed yet.
 
 ## Phase 20 — Find it again · M

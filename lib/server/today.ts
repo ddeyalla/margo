@@ -81,12 +81,11 @@ export const readToday = async (now = new Date()): Promise<Today> => {
     current = { id: last.id, title: last.title, minutesLeft: text ? minutesLeft(words, 1 - (last.state?.position?.fraction ?? 0)) : null };
   }
 
-  const cards = states.reduce((sum, { state }) => sum + state.cardSets.filter((set) => set.cues.length).length, 0);
   const work = dayWork(
     activity,
     states.map(({ state }) => state),
   );
-  const met = new Set([...work].filter(([, day]) => meetsMinimum(day, cards)).map(([day]) => day));
+  const met = new Set([...work].filter(([, day]) => meetsMinimum(day)).map(([day]) => day));
   const today = studyDay(now);
 
   const start: TodayStart | null = dueBook
