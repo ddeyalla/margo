@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
-import { BookOpen, FolderX, Library as LibraryIcon } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, FolderX, Library as LibraryIcon, NotebookPen } from "lucide-react";
 import { BookList, GRID, type Shelf, type ShelfBook } from "@/components/library/BookList";
 import { FolderForm } from "@/components/library/FolderForm";
 import { FoldersControl } from "@/components/library/FoldersControl";
@@ -129,6 +130,10 @@ function Heading({ children, folders, search }: { children?: React.ReactNode; fo
       {children ? <span className="mt-1.5 text-label text-dim tabular-nums">{children}</span> : null}
       <div className="ml-auto flex items-center gap-2">
         {search}
+        <Link href="/notes" className="inline-flex h-7 items-center gap-1.5 rounded-sm bg-panel-raised px-2.5 text-label font-medium text-paper shadow-chip hover:bg-panel-hover">
+          <NotebookPen aria-hidden className="size-3.5" />
+          Notes
+        </Link>
         <ThemeControl />
       </div>
       {folders}
