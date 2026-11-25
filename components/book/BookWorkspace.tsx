@@ -261,7 +261,8 @@ export function BookWorkspace({
   useShortcuts({
     shortcuts,
     /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
-    plainKeysOff: reviewing || !!quizChapter || !!boards.open,
+    /* A board in the side panel keeps the page keys: the panel's own keys never reach them. */
+    plainKeysOff: reviewing || !!quizChapter || boards.open?.place === "full",
     /* The highlight menu goes first and alone, so the same press doesn't also dismiss the greeting or the spotlight. */
     closeFirst: menu ? closeMenu : null,
     /* Esc takes one thing away at a time: the selection, then the greeting, then the spotlight. */
@@ -328,15 +329,16 @@ export function BookWorkspace({
   };
 
   const openDiagram = useStableCallback((source: string) => boardOverBook(() => boards.fromDiagram(source)));
-  const answerFromBoard = useStableCallback((text: string) => {
+  /* A message from a board goes to the open thread, or starts one at the reader's place when none is open. */
+  const sayFromBoard = (text: string) => {
     showTab("chat");
-    reply({ text, attachments: [], quotes: [] });
-  });
+    const draft = { text, attachments: [], quotes: [] };
+    if (tutor.active) reply(draft);
+    else askAnywhere(draft);
+  };
+  const answerFromBoard = useStableCallback(sayFromBoard);
   /* Asked from the Board tab, the tutor draws in the chat, where its diagram opens as a board. */
-  const drawInChat = useStableCallback((what: string) => {
-    showTab("chat");
-    reply({ text: `Draw this as a whiteboard for me: ${what}`, attachments: [], quotes: [] });
-  });
+  const drawInChat = useStableCallback((what: string) => sayFromBoard(`Draw this as a whiteboard for me: ${what}`));
 
   const askRecall = (text: string, minutes: number) => {
     showTab("chat");

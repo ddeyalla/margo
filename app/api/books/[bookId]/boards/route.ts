@@ -1,5 +1,6 @@
 import {
   askAboutBoard,
+  BoardError,
   chapterBoard,
   createBoard,
   listBoards,
@@ -122,8 +123,15 @@ export const POST = withBook(async ({ book, request }) => {
     return missing(async () => Response.json(await renameBoard(book.id, id, title)));
   }
   if (body.op === "remove") {
-    await removeBoard(book.id, id);
-    return new Response(null, { status: 204 });
+    return missing(async () => {
+      try {
+        await removeBoard(book.id, id);
+      } catch (error) {
+        if (error instanceof BoardError) return badRequest(error.message);
+        throw error;
+      }
+      return new Response(null, { status: 204 });
+    });
   }
 
   if (!isProviderId(body.provider)) return badRequest("Unknown provider.");

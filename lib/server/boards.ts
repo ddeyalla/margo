@@ -130,8 +130,12 @@ export const renameBoard = async (bookId: BookId, id: string, title: string): Pr
   return findBoard(state.boards, id)!;
 };
 
-/** Takes a board off the book's list. Its file stays in the notes folder: it is the reader's drawing. */
+/**
+ * Takes a board off the book's list. Its file stays in the notes folder: it is the reader's drawing. A chapter's own
+ * board stays, as its draw-it-back attempts are what retention reads.
+ */
 export const removeBoard = async (bookId: BookId, id: string): Promise<void> => {
+  if ((await getBoard(bookId, id)).kind === "chapter") throw new BoardError("A chapter's own board stays: its draw-it-back history counts toward the Course.");
   await updateBookState(bookId, (state) => ({ ...state, boards: state.boards.filter((board) => board.id !== id) }));
 };
 

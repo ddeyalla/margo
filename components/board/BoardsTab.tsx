@@ -91,9 +91,12 @@ function BoardRow({ board, current, onOpen, onRename, onRemove }: { board: Board
         <IconButton size="sm" label="Rename" onClick={() => setRenaming(true)}>
           <Pencil />
         </IconButton>
-        <IconButton size="sm" label="Remove from this book (the file stays in your notes)" onClick={onRemove}>
-          <Trash2 />
-        </IconButton>
+        {/* A chapter's board holds its draw-it-back history, which retention reads: it stays. */}
+        {board.kind === "chapter" ? null : (
+          <IconButton size="sm" label="Remove from this book (the file stays in your notes)" onClick={onRemove}>
+            <Trash2 />
+          </IconButton>
+        )}
       </span>
     </li>
   );

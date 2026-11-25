@@ -344,6 +344,12 @@ describe("many boards in a book", () => {
     expect(await listBoards(notes, bookId)).toEqual([]);
     expect(await readFile(path.join(notes, board.path!), "utf8")).toBe(EMPTY);
   });
+
+  it("keeps a chapter's own board, whose draw-it-backs count toward retention", async () => {
+    const { id } = await chapterBoard(bookId, "Habits", ["Habits"]);
+    await expect(removeBoard(bookId, id)).rejects.toThrow(/stays/);
+    expect((await readBookState(bookId)).boards).toHaveLength(1);
+  });
 });
 
 describe("diagrams drawn for a board", () => {
@@ -353,6 +359,7 @@ describe("diagrams drawn for a board", () => {
     expect(diagramTitle("%%{init: {}}%%\nflowchart TD\n  A[Cue] --> B")).toBe("Cue");
     expect(diagramTitle("flowchart TD\n  A[Cue] --> B[Craving]")).toBe("Cue");
     expect(diagramTitle("flowchart TD\n  A --> B")).toBe("Diagram from the chat");
+    expect(diagramTitle("mindmap\n  root((AI Engineering))\n    Foundations")).toBe("AI Engineering");
   });
 });
 

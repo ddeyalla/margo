@@ -19,7 +19,7 @@ export interface BoardsApi {
   close(): void;
   /** Reads the list again, after a save names a new file or another window changed it. */
   refresh(): void;
-  /** Opens the board of the chapter being read, making it the first time. */
+  /** Opens the board of the chapter being read, making it the first time; open elsewhere, it moves here. */
   openChapter(place: BoardPlace): Promise<void>;
   /** A new, empty board of the reader's, opened in the panel. */
   create(title: string): Promise<void>;
@@ -54,7 +54,7 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
       try {
         const board = await chapterBoard(bookId, where.chapter, where.labels);
         if (!boards.some((b) => b.id === board.id)) added(board);
-        setOpen((current) => (current?.id === board.id ? current : { id: board.id, place }));
+        setOpen({ id: board.id, place });
       } catch (failure) {
         failed(failure, "Opening the chapter's board");
       }

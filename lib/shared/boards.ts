@@ -85,7 +85,7 @@ export const diagramTitle = (source: string): string => {
   const comment = /^%%(?!\{)\s*(.+)$/.exec(first)?.[1]?.trim();
   if (comment) return comment.slice(0, 120);
   const body = source.replace(/^\s*%%.*$/gm, "");
-  const label = /[[({>]"?([^\])}"\n]{2,60})"?[\])}]/.exec(body)?.[1]?.trim();
+  const label = /[[({>]+"?([^[({\])}"\n]{2,60})"?[\])}]/.exec(body)?.[1]?.trim();
   return label || "Diagram from the chat";
 };
 
