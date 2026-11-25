@@ -7,9 +7,12 @@ import { DeleteCourse } from "@/components/courses/DeleteCourse";
 import { PageShell } from "@/components/courses/PageShell";
 import { CourseBookLine, RoadmapFacts } from "@/components/courses/RoadmapCard";
 import { Spinner } from "@/components/ui";
-import { readingProgress, stepQuizzes, type StepQuiz } from "@/lib/server/courses/progress";
+import { WeekView } from "@/components/courses/WeekView";
+import { readActivity } from "@/lib/server/activity";
+import { masteryOf, readingProgress, stepQuizzes, type StepQuiz } from "@/lib/server/courses/progress";
 import { readCourses } from "@/lib/server/courses/store";
 import { courseSteps } from "@/lib/shared/courses";
+import { dayTimes, emptyActivity, lastDays, masteryLine } from "@/lib/shared/mastery";
 import { stepKey, stepStates, type StepState } from "@/lib/shared/quiz";
 
 export default function CoursePage({ params }: PageProps<"/course/[id]">) {
@@ -28,7 +31,9 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
   const { courses } = await readCourses();
   const course = courses.find((c) => c.id === id);
   if (!course) notFound();
-  const [progress, quizzes] = await Promise.all([readingProgress(course), stepQuizzes(course)]);
+  const now = new Date();
+  const [progress, quizzes, mastery, activity] = await Promise.all([readingProgress(course), stepQuizzes(course), masteryOf(course, now), readActivity().catch(emptyActivity)]);
+  const week = dayTimes(activity, lastDays(now), new Set(courseSteps(course).map((step) => step.bookId)));
   const states = new Map(
     stepStates(courseSteps(course), new Set([...quizzes].filter(([, quiz]) => quiz.passed).map(([key]) => key))).map((state) => [stepKey(state.bookId, state.chapter), state]),
   );
@@ -43,6 +48,9 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
         <h1 className="text-display text-paper">{course.name}</h1>
         <p className="text-[14px] leading-relaxed text-fog">{course.goal}</p>
         <RoadmapFacts roadmap={course} />
+        <p className="text-[14px] font-medium tabular-nums text-paper" title="Covered: chapters whose quiz you passed. Retained: predicted recall of this Course's cards and quiz questions today.">
+          {masteryLine(mastery)}
+        </p>
         <p className="text-label tabular-nums text-dim">
           {started} of {present.length} {present.length === 1 ? "book" : "books"} started
           {course.books.length > present.length ? ` · ${course.books.length - present.length} to find` : null}
@@ -61,6 +69,10 @@ async function CourseView({ params }: Pick<PageProps<"/course/[id]">, "params">)
           <DeleteCourse id={course.id} />
         </div>
       </div>
+
+      <section className="rounded-xl bg-panel px-4 py-3 shadow-canvas">
+        <WeekView days={week} title="This week in this Course" />
+      </section>
 
       <section className="flex flex-col gap-4">
         <h2 className="text-[13px] font-semibold uppercase tracking-wide text-dim">Units</h2>

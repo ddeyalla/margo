@@ -224,12 +224,13 @@ receive — a committed misconception.*
       *Both sit under the question, before the answer shows, so the answer can't colour
       them. The rail starts at "Skipped" and has a Skip link once moved; Enter in the line
       shows the answer, and the rail leaves Space and 1–4 to the sheet.*
-- [ ] Retention (Phase 18) reads them: a card answered right at 30 % is not the same as one
+- [x] Retention (Phase 18) reads them: a card answered right at 30 % is not the same as one
       answered right at 100 %, and a card answered wrong at 100 % is worth resurfacing
       sooner.
       *Resurfacing is done: a cue last answered wrong while sure (70 % or more) is picked
-      6 times as often as an untried one, against 4 for a plain Again. The retention
-      weighting is Phase 18's and is ticked there.*
+      6 times as often as an untried one, against 4 for a plain Again. Retention (Phase 18,
+      2026-11-25) counts a right answer given while close to guessing (under 40 %) at 0.6
+      of its recall and a half-sure one at 0.85; a skipped rail costs nothing.*
 - [x] Card generation (Phase 2's prompt) reads them: a cue that keeps drawing a confident
       wrong answer is a bad cue, not a bad reader.
       *Twice wrong while sure marks a cue in the Cards tab, with "Ask for a better card".
@@ -381,14 +382,46 @@ sections too.
 
 ## Phase 18 — Mastery and daily learning · M
 
-- [ ] **Coverage:** how much of the Course you've read and passed.
-- [ ] **Retention:** predicted recall over the Course's cards and quiz questions, from the
+- [x] **Coverage:** how much of the Course you've read and passed.
+      *Chapters whose quiz is passed, out of the Course's chapters the library has. Reading
+      position is left out on purpose: scrolling to the end would raise it, and mastery is
+      read from evidence.*
+- [x] **Retention:** predicted recall over the Course's cards and quiz questions, from the
       FSRS data already stored, weighted by the confidence recorded in Phase 14. Falls when
       you stop reviewing.
-- [ ] Show both per Course ("62 % covered · 78 % retained"), never one blended score.
-- [ ] **Learning time:** minutes spent reading, reviewing and quizzing each day, and
+      *`lib/shared/mastery.ts`, computed when a page asks and never stored. Each rated card
+      set's recall now comes from FSRS's forgetting curve with the scheduler's own
+      parameters (`recallAt`); sets never rated don't count. Quiz questions keep no
+      schedule, so each one's answers are replayed as ratings (right as Good, wrong as
+      Again) to get one (`replaySchedule`), and they fade like cards. A right answer close
+      to a guess counts 0.6, a half-sure one 0.85. Cards count when made in a chapter the
+      Course reads, or in a section of one: quizzes now keep their chapter's nested labels
+      for that. With nothing rated yet it says "nothing to retain yet", not 0 %.*
+- [x] Show both per Course ("62 % covered · 78 % retained"), never one blended score.
+      *On each Course card at home and at the top of the Course page.*
+- [x] **Learning time:** minutes spent reading, reviewing and quizzing each day, and
       whether you learned today. Needs reading time recorded, which isn't kept today.
-- [ ] A week view: days learned, minutes per day, per Course.
+      *The book page counts seconds while it is visible and used in the last two minutes,
+      as reading, review or quiz by what is open, and posts them to `/api/activity` every
+      30 seconds and when hidden or left (`fetch` with `keepalive`, which keeps the Origin
+      header). A move in the book counts as use, since an EPUB page's clicks happen in its
+      frame. The server takes at most 120 seconds a report and 16 hours a book a day, and
+      files them under the study day (4 a.m. cutoff) in `DATA_DIR/activity.json`, by book
+      and kind, kept for good for Phase 19. Any time at all counts as learned.*
+- [x] A week view: days learned, minutes per day, per Course.
+      *Home shows the last seven days over every book; each Course page shows them over
+      its own books, and each Course card its minutes this week. A book in two Courses
+      counts in both Courses but once in the day's total.*
+
+Tried **2026-11-25** on the scratch data, with a week of activity seeded. Home read
+"2 % covered · 100 % retained" for the Course (one chapter of 42 passed, everything
+answered within the hour) and "learned 6 of 7 days · 159 min"; the Course's own week
+left out the half hour spent on a paper that isn't in it. About 41 seconds on *The Mom
+Test* recorded 39 seconds of reading, through one 30-second report and the flush on
+leaving, both answered 204. A report of 99,999 seconds stored 120; a bad kind or book id
+was refused. Not checked live: the two-minute idle cutoff, and review and quiz time
+(the kind switches with what's open; the unit tests cover the store). Retention falling
+over time is covered by unit tests with a moved clock, since the live data is an hour old.
 
 ## Phase 19 — Today and streaks · M
 
