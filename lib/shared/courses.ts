@@ -308,3 +308,12 @@ export type PlanStreamEvent =
   | { type: "fixing" }
   | { type: "error"; message: string }
   | { type: "done"; plan: Plan };
+
+/** A Course as one book's page needs it: its steps, and which steps are passed, read from every book's quizzes. */
+export interface CourseContext {
+  id: string;
+  name: string;
+  steps: CourseStep[];
+  /** `stepKey`s of passed steps. */
+  passed: string[];
+}

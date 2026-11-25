@@ -25,12 +25,14 @@ export function StanceInput({
   onConfidence,
   onThinking,
   onSubmit,
+  placeholder = "What are you thinking? (optional)",
 }: {
   confidence: number | null;
   thinking: string;
   onConfidence(value: number | null): void;
   onThinking(value: string): void;
   onSubmit(): void;
+  placeholder?: string;
 }) {
   const id = useId();
   return (
@@ -68,8 +70,8 @@ export function StanceInput({
       </div>
       <input
         type="text"
-        aria-label="What are you thinking? (optional)"
-        placeholder="What are you thinking? (optional)"
+        aria-label={placeholder}
+        placeholder={placeholder}
         maxLength={MAX_THINKING}
         value={thinking}
         onChange={(event) => onThinking(event.target.value)}
