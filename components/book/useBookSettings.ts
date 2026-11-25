@@ -5,7 +5,7 @@ import { patchSettings } from "@/lib/client/api";
 import type { AppSettings } from "@/lib/shared/types";
 
 /** The saved settings a book page starts from. */
-export type BookSettings = Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab">;
+export type BookSettings = Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "readAloudVoice" | "readAloudRate">;
 
 /* The tutor is chosen and saved by useProviders. */
 export type ReaderSetting = Exclude<keyof BookSettings, "provider">;

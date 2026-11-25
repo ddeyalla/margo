@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, BookOpen, Focus, Moon, PanelRight, Search, Shapes, Sun, SunMoon, TableOfContents } from "lucide-react";
+import { ArrowLeft, AudioLines, BookOpen, Focus, Moon, PanelRight, Search, Shapes, Sun, SunMoon, TableOfContents } from "lucide-react";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import { SEARCH_SHORTCUT } from "@/components/search/SearchDialog";
 import { Divider, IconButton, Segmented } from "@/components/ui";
@@ -15,6 +15,7 @@ import type { BookSettings, ChooseSetting } from "./useBookSettings";
 
 export const TOC_SHORTCUT = "⌘⇧L";
 export const SPOTLIGHT_SHORTCUT = "⌘⇧F";
+export const READ_ALOUD_SHORTCUT = "⌘⇧S";
 
 const MODES: { value: ReadingMode; label: string }[] = [
   { value: "scroll", label: "Scroll" },
@@ -46,6 +47,8 @@ export function BookHeader({
   onModel,
   spotlight,
   onSpotlight,
+  readingAloud,
+  onReadAloud,
   focusing,
   onFocus,
   boardOpen,
@@ -72,6 +75,9 @@ export function BookHeader({
   onModel(id: ProviderId, model: string | null): void;
   spotlight: boolean;
   onSpotlight(): void;
+  /** Read-along's controls are open. */
+  readingAloud: boolean;
+  onReadAloud(): void;
   /** A focus session is on: the header clears away, as for the spotlight. */
   focusing: boolean;
   onFocus(minutes: number): void;
@@ -143,6 +149,16 @@ export function BookHeader({
           onClick={onSpotlight}
         >
           <Focus />
+        </IconButton>
+      </span>
+      <span title={format === "epub" ? undefined : "Read aloud works in EPUB books for now"} className="inline-flex">
+        <IconButton
+          label={format === "epub" ? `${readingAloud ? "Stop reading aloud" : "Read aloud, lighting each word"} (${READ_ALOUD_SHORTCUT})` : "Read aloud works in EPUB books for now"}
+          active={readingAloud}
+          disabled={format !== "epub" || failed}
+          onClick={onReadAloud}
+        >
+          <AudioLines />
         </IconButton>
       </span>
       <Divider />

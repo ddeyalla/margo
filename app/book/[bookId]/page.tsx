@@ -53,6 +53,8 @@ async function Book({ params, searchParams }: Pick<PageProps<"/book/[bookId]">, 
         readingFont: settings.readingFont,
         chaptersOpen: settings.chaptersOpen,
         panelTab: settings.panelTab,
+        readAloudVoice: settings.readAloudVoice,
+        readAloudRate: settings.readAloudRate,
       }}
     />
   );

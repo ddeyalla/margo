@@ -20,6 +20,26 @@ describe("tokenize", () => {
   it("splits on anything but letters and digits, folding case and accents", () => {
     expect(tokenize("Naïve CAFÉ, Привет — 42nd!")).toEqual(["naive", "cafe", "привет", "42nd"]);
   });
+
+  it("stems plurals, -ing and -ed, so a word's forms are one term", () => {
+    expect(tokenize("read reads reading readings")).toEqual(["read", "read", "read", "read"]);
+    expect(tokenize("stop stops stopped stopping")).toEqual(["stop", "stop", "stop", "stop"]);
+    expect(tokenize("story stories copied copying classes boxes")).toEqual(["storie", "storie", "copie", "copie", "class", "box"]);
+  });
+
+  it("keeps -ie words apart from -y words, and stems do and go", () => {
+    expect(tokenize("movie movies")).toEqual(["movie", "movie"]);
+    expect(tokenize("play plays played")).toEqual(["play", "play", "play"]);
+    expect(tokenize("do does doing go goes going")).toEqual(["do", "do", "do", "go", "go", "go"]);
+    expect(tokenize("constructor valueof hasownproperty")).toEqual(["constructor", "valueof", "hasownpropertie"]);
+  });
+
+  it("leaves short words, -ss/-us/-is, stems without a vowel and other scripts alone", () => {
+    const kept = ["is", "was", "this", "glass", "status", "analysis", "thing", "string", "spring", "speed", "add"];
+    expect(tokenize(kept.join(" "))).toEqual(kept);
+    expect(tokenize("added")).toEqual(["add"]);
+    expect(tokenize("reader water letter Привет")).toEqual(["reader", "water", "letter", "привет"]);
+  });
 });
 
 describe("chunkRanges", () => {
@@ -59,6 +79,79 @@ describe("searchSources", () => {
     expect(searchSources(sources, "photosyn")).toHaveLength(1);
     expect(searchSources(sources, "photosyn ")).toHaveLength(0);
     expect(searchSources(sources, "ph")).toHaveLength(0);
+  });
+
+  it("finds a word's other forms, and marks the book's own words", () => {
+    const [hit] = searchSources([makeSource(ID, [doc("text", "She stopped reading at dawn.")])], "stops reads ");
+    expect(hit.marks.map(([start, end]) => hit.snippet.slice(start, end))).toEqual(["stopped", "reading"]);
+  });
+
+  it("keeps finding a stemmed word at every step of typing it", () => {
+    const sources = [makeSource(ID, [doc("text", "the reading room")])];
+    for (const typed of ["rea", "read", "readi", "readin", "reading"]) {
+      const [hit] = searchSources(sources, typed);
+      expect(hit?.marks.map(([start, end]) => hit.snippet.slice(start, end)), typed).toEqual(["reading"]);
+    }
+  });
+
+  it("matches a finished last word with no space after by its stem, and not a shorter word it starts with", () => {
+    const sources = [makeSource(ID, [doc("text", "two story books"), doc("text", "stop the car"), doc("text", "she studied")])];
+    const marked = (query: string) => searchSources(sources, query).flatMap((hit) => hit.marks.map(([start, end]) => hit.snippet.slice(start, end)));
+    expect(marked("stories")).toEqual(["story"]);
+    expect(marked("stori")).toEqual(["story"]);
+    expect(marked("stopping")).toEqual(["stop"]);
+    expect(marked("stoppin")).toEqual(["stop"]);
+    expect(marked("books")).toEqual(["books"]);
+    expect(marked("studies")).toEqual(["studied"]);
+    expect(marked("their")).toEqual([]);
+    expect(marked("cart")).toEqual([]);
+  });
+
+  it("keeps a stemmed word's results at every keystroke, through a doubled consonant", () => {
+    const sources = [makeSource(ID, [doc("text", "they stopped short")])];
+    for (const typed of ["sto", "stop", "stopp", "stoppe", "stopped", "stoppi", "stoppin", "stopping"]) {
+      expect(searchSources(sources, typed), typed).toHaveLength(1);
+    }
+  });
+
+  it("does not stretch a word that is a term into a shorter one while it is typed", () => {
+    const sources = [makeSource(ID, [doc("text", "they cared for the car"), doc("text", "she was making it"), doc("text", "begin with care, make it")])];
+    const marked = (query: string) => searchSources(sources, query).flatMap((hit) => hit.marks.map(([start, end]) => hit.snippet.slice(start, end)));
+    expect(marked("care").sort()).toEqual(["care"]);
+    expect(marked("make")).toEqual(["make"]);
+    expect(marked("begin")).toEqual(["begin"]);
+    expect(marked("makin")).toEqual(["making"]);
+  });
+
+  it("matches -ie plurals both ways", () => {
+    const sources = [makeSource(ID, [doc("text", "two movies tonight")])];
+    expect(searchSources(sources, "movie night ")).toHaveLength(1);
+    expect(searchSources(sources, "movie")).toHaveLength(1);
+  });
+
+  it("lands a phrase-boosted result on the part that holds the phrase", () => {
+    const chunk = doc("text", "suffering, suffering: only life is suffering only", "they say life is only suffering");
+    const [hit] = searchSources([makeSource(ID, [chunk, doc("text", "other words")])], "life is only suffering");
+    expect(hit.anchor).toEqual(chunk.parts[1].anchor);
+  });
+
+  it("ranks a document holding the query as a phrase above one with the same words apart", () => {
+    const apart = doc("text", "suffering is life only");
+    const phrase = doc("text", "life is only suffering");
+    const sources = [makeSource(ID, [apart, phrase, doc("text", "other words"), doc("text", "more words")])];
+    const hits = searchSources(sources, "life is only suffering");
+    expect(hits.map((hit) => hit.anchor)).toEqual([phrase.parts[0].anchor, apart.parts[0].anchor]);
+    expect(hits[0].score).toBeCloseTo(hits[1].score * 2);
+  });
+
+  it("weighs a phrase by its words' rarity, so common words side by side lift little", () => {
+    const common = doc("text", "it is only here a word rare");
+    const rare = doc("text", "only here it a is rare word");
+    const filler = Array.from({ length: 20 }, () => doc("text", "it is only a word here"));
+    const hits = searchSources([makeSource(ID, [common, rare, ...filler])], "it is only rare word");
+    const [scoreCommon, scoreRare] = [common, rare].map((d) => hits.find((hit) => hit.anchor === d.parts[0].anchor)!.score);
+    /* "rare word" is the rarer run; "it is only" covers more words but less of the weight. */
+    expect(scoreRare).toBeGreaterThan(scoreCommon);
   });
 
   it("points a result at its part with the most of the query, and keeps one result per place", () => {

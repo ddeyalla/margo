@@ -340,6 +340,16 @@ export type ReadingFont = string | null;
 export const isReadingFont = (value: unknown): value is ReadingFont =>
   value === null || (typeof value === "string" && value.length > 0 && value.length <= 200 && value.trim() === value && !/\p{Cc}/u.test(value));
 
+/** The speeds read-along offers, as a voice's rate: 1 is the voice's normal pace. */
+export const READ_ALOUD_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2] as const;
+export type ReadAloudRate = (typeof READ_ALOUD_RATES)[number];
+
+export const isReadAloudRate = (value: unknown): value is ReadAloudRate => READ_ALOUD_RATES.includes(value as ReadAloudRate);
+
+/** An on-device voice, by its voiceURI, or null for the default one. */
+export const isReadAloudVoice = (value: unknown): value is string | null =>
+  value === null || (typeof value === "string" && value.length > 0 && value.length <= 300 && !/\p{Cc}/u.test(value));
+
 /** The tab showing in the side panel. */
 export type PanelTab = "chat" | "notes" | "highlights" | "cards";
 
@@ -363,6 +373,9 @@ export interface AppSettings {
   /** The chapters column beside the book. Closed unless opened. */
   chaptersOpen: boolean;
   panelTab: PanelTab;
+  /** Read-along: the voice that reads the book, and how fast. */
+  readAloudVoice: string | null;
+  readAloudRate: ReadAloudRate;
   /** The library's look. The shelf unless the grid was chosen. */
   libraryView: LibraryView;
   /** Absolute folder of books and of the markdown notes copy, chosen in the app. BOOKS_DIR and NOTES_DIR win over them. */
@@ -371,7 +384,7 @@ export interface AppSettings {
 }
 
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "libraryView" | "booksDir" | "notesDir">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "readAloudVoice" | "readAloudRate" | "libraryView" | "booksDir" | "notesDir">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 
