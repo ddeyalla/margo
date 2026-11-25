@@ -61,10 +61,10 @@ export function HighlightsTab({
                 >
                   <span aria-hidden className="w-[3px] shrink-0 self-stretch rounded-full bg-highlight-strong/80" />
                   <span className="min-w-0 flex-1">
-                    <span className="line-clamp-4 whitespace-pre-line font-reading text-[13px] leading-relaxed text-prose">
+                    <span className="line-clamp-4 whitespace-pre-line font-reading text-body leading-relaxed text-prose">
                       {highlight.quote}
                     </span>
-                    <span className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[11px] text-dim">
+                    <span className="mt-1.5 flex min-w-0 items-center gap-1.5 text-caption text-dim">
                       <span className="min-w-0 truncate">{placeLabel(highlight.chapterTitle, highlight.anchor) ?? UNTITLED_SECTION}</span>
                       <span aria-hidden className="size-0.5 shrink-0 rounded-full bg-dim/60" />
                       <span className="shrink-0 tabular-nums">{formatShortDate(highlight.createdAt)}</span>

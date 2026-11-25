@@ -247,7 +247,7 @@ export function NotesWorkspace({ initialIndex, notesDir }: { initialIndex: Notes
           <Link href="/" aria-label="Back to the library" title="Back to the library" className="inline-flex size-7 items-center justify-center rounded-sm text-dim hover:bg-tint hover:text-paper">
             <ArrowLeft className="size-4" />
           </Link>
-          <h1 className="flex-1 text-[13px] font-semibold">Notes</h1>
+          <h1 className="flex-1 text-body font-semibold">Notes</h1>
           <IconButton label="New note" onClick={() => void newNote()}>
             <Plus />
           </IconButton>
@@ -280,9 +280,9 @@ export function NotesWorkspace({ initialIndex, notesDir }: { initialIndex: Notes
                     >
                       <span className="min-w-0 flex-1 truncate">
                         {item.title}
-                        {folder ? <span className="ml-1.5 text-[11px] text-dim">{folder}</span> : null}
+                        {folder ? <span className="ml-1.5 text-caption text-dim">{folder}</span> : null}
                       </span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-dim">{ago(item.modifiedAt, Date.parse(index.listedAt))}</span>
+                      <span className="shrink-0 text-caption tabular-nums text-dim">{ago(item.modifiedAt, Date.parse(index.listedAt))}</span>
                     </button>
                   </li>
                 );
@@ -292,7 +292,7 @@ export function NotesWorkspace({ initialIndex, notesDir }: { initialIndex: Notes
             <p className="px-2 py-3 text-label text-dim">{filter ? "No notes match." : "No notes yet."}</p>
           )}
         </nav>
-        <p className="truncate border-t border-line px-3 py-2 text-[11px] text-dim" title={notesDir}>
+        <p className="truncate border-t border-line px-3 py-2 text-caption text-dim" title={notesDir}>
           {notesDir}
         </p>
       </aside>
@@ -308,7 +308,7 @@ export function NotesWorkspace({ initialIndex, notesDir }: { initialIndex: Notes
             {notice ? <NoticeBar notice={notice} onOpen={(path) => void open(path)} onDismiss={() => setNotice(null)} /> : null}
             {note ? (
               <>
-                <h2 className="mb-3 mt-6 text-[28px] font-bold leading-tight text-paper">{noteTitle(note.path)}</h2>
+                <h2 className="mb-3 mt-6 text-large font-bold leading-tight text-paper">{noteTitle(note.path)}</h2>
                 <MarkdownEditor
                   key={editorKey}
                   handle={editorRef}
@@ -345,7 +345,7 @@ export function NotesWorkspace({ initialIndex, notesDir }: { initialIndex: Notes
 
 function SaveState({ status }: { status: SaveStatus }) {
   const text = { saved: "Saved", unsaved: "Edited", saving: "Saving…", error: "Not saved" }[status];
-  return <span className={clsx("shrink-0 text-[11px]", status === "error" ? "text-danger" : "text-dim")}>{text}</span>;
+  return <span className={clsx("shrink-0 text-caption", status === "error" ? "text-danger" : "text-dim")}>{text}</span>;
 }
 
 function NoticeBar({ notice, onOpen, onDismiss }: { notice: Notice; onOpen(path: string): void; onDismiss(): void }) {
@@ -380,7 +380,7 @@ function NoticeBar({ notice, onOpen, onDismiss }: { notice: Notice; onOpen(path:
 function Backlinks({ links, onOpen }: { links: Backlink[]; onOpen(path: string): void }) {
   return (
     <section aria-label="Linked from" className="mt-10 border-t border-line pt-4">
-      <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-dim">
+      <h3 className="mb-2 flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-dim">
         <Link2 aria-hidden className="size-3.5" />
         Linked from {links.length ? links.length : ""}
       </h3>
@@ -393,7 +393,7 @@ function Backlinks({ links, onOpen }: { links: Backlink[]; onOpen(path: string):
                   <FileText aria-hidden className="size-3.5 text-dim" />
                   {link.title}
                 </span>
-                <span className="mt-0.5 block truncate text-[12px] text-dim">{link.context}</span>
+                <span className="mt-0.5 block truncate text-label text-dim">{link.context}</span>
               </button>
             </li>
           ))}

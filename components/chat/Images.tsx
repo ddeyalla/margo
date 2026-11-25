@@ -66,7 +66,7 @@ export function MessageImages({
           type="button"
           onClick={() => onOpen(image)}
           title="View larger"
-          className="press overflow-hidden rounded-[10px] bg-panel-hover ring-1 ring-inset ring-line focus-visible:outline-2 focus-visible:outline-accent"
+          className="press overflow-hidden rounded-sm bg-panel-hover ring-1 ring-inset ring-line focus-visible:outline-2 focus-visible:outline-accent"
         >
           <Image
             src={attachmentUrl(bookId, image.id)}

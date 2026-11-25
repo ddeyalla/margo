@@ -54,8 +54,8 @@ export function NoteEditor({
       <figure className="flex gap-2.5">
         <span aria-hidden className="w-[3px] shrink-0 rounded-full bg-highlight-strong/80" />
         <div className="min-w-0">
-          <blockquote className="line-clamp-4 font-reading text-[13px] leading-relaxed text-prose">{quote}</blockquote>
-          {where ? <figcaption className="mt-1 truncate text-[11px] text-dim">{where}</figcaption> : null}
+          <blockquote className="line-clamp-4 font-reading text-body leading-relaxed text-prose">{quote}</blockquote>
+          {where ? <figcaption className="mt-1 truncate text-caption text-dim">{where}</figcaption> : null}
         </div>
       </figure>
       <MarkdownEditor
@@ -70,7 +70,7 @@ export function NoteEditor({
         className="mt-3 max-h-[360px] min-h-[96px] overflow-y-auto rounded-md bg-ink/60 ring-1 ring-line transition-shadow duration-[var(--duration-fast)] focus-within:ring-line-strong"
       />
       <div className="mt-2.5 flex items-center gap-2">
-        <p className="flex min-w-0 flex-1 items-center gap-1 truncate text-[11px] text-dim">
+        <p className="flex min-w-0 flex-1 items-center gap-1 truncate text-caption text-dim">
           <Kbd>⌘↵</Kbd> save · <Kbd>Esc</Kbd> cancel
         </p>
         <Button variant="ghost" onClick={onCancel}>

@@ -1,19 +1,20 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
-import { BookOpen, FolderX, Library as LibraryIcon, NotebookPen } from "lucide-react";
-import { BookList, GRID, type Shelf, type ShelfBook } from "@/components/library/BookList";
+import { BookOpen, FolderX, NotebookPen } from "lucide-react";
+import type { Shelf, ShelfBook } from "@/components/library/BookList";
+import { LibraryBooks, LibraryViewToggle } from "@/components/library/LibraryView";
 import { HomeCourses } from "@/components/courses/HomeCourses";
 import { TodayCard } from "@/components/courses/TodayCard";
 import { FolderForm } from "@/components/library/FolderForm";
-import { FoldersControl } from "@/components/library/FoldersControl";
+import { LibrarySettings } from "@/components/library/LibrarySettings";
 import { MissingBooks } from "@/components/library/MissingBooks";
 import { RefreshOnReturn } from "@/components/library/RefreshOnReturn";
 import { LibrarySearch } from "@/components/search/LibrarySearch";
 import { EmptyState } from "@/components/ui";
-import { ThemeControl } from "@/components/ui/theme";
 import { BooksFolderMissing, getFolders } from "@/lib/server/config";
 import { libraryProblem, readLibrary, type ScannedLibrary } from "@/lib/server/library";
+import { readSettings } from "@/lib/server/settings";
 import { listMissing, type MissingBooks as Missing } from "@/lib/server/missing-books";
 import { bookStateUpdatedAt, readBookState } from "@/lib/server/store";
 
@@ -30,16 +31,17 @@ async function Library() {
     if (error instanceof BooksFolderMissing) return <FolderSetup />;
     return (
       <>
-        <Heading folders={foldersControl()} />
+        <Heading settings={librarySettings()} />
         <EmptyState icon={<FolderX />} title="Your library is not set up yet" body={libraryProblem(error)} />
       </>
     );
   }
   const { books } = library;
+  const { libraryView } = await readSettings().catch(() => ({ libraryView: "shelf" as const }));
   if (!books.length) {
     return (
       <>
-        <Heading folders={foldersControl()} />
+        <Heading settings={librarySettings()} />
         <EmptyState
           icon={<BookOpen />}
           title="No books yet"
@@ -91,10 +93,10 @@ async function Library() {
 
   return (
     <>
-      <Heading folders={foldersControl()} search={<LibrarySearch />}>
+      <Heading settings={librarySettings()} search={<LibrarySearch />} view={<LibraryViewToggle saved={libraryView} />}>
         {plural(books.length, "book")} in {plural(shelves.size, "folder")}
       </Heading>
-      <BookList shelves={sorted} recent={recent} />
+      <LibraryBooks saved={libraryView} shelves={sorted} recent={recent} />
       {missing.length ? (
         <div className="mt-12">
           <MissingBooks books={missing} candidates={candidates} />
@@ -104,10 +106,10 @@ async function Library() {
   );
 }
 
-/** The folders already chosen, with a button to change them. */
-function foldersControl() {
+/** The app's colours and the folders already chosen, behind one button. */
+function librarySettings() {
   const { books, notes } = getFolders();
-  return <FoldersControl books={books} notes={notes} />;
+  return <LibrarySettings books={books} notes={notes} />;
 }
 
 /** Shown until a books folder is set, in .env.local or in the app. */
@@ -125,7 +127,17 @@ function FolderSetup() {
   );
 }
 
-function Heading({ children, folders, search }: { children?: React.ReactNode; folders?: React.ReactNode; search?: React.ReactNode }) {
+function Heading({
+  children,
+  settings,
+  search,
+  view,
+}: {
+  children?: React.ReactNode;
+  settings?: React.ReactNode;
+  search?: React.ReactNode;
+  view?: React.ReactNode;
+}) {
   return (
     <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-display text-paper">Library</h1>
@@ -136,23 +148,23 @@ function Heading({ children, folders, search }: { children?: React.ReactNode; fo
           <NotebookPen aria-hidden className="size-3.5" />
           Notes
         </Link>
-        <ThemeControl />
+        {view}
+        {settings}
       </div>
-      {folders}
     </div>
   );
 }
 
+/* Neutral rows rather than either view's look, so loading doesn't flash a grid before a shelf or the other way round. */
 function LibrarySkeleton() {
   return (
     <>
       <Heading />
-      <div aria-hidden className={GRID}>
-        {Array.from({ length: 14 }, (_, index) => (
-          <div key={index} className="flex flex-col gap-3 rounded-xl bg-panel p-2.5 pb-3 shadow-canvas">
-            <div className="aspect-[2/3] animate-pulse rounded-md bg-tint" />
-            <div className="mx-1 h-3 w-4/5 animate-pulse rounded-xs bg-tint" />
-            <div className="mx-1 h-2.5 w-1/2 animate-pulse rounded-xs bg-tint" />
+      <div aria-hidden className="flex flex-col gap-10">
+        {Array.from({ length: 3 }, (_, index) => (
+          <div key={index} className="flex flex-col gap-4">
+            <div className="h-3 w-40 animate-pulse rounded-xs bg-tint" />
+            <div className="h-56 animate-pulse rounded-lg bg-tint" />
           </div>
         ))}
       </div>
@@ -163,13 +175,7 @@ function LibrarySkeleton() {
 export default function Home() {
   return (
     <div className="min-h-full bg-ink">
-      <header className="sticky top-0 z-10 flex h-12 items-center gap-2 bg-ink/80 px-3 backdrop-blur-md">
-        <span className="flex h-7 items-center gap-2 rounded-full bg-panel-raised px-3 text-[13px] font-semibold text-paper shadow-chip">
-          <LibraryIcon aria-hidden className="size-3.5 text-dim" />
-          rigg learn
-        </span>
-      </header>
-      <main className="mx-auto w-full max-w-[1180px] px-6 pb-24 pt-8">
+      <main className="mx-auto w-full max-w-[1180px] px-6 pb-24 pt-14">
         <RefreshOnReturn />
         <Suspense fallback={null}>
           <TodayCard />

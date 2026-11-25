@@ -688,7 +688,7 @@ export function PdfReader({
         >
           <ScanText aria-hidden className="mt-0.5 size-4 shrink-0 text-fog" />
           <div className="min-w-0 py-px">
-            <p className="text-[13px] font-medium text-paper">This PDF has no selectable text</p>
+            <p className="text-body font-medium text-paper">This PDF has no selectable text</p>
             <p className="mt-0.5 text-label leading-relaxed text-dim">
               Its pages are scanned images. You can read it here, but highlights, notes and the tutor need text to select.
             </p>

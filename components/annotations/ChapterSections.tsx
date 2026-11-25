@@ -23,7 +23,7 @@ export function ChapterSections<T extends Placed>({
   return (
     <>
       {count ? (
-        <p className="px-2 pb-1 pt-1 text-[11px] text-dim tabular-nums">
+        <p className="px-2 pb-1 pt-1 text-caption text-dim tabular-nums">
           {items.length} {items.length === 1 ? count.one : count.many} in this book
         </p>
       ) : null}

@@ -30,7 +30,7 @@ const statusLine = (provider: ProviderInfo) =>
     : (provider.detail ?? STATUS_NOTE[provider.status]);
 
 const itemClass =
-  "flex min-h-8 cursor-default select-none items-start gap-2 rounded-sm px-2 py-1.5 text-[12px] text-fog outline-none data-[highlighted]:bg-tint data-[highlighted]:text-paper data-[checked]:text-paper";
+  "flex min-h-8 cursor-default select-none items-start gap-2 rounded-sm px-2 py-1.5 text-label text-fog outline-none data-[highlighted]:bg-tint data-[highlighted]:text-paper data-[checked]:text-paper";
 
 /**
  * One pill naming the tutor in use, and its model. Providers that can't answer stay listed, disabled, with the
@@ -59,7 +59,7 @@ export function ProviderPicker({
     <Menu>
       <MenuTrigger
         aria-label={`Tutor: ${label}`}
-        className="press flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-full bg-tint px-2.5 text-[12px] text-fog outline-none transition-colors duration-[var(--duration-base)] hover:bg-tint-strong hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[open]:bg-tint-strong data-[open]:text-paper"
+        className="press flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-full bg-tint px-2.5 text-label text-fog outline-none transition-colors duration-[var(--duration-base)] hover:bg-tint-strong hover:text-paper focus-visible:outline-2 focus-visible:outline-accent data-[open]:bg-tint-strong data-[open]:text-paper"
       >
         <Sparkles size={12} aria-hidden className="shrink-0 text-dim" />
         <span className="truncate">{label}</span>
@@ -73,8 +73,8 @@ export function ProviderPicker({
         className="pop z-[60] w-[280px] max-w-[calc(100vw-24px)] rounded-lg bg-panel-raised p-1 shadow-float outline-none"
       >
         <MenuRadioGroup value={current} onValueChange={(value) => value && onSelect(value as ProviderId)}>
-          <MenuGroupLabel className="px-2 pb-1 pt-1.5 text-[11px] text-dim">Tutor</MenuGroupLabel>
-          {providers === null ? <p className="px-2 py-3 text-[12px] text-dim">Checking which tutors are available…</p> : null}
+          <MenuGroupLabel className="px-2 pb-1 pt-1.5 text-caption text-dim">Tutor</MenuGroupLabel>
+          {providers === null ? <p className="px-2 py-3 text-label text-dim">Checking which tutors are available…</p> : null}
           {providers?.map((provider) => (
             <MenuRadioItem
               key={provider.id}
@@ -92,7 +92,7 @@ export function ProviderPicker({
               />
               <span className={clsx("min-w-0 flex-1", provider.status !== "ready" && "opacity-60")}>
                 <span className="block">{provider.label}</span>
-                <span className="block text-[11px] leading-snug text-dim [overflow-wrap:anywhere]">{statusLine(provider)}</span>
+                <span className="block text-caption leading-snug text-dim [overflow-wrap:anywhere]">{statusLine(provider)}</span>
               </span>
               <MenuItemIndicator className="mt-0.5 shrink-0">
                 <Check size={13} aria-hidden />
@@ -104,12 +104,12 @@ export function ProviderPicker({
           <>
             <MenuSeparator className="mx-1 my-1 h-px bg-line" />
             <MenuRadioGroup value={model ?? DEFAULT} onValueChange={(value) => onModel(current, value === DEFAULT ? null : (value as string))}>
-              <MenuGroupLabel className="px-2 pb-1 pt-1.5 text-[11px] text-dim">Model</MenuGroupLabel>
+              <MenuGroupLabel className="px-2 pb-1 pt-1.5 text-caption text-dim">Model</MenuGroupLabel>
               {[{ id: DEFAULT, label: DEFAULT_MODEL_LABEL[current] ?? "Default", note: null }, ...choices].map((choice) => (
                 <MenuRadioItem key={choice.id} value={choice.id} closeOnSelect className={itemClass}>
                   <span className="min-w-0 flex-1">
                     <span className="block">{choice.label}</span>
-                    {choice.note ? <span className="block text-[11px] leading-snug text-dim">{choice.note}</span> : null}
+                    {choice.note ? <span className="block text-caption leading-snug text-dim">{choice.note}</span> : null}
                   </span>
                   <MenuItemIndicator className="mt-0.5 shrink-0">
                     <Check size={13} aria-hidden />

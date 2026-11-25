@@ -150,7 +150,7 @@ export function SearchDialog({ currentBookId, onClose, onPick }: { currentBookId
             }
           }}
           placeholder="Search every book, highlight, note and card"
-          className="h-12 min-w-0 flex-1 bg-transparent text-[14px] text-paper outline-none placeholder:text-dim"
+          className="h-12 min-w-0 flex-1 bg-transparent text-callout text-paper outline-none placeholder:text-dim"
         />
         {loading ? <Spinner className="text-dim" /> : <Kbd>esc</Kbd>}
       </div>
@@ -174,14 +174,14 @@ export function SearchDialog({ currentBookId, onClose, onPick }: { currentBookId
         ) : (
           results?.books.map((book) => (
             <section key={book.id} aria-label={book.title} className="pb-1">
-              <h3 className="sticky top-0 z-10 flex items-center gap-2 bg-panel-raised px-4 pt-2 pb-1 text-[12px] font-semibold text-paper">
+              <h3 className="sticky top-0 z-10 flex items-center gap-2 bg-panel-raised px-4 pt-2 pb-1 text-label font-semibold text-paper">
                 <BookOpen aria-hidden className="size-3.5 shrink-0 text-dim" />
                 <span className="truncate">{book.title}</span>
                 {book.id === currentBookId ? <span className="shrink-0 font-normal text-dim">this book</span> : null}
               </h3>
               {book.chapters.map((chapter, c) => (
                 <div key={`${chapter.title}-${c}`} role="group" aria-label={chapter.title ?? "No chapter"}>
-                  {chapter.title ? <p className="truncate px-4 pt-1 pl-[34px] text-[11px] text-dim">{chapter.title}</p> : null}
+                  {chapter.title ? <p className="truncate px-4 pt-1 pl-[34px] text-caption text-dim">{chapter.title}</p> : null}
                   {chapter.hits.map((hit) => {
                     index += 1;
                     const row = index;
@@ -194,7 +194,7 @@ export function SearchDialog({ currentBookId, onClose, onPick }: { currentBookId
                         onMouseMove={() => setActive(row)}
                         onClick={() => pick({ book, hit })}
                         className={clsx(
-                          "mx-1.5 flex cursor-default items-start gap-2 rounded-md px-2.5 py-1.5",
+                          "mx-1.5 flex cursor-default items-start gap-2 rounded-lg px-2.5 py-1.5",
                           row === active ? "bg-tint-strong" : "",
                         )}
                       >

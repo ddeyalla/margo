@@ -53,7 +53,7 @@ export function Diagram({ source, codeClass }: { source: string; codeClass: stri
             save(source);
             setSaved(true);
           }}
-          className="press absolute right-1.5 top-1.5 rounded-xs bg-panel-raised px-1.5 py-0.5 text-[11px] text-fog opacity-0 shadow-chip transition-opacity duration-[var(--duration-fast)] hover:text-paper focus-visible:opacity-100 group-hover/diagram:opacity-100 disabled:opacity-100"
+          className="press absolute right-1.5 top-1.5 rounded-xs bg-panel-raised px-1.5 py-0.5 text-caption text-fog opacity-0 shadow-chip transition-opacity duration-[var(--duration-fast)] hover:text-paper focus-visible:opacity-100 group-hover/diagram:opacity-100 disabled:opacity-100"
         >
           {saved ? "Saved to notes" : "Save to notes"}
         </button>

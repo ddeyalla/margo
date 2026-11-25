@@ -57,11 +57,15 @@ export function PlanChat({
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const autoSent = useRef(false);
+  /* Whether the page keeps the newest words in view. Scrolling up to reread stops it; back at the bottom, or
+     sending a message, starts it again. Growing text never fires a scroll event, so following holds while it streams. */
+  const following = useRef(true);
   const busy = streaming !== null;
 
   const send = async (text: string) => {
     if (!provider || busy || !text.trim()) return;
     setError(null);
+    following.current = true;
     setStreaming("");
     setDraft("");
     const controller = new AbortController();
@@ -94,7 +98,15 @@ export function PlanChat({
   });
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end" });
+    const onScroll = () => {
+      following.current = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 96;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (following.current) bottom.current?.scrollIntoView({ block: "end" });
   }, [plan?.messages.length, streaming]);
 
   const latestRoadmap = plan?.messages.findLastIndex((message) => message.role === "assistant" && message.roadmap) ?? -1;
@@ -117,17 +129,17 @@ export function PlanChat({
   return (
     <div className="flex flex-col gap-5">
       {!plan?.messages.length && !busy ? (
-        <p className="text-[15px] leading-relaxed text-fog">
+        <p className="text-callout text-fog">
           Say what you want to learn. The tutor asks where you’re starting from, what you’re after and how much time you have, then lays out a plan from your books.
         </p>
       ) : null}
       {plan?.messages.map((message, index) =>
         message.role === "user" ? (
-          <div key={index} className="self-end max-w-[85%] rounded-xl bg-panel-raised px-3 py-2 text-[14px] leading-relaxed text-paper shadow-chip whitespace-pre-wrap">
+          <div key={index} className="self-end max-w-[85%] rounded-xl bg-panel-raised px-3 py-2 text-callout leading-relaxed text-paper shadow-chip whitespace-pre-wrap">
             {message.content}
           </div>
         ) : (
-          <div key={index} className="flex flex-col gap-3 text-[14px] leading-relaxed text-prose">
+          <div key={index} className="flex flex-col gap-3 text-callout leading-relaxed text-prose">
             <Markdown text={withoutRoadmap(message.content) || (message.partial ? "*Stopped.*" : "")} />
             {message.roadmap ? (
               <RoadmapCard
@@ -151,7 +163,7 @@ export function PlanChat({
         ),
       )}
       {busy ? (
-        <div className="flex flex-col gap-2 text-[14px] leading-relaxed text-prose">
+        <div className="flex flex-col gap-2 text-callout leading-relaxed text-prose">
           {streaming ? <StreamingMarkdown text={withoutRoadmap(streaming)} /> : null}
           <p className="flex items-center gap-2 text-label text-dim">
             <Spinner />
@@ -166,7 +178,7 @@ export function PlanChat({
       ) : null}
       <div ref={bottom} />
       <form
-        className="sticky bottom-4 flex items-end gap-2 rounded-xl bg-panel-raised p-2 shadow-canvas"
+        className="sticky bottom-4 flex items-end gap-2 rounded-[calc(var(--radius-sm)+8px)] bg-panel-raised p-2 shadow-canvas"
         onSubmit={(event) => {
           event.preventDefault();
           void send(draft);
@@ -175,6 +187,7 @@ export function PlanChat({
         <textarea
           aria-label="Message the tutor"
           rows={2}
+          autoFocus={!plan?.messages.length && !firstMessage}
           value={draft}
           placeholder={plan?.messages.length ? "Answer, or ask for changes" : "I want to learn…"}
           onChange={(event) => setDraft(event.target.value)}
@@ -184,7 +197,7 @@ export function PlanChat({
               void send(draft);
             }
           }}
-          className="min-h-10 flex-1 resize-none bg-transparent px-2 py-1.5 text-[14px] text-paper outline-none placeholder:text-dim"
+          className="min-h-10 flex-1 resize-none bg-transparent px-2 py-1.5 text-callout text-paper outline-none placeholder:text-dim"
         />
         <IconButton type="submit" label={unavailable ?? "Send"} disabled={!provider || busy || !draft.trim()}>
           <ArrowUp />

@@ -146,7 +146,7 @@ function RelinkDialog({ book, candidates, onClose }: { book: MissingBook; candid
                   className="mt-0.5 accent-[var(--color-paper)] outline-none"
                 />
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="truncate text-[13px] font-medium text-paper">{candidate.title}</span>
+                  <span className="truncate text-body font-medium text-paper">{candidate.title}</span>
                   <span className="truncate text-label text-dim">
                     {candidate.relPath} · {candidate.format === "epub" ? "EPUB" : "PDF"} · {formatSize(candidate.sizeBytes)}
                   </span>
@@ -223,7 +223,7 @@ export function MissingBooks({ books, candidates }: { books: MissingBook[]; cand
         {books.map((book) => (
           <li key={book.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-line px-4 py-3 [&:not(:first-child)]:border-t">
             <div className="flex min-w-0 flex-1 basis-60 flex-col gap-0.5">
-              <p className="truncate text-[13px] font-semibold text-paper">{book.title}</p>
+              <p className="truncate text-body font-semibold text-paper">{book.title}</p>
               <p className="truncate text-label text-dim">
                 {savedLine(book.saved)}
                 {book.relPath ? ` · was ${book.relPath}` : ""}

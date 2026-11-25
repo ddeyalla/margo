@@ -9,6 +9,7 @@ import { SEARCH_SHORTCUT } from "@/components/search/SearchDialog";
 import { IconButton, Segmented } from "@/components/ui";
 import type { AppSettings, BookFormat, ProviderId, ProviderInfo, ReadingFont, ReadingMode, ReadingTheme } from "@/lib/shared/types";
 import { useChapter, type PlaceStore } from "./place";
+import { FocusButton } from "./FocusSession";
 import { ReadingSettings } from "./ReadingSettings";
 import type { BookSettings, ChooseSetting } from "./useBookSettings";
 
@@ -45,6 +46,8 @@ export function BookHeader({
   onModel,
   spotlight,
   onSpotlight,
+  focusing,
+  onFocus,
   panelId,
   panelOpen,
   onTogglePanel,
@@ -67,6 +70,9 @@ export function BookHeader({
   onModel(id: ProviderId, model: string | null): void;
   spotlight: boolean;
   onSpotlight(): void;
+  /** A focus session is on: the header clears away, as for the spotlight. */
+  focusing: boolean;
+  onFocus(minutes: number): void;
   panelId: string;
   panelOpen: boolean;
   onTogglePanel(): void;
@@ -74,7 +80,7 @@ export function BookHeader({
 }) {
   const tocOpen = settings.chaptersOpen;
   return (
-    <header className={clsx("h-12 shrink-0 items-center gap-1.5 px-2.5", spotlight ? "hidden" : "flex")}>
+    <header className={clsx("h-12 shrink-0 items-center gap-1.5 px-2.5", spotlight || focusing ? "hidden" : "flex")}>
       <Link
         href="/"
         aria-label="Back to library"
@@ -93,7 +99,7 @@ export function BookHeader({
         <TableOfContents />
       </IconButton>
       <div className="ml-1 flex min-w-0 flex-1 items-center gap-2.5">
-        <h1 className="flex h-7 min-w-0 max-w-[min(360px,50%)] shrink-0 items-center gap-2 rounded-full bg-panel-raised px-3 text-[13px] font-semibold text-paper shadow-chip">
+        <h1 className="flex h-7 min-w-0 max-w-[min(360px,50%)] shrink-0 items-center gap-2 rounded-full bg-panel-raised px-3 text-body font-semibold text-paper shadow-chip">
           <BookOpen aria-hidden className="size-3.5 shrink-0 text-dim" />
           <span className="truncate">{title}</span>
         </h1>
@@ -119,6 +125,7 @@ export function BookHeader({
       ) : (
         <Segmented label="Page colours" options={PDF_THEMES} value={settings.pdfPage} onChange={(theme) => choose("pdfPage", theme)} />
       )}
+      <FocusButton disabled={failed} onStart={onFocus} />
       {/* A disabled button takes no pointer, so the reason it is off sits on this wrapper. */}
       <span title={format === "epub" ? undefined : "Spotlight works in EPUB books for now"} className="inline-flex">
         <IconButton

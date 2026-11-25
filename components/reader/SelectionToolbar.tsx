@@ -246,7 +246,7 @@ export function SelectionToolbar({
                   if (askingRef.current) reset();
                 }, 0);
               }}
-              className="h-7 w-[min(320px,60vw)] bg-transparent px-1.5 text-[13px] text-paper outline-none placeholder:text-dim"
+              className="h-7 w-[min(320px,60vw)] bg-transparent px-1.5 text-body text-paper outline-none placeholder:text-dim"
             />
             <MicButton dictation={dictation} disabled={inputDisabled} className="h-6 min-w-6" />
             <ToolbarButton

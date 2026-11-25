@@ -4,7 +4,7 @@ import { useId } from "react";
 import { MAX_THINKING, SIGNAL_LABELS, type Signal } from "@/lib/shared/confidence";
 
 const fieldClass =
-  "h-8 w-full rounded-sm bg-ink/60 px-2 text-[13px] text-paper outline-none ring-1 ring-line focus:ring-line-strong placeholder:text-dim";
+  "h-8 w-full rounded-sm bg-ink/60 px-2 text-body text-paper outline-none ring-1 ring-line focus:ring-line-strong placeholder:text-dim";
 
 /** Colours for a signal: confident and right is calm, confident and wrong is loud. */
 export const SIGNAL_TONE: Record<Signal, string> = {
@@ -63,7 +63,7 @@ export function StanceInput({
           onPointerDown={() => confidence === null && onConfidence(50)}
           className={`w-full accent-[var(--color-accent)] ${confidence === null ? "opacity-40" : ""}`}
         />
-        <div className="flex justify-between text-[11px] text-dim" aria-hidden>
+        <div className="flex justify-between text-caption text-dim" aria-hidden>
           <span>Guessing</span>
           <span>Certain</span>
         </div>

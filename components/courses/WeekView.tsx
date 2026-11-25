@@ -26,11 +26,11 @@ export function WeekView({ days, title }: { days: DayTime[]; title: string }) {
       <ol className="grid grid-cols-7 gap-1.5" aria-label={title}>
         {days.map((time, i) => (
           <li key={time.day} className="flex flex-col items-center gap-1" title={`${time.day}: ${describe(time)}`}>
-            <span className="text-[11px] tabular-nums text-dim">{learned(time) ? minutes(time.total) : ""}</span>
+            <span className="text-caption tabular-nums text-dim">{learned(time) ? minutes(time.total) : ""}</span>
             <span className="flex h-12 w-full items-end border-b border-line-strong">
               <span className={`w-full rounded-t-sm ${learned(time) ? "bg-accent/80" : ""}`} style={{ height: `${Math.max(learned(time) ? 8 : 0, (100 * time.total) / most)}%` }} />
             </span>
-            <span className={`text-[11px] ${i === days.length - 1 ? "font-medium text-fog" : "text-dim"}`}>{i === days.length - 1 ? "Today" : weekday(time.day)}</span>
+            <span className={`text-caption ${i === days.length - 1 ? "font-medium text-fog" : "text-dim"}`}>{i === days.length - 1 ? "Today" : weekday(time.day)}</span>
           </li>
         ))}
       </ol>

@@ -150,7 +150,7 @@ export const TocDrawer = memo(function TocDrawer({
                   style={{ paddingLeft: 10 + entry.depth * 14 }}
                   className={clsx(
                     "press flex w-full items-baseline gap-3 rounded-sm py-1.5 pr-2 text-left leading-snug outline-none transition-colors duration-[var(--duration-fast)] focus-visible:outline-2 focus-visible:outline-accent",
-                    entry.depth === 0 ? "text-[13px]" : "text-label",
+                    entry.depth === 0 ? "text-body" : "text-label",
                     isCurrent
                       ? "bg-panel-raised font-medium text-paper shadow-chip"
                       : clsx("hover:bg-tint hover:text-paper", entry.depth === 0 ? "text-fog" : "text-dim"),
@@ -158,7 +158,7 @@ export const TocDrawer = memo(function TocDrawer({
                 >
                   <span className="min-w-0 flex-1">{entry.label}</span>
                   {entry.target.kind === "pdf" ? (
-                    <span className="shrink-0 text-[11px] text-dim tabular-nums">{entry.target.page}</span>
+                    <span className="shrink-0 text-caption text-dim tabular-nums">{entry.target.page}</span>
                   ) : null}
                 </button>
               </li>

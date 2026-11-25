@@ -71,12 +71,12 @@ function Card({
 
   return (
     <div className="flex w-full max-w-[560px] flex-col gap-5">
-      <div className="text-[18px] font-medium leading-snug text-paper">
+      <div className="text-headline font-medium leading-snug text-paper">
         <Markdown text={cue.question} />
       </div>
       {revealed ? (
         <div className="animate-rise flex flex-col gap-4">
-          <div className="text-[14px] leading-relaxed text-prose">
+          <div className="text-callout leading-relaxed text-prose">
             <Markdown text={cue.answer} />
           </div>
           {confidence !== null || thinking.trim() ? (
@@ -86,13 +86,13 @@ function Card({
             </p>
           ) : null}
           <button type="button" onClick={() => onJump(set.anchor)} className="press text-left" title="Go to this passage">
-            <span className="line-clamp-3 border-l border-line-strong pl-3 font-reading text-[12px] leading-relaxed text-dim">{set.quote}</span>
+            <span className="line-clamp-3 border-l border-line-strong pl-3 font-reading text-label leading-relaxed text-dim">{set.quote}</span>
           </button>
           <div className="grid grid-cols-4 gap-2 pt-1">
             {RATINGS.map((rating, i) => (
               <Button key={rating} size="md" variant={rating === "good" ? "primary" : "outline"} onClick={() => rate(rating)} className="flex-col !h-auto gap-0.5 py-2">
                 <span>{LABELS[rating]}</span>
-                <span className="text-[11px] font-normal tabular-nums opacity-70">
+                <span className="text-caption font-normal tabular-nums opacity-70">
                   {i + 1} · {intervalLabel(now, due[rating])}
                 </span>
               </Button>
@@ -183,7 +183,7 @@ export function ReviewSheet({ cards, onClose, onJump }: { cards: CardsApi; onClo
           />
         ) : (
           <div className="flex max-w-[52ch] flex-col items-center gap-3 text-center">
-            <p className="text-[15px] font-medium text-paper">{done ? "That's all for now." : "Nothing to review."}</p>
+            <p className="text-title font-medium text-paper">{done ? "That's all for now." : "Nothing to review."}</p>
             <p className="text-label leading-relaxed text-dim">
               {comeBack
                 ? `A card you missed comes back in ${intervalLabel(now, comeBack)}. Keep this open or come back later.`

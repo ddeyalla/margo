@@ -14,7 +14,7 @@ import { SIGNAL_TONE } from "./Stance";
 import type { CardsApi } from "./useCards";
 
 const fieldClass =
-  "w-full resize-none rounded-sm bg-ink/60 px-2 py-1.5 text-[13px] leading-snug text-paper outline-none ring-1 ring-line focus:ring-line-strong placeholder:text-dim";
+  "w-full resize-none rounded-sm bg-ink/60 px-2 py-1.5 text-body leading-snug text-paper outline-none ring-1 ring-line focus:ring-line-strong placeholder:text-dim";
 
 /** Where a set stands, in a word or two. */
 const status = (set: CardSet, now: Date): string => {
@@ -61,7 +61,7 @@ function LastAnswer({ set, cue }: { set: CardSet; cue: Cue }) {
   const signal = last && recordSignal(last);
   if (!last || !signal) return null;
   return (
-    <p className={`mt-0.5 text-[11px] tabular-nums ${SIGNAL_TONE[signal]}`} title={last.thinking ? `You were thinking: ${last.thinking}` : undefined}>
+    <p className={`mt-0.5 text-caption tabular-nums ${SIGNAL_TONE[signal]}`} title={last.thinking ? `You were thinking: ${last.thinking}` : undefined}>
       {SIGNAL_LABELS[signal]} · {last.confidence} %
     </p>
   );
@@ -127,7 +127,7 @@ export function CardsTab({
         ) : (
           <span className="text-label font-medium text-fog">Nothing to review</span>
         )}
-        <span className="text-[11px] text-dim tabular-nums">
+        <span className="text-caption text-dim tabular-nums">
           {total} {total === 1 ? "card" : "cards"} on {cards.sets.length} {cards.sets.length === 1 ? "passage" : "passages"}
         </span>
       </div>
@@ -143,8 +143,8 @@ export function CardsTab({
                   title="Go to this passage"
                   className="press min-w-0 flex-1 text-left"
                 >
-                  <span className="line-clamp-2 font-reading text-[12px] leading-relaxed text-prose/80">{set.quote}</span>
-                  <span className="mt-1 flex items-center gap-1.5 text-[11px] text-dim">
+                  <span className="line-clamp-2 font-reading text-label leading-relaxed text-prose/80">{set.quote}</span>
+                  <span className="mt-1 flex items-center gap-1.5 text-caption text-dim">
                     <span className="min-w-0 truncate">{placeLabel(set.chapterTitle, set.anchor) ?? UNTITLED_SECTION}</span>
                     <span aria-hidden className="size-0.5 shrink-0 rounded-full bg-dim/60" />
                     <span className="shrink-0 tabular-nums">{status(set, now)}</span>
@@ -174,11 +174,11 @@ export function CardsTab({
                     </li>
                   ) : (
                     <li key={cue.id} className="group/cue relative pr-14">
-                      <p className="text-[13px] leading-snug text-paper">{cue.question}</p>
+                      <p className="text-body leading-snug text-paper">{cue.question}</p>
                       <p className="mt-0.5 text-label leading-snug text-dim">{cue.answer}</p>
                       <LastAnswer set={set} cue={cue} />
                       {isMisleading(set, cue.id) ? (
-                        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] leading-snug text-danger">
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-caption leading-snug text-danger">
                           <span>Answered wrong while sure {misconceptions(set, cue.id)} times. The question may be what misleads.</span>
                           {onRemake ? (
                             <button type="button" onClick={() => onRemake(set)} className="press inline-flex items-center gap-1 font-medium underline-offset-2 hover:underline">

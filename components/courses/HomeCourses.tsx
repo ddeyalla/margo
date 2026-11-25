@@ -1,67 +1,91 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { ArrowRight, GraduationCap } from "lucide-react";
-import { readActivity } from "@/lib/server/activity";
-import { masteryOf } from "@/lib/server/courses/progress";
+import { ArrowRight, ChevronRight, Plus } from "lucide-react";
+import clsx from "clsx";
+import { masteryOf, passedSteps } from "@/lib/server/courses/progress";
 import { readCourses } from "@/lib/server/courses/store";
-import { courseSteps } from "@/lib/shared/courses";
-import { dayTimes, emptyActivity, lastDays, masteryLine, minutes } from "@/lib/shared/mastery";
-import { WeekView } from "./WeekView";
+import { courseSteps, type Course } from "@/lib/shared/courses";
+import { masteryLine } from "@/lib/shared/mastery";
+import { stepKey } from "@/lib/shared/quiz";
+
+type UnitState = "done" | "started" | "todo";
+
+/** Each unit as done, started or not yet, and the first chapter still to pass. */
+async function progressOf(course: Course) {
+  const steps = courseSteps(course);
+  const passed = await passedSteps(course);
+  const isPassed = (step: (typeof steps)[number]) => passed.has(stepKey(step.bookId, step.chapter));
+  const units: UnitState[] = course.units.map((_, index) => {
+    const own = steps.filter((step) => step.unit === index);
+    const done = own.filter(isPassed).length;
+    return own.length && done === own.length ? "done" : done ? "started" : "todo";
+  });
+  const next = steps.find((step) => !isPassed(step)) ?? null;
+  return { units, next };
+}
+
+const PIP: Record<UnitState, string> = { done: "bg-live", started: "bg-paper/70", todo: "bg-tint-strong" };
 
 /**
- * The top of home: a box to say what you want to learn, which opens the planning chat with it, and the Courses
- * made so far. A courses file that can't be read hides the list rather than failing the library under it.
+ * The Courses on home, one quiet row each: the name, the chapter to pass next, and a pip per unit. The heading
+ * holds the way to plan another. A courses file that can't be read hides the rows rather than failing home.
  */
 export async function HomeCourses() {
   await connection();
   const now = new Date();
-  const [{ courses }, activity] = await Promise.all([readCourses().catch(() => ({ courses: [] })), readActivity().catch(emptyActivity)]);
-  const days = lastDays(now);
-  const shown = await Promise.all(
-    courses.map(async (course) => ({
-      course,
-      mastery: await masteryOf(course, now),
-      week: dayTimes(activity, days, new Set(courseSteps(course).map((step) => step.bookId))).reduce((sum, day) => sum + day.total, 0),
-    })),
-  );
-  const week = dayTimes(activity, days);
+  const { courses } = await readCourses().catch(() => ({ courses: [] as Course[] }));
+  const rows = await Promise.all(courses.map(async (course) => ({ course, mastery: await masteryOf(course, now), ...(await progressOf(course)) })));
+
   return (
-    <section className="mb-10 flex flex-col gap-3">
-      <form action="/plan" className="flex items-center gap-2 rounded-xl bg-panel px-3 py-2 shadow-canvas">
-        <GraduationCap aria-hidden className="size-4 shrink-0 text-dim" />
-        <input
-          name="q"
-          required
-          aria-label="What do you want to learn?"
-          placeholder="What do you want to learn? The tutor plans a course from your books."
-          className="h-8 min-w-0 flex-1 bg-transparent text-[14px] text-paper outline-none placeholder:text-dim"
-        />
-        <button type="submit" className="press inline-flex h-7 items-center gap-1 rounded-sm bg-accent px-2.5 text-label font-medium text-on-accent">
-          Plan
-          <ArrowRight aria-hidden className="size-3.5" />
-        </button>
-      </form>
-      {courses.length ? (
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {shown.map(({ course, mastery, week: courseWeek }) => (
-            <li key={course.id}>
-              <Link href={`/course/${course.id}`} className="press flex flex-col gap-1 rounded-xl bg-panel px-3 py-2.5 shadow-canvas hover:bg-panel-hover">
-                <span className="truncate text-[14px] font-medium text-paper">{course.name}</span>
-                <span className="text-label tabular-nums text-fog">{masteryLine(mastery)}</span>
-                <span className="text-label tabular-nums text-dim">
-                  {course.units.length} {course.units.length === 1 ? "unit" : "units"} · {course.books.length} {course.books.length === 1 ? "book" : "books"}
-                  {courseWeek >= 60 ? ` · ${minutes(courseWeek)} min this week` : null}
-                </span>
-              </Link>
-            </li>
-          ))}
+    <section aria-labelledby="courses" className="mb-12 flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 id="courses" className="text-section text-fog">
+          Courses
+        </h2>
+        <Link href="/plan" className="inline-flex items-center gap-1 rounded-xs text-label text-dim hover:text-paper">
+          <Plus aria-hidden className="size-3.5" />
+          New course
+        </Link>
+      </div>
+      {rows.length ? (
+        <ul className="flex flex-col gap-1.5">
+          {rows.map(({ course, mastery, units, next }) => {
+            const current = units.findIndex((unit) => unit !== "done");
+            return (
+              <li key={course.id}>
+                <Link
+                  href={`/course/${course.id}`}
+                  className="press group flex items-center gap-4 rounded-xl bg-panel px-4 py-3 shadow-canvas hover:bg-panel-hover"
+                >
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-callout font-medium text-paper">{course.name}</span>
+                    <span className="truncate text-label tabular-nums text-dim">
+                      {next ? `Next: ${next.chapter}` : "Every chapter passed"} · {masteryLine(mastery)}
+                    </span>
+                  </div>
+                  <span aria-hidden className="hidden items-center gap-1 sm:flex">
+                    {units.map((unit, index) => (
+                      <span key={index} className={clsx("h-1 w-3.5 rounded-full", PIP[unit])} />
+                    ))}
+                  </span>
+                  <span className="shrink-0 text-label tabular-nums text-dim">
+                    {current === -1 ? "Done" : `Unit ${current + 1} of ${units.length}`}
+                  </span>
+                  <ChevronRight aria-hidden className="size-4 shrink-0 text-dim transition-transform duration-[var(--duration-fast)] ease-out group-hover:translate-x-0.5" />
+                </Link>
+              </li>
+            );
+          })}
         </ul>
-      ) : null}
-      {week.some((day) => day.total > 0) ? (
-        <div className="rounded-xl bg-panel px-4 py-3 shadow-canvas">
-          <WeekView days={week} title="This week" />
-        </div>
-      ) : null}
+      ) : (
+        <Link
+          href="/plan"
+          className="press group flex items-center justify-between gap-4 rounded-xl border border-dashed border-line-strong px-4 py-3 text-body text-dim hover:border-fog hover:text-paper"
+        >
+          Say what you want to learn, and the tutor plans a course from your books.
+          <ArrowRight aria-hidden className="size-4 shrink-0 transition-transform duration-[var(--duration-fast)] ease-out group-hover:translate-x-0.5" />
+        </Link>
+      )}
     </section>
   );
 }
