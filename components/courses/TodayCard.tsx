@@ -3,8 +3,10 @@ import { connection } from "next/server";
 import { ArrowRight } from "lucide-react";
 import clsx from "clsx";
 import { readActivity } from "@/lib/server/activity";
+import { pendingSuggestions, type PendingSuggestion } from "@/lib/server/suggestions";
 import { readToday, type Today } from "@/lib/server/today";
 import { dayTimes, emptyActivity, lastDays, learned, type DayTime } from "@/lib/shared/mastery";
+import { SuggestionInbox } from "./SuggestionInbox";
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
@@ -50,18 +52,22 @@ function WeekDots({ days }: { days: DayTime[] }) {
 
 /**
  * The top of home: what to do now, in one sentence with one button, and a single line of where the day and week
- * stand. Reviews come first, then a course quiz, then the book being read. A library that can't be read hides
- * it rather than failing home.
+ * stand. Reviews come first, then a course quiz, then the book being read. Below that, what agents proposed and
+ * the reader hasn't decided on yet. A library that can't be read hides it rather than failing home.
  */
 export async function TodayCard() {
   await connection();
   const now = new Date();
-  const [today, activity] = await Promise.all([
+  const [today, activity, suggestions] = await Promise.all([
     readToday(now).catch((error: unknown) => {
       console.warn("Could not read today:", error);
       return null;
     }),
     readActivity().catch(emptyActivity),
+    pendingSuggestions().catch((error: unknown) => {
+      console.warn("Could not read suggestions:", error);
+      return [] as PendingSuggestion[];
+    }),
   ]);
   if (!today) return null;
   const { headline, action } = nextStep(today);
@@ -110,6 +116,7 @@ export async function TodayCard() {
           ) : null}
         </div>
       ) : null}
+      <SuggestionInbox suggestions={suggestions} />
     </section>
   );
 }

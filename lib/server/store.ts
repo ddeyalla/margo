@@ -4,6 +4,7 @@ import path from "node:path";
 import { normalizeBoard } from "@/lib/shared/boards";
 import { emptyBookState, tidyTitle, type BookId, type BookState, type PassageThread, type Position, type Thread } from "@/lib/shared/types";
 import { getConfig } from "./config";
+import { withFileLock } from "./file-lock";
 import { BOOK_ID_PATTERN } from "./library-index";
 
 /**
@@ -27,11 +28,24 @@ export const serialized = <T>(key: string, task: () => Promise<T>): Promise<T> =
   return run;
 };
 
-/** Waits until no one else holds `key`, then holds it until the returned release is called. */
-export const hold = (key: string): Promise<() => void> =>
-  new Promise((acquired) => {
-    void serialized(key, () => new Promise<void>((release) => acquired(release)));
-  });
+/**
+ * `serialized` for a data file that another process may change too, such as the server an agent talks to while
+ * the app runs: the task also holds the file's lock between processes. The queue still orders this process's
+ * own tasks, so only one of them at a time waits on the lock.
+ */
+export const serializedFile = <T>(file: string, task: () => Promise<T>): Promise<T> => serialized(file, () => withFileLock(file, task));
+
+const holding =
+  (run: typeof serialized) =>
+  (key: string): Promise<() => void> =>
+    new Promise((acquired) => {
+      void run(key, () => new Promise<void>((release) => acquired(release)));
+    });
+
+/** Waits until no one else in this process holds `key`, then holds it until the returned release is called. */
+export const hold = holding(serialized);
+/** `hold` for a data file: no other process changes it either until the release. */
+const holdFile = holding(serializedFile);
 
 export const readJson = async <T>(file: string): Promise<T | null> => {
   let text: string;
@@ -61,14 +75,14 @@ export const writeFileAtomic = async (file: string, content: string | Uint8Array
 export const prettyJson = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
 const compact = (value: unknown) => JSON.stringify(value) + "\n";
 
-/** Read, change and write one file inside its queue, so two updates never lose each other's fields. */
+/** Read, change and write one file inside its queue and its lock, so two updates never lose each other's fields, whichever process makes them. */
 export const updateJson = <T>(
   file: string,
   fallback: () => T,
   change: (current: T) => T,
   format: (value: T) => string = prettyJson,
 ): Promise<T> =>
-  serialized(file, async () => {
+  serializedFile(file, async () => {
     const next = change((await readJson<T>(file)) ?? fallback());
     await writeFileAtomic(file, format(next));
     return next;
@@ -114,7 +128,7 @@ const refuseClosed = (id: BookId, file: string) => {
  */
 export const holdSaved = async (ids: readonly BookId[], dataDir: string): Promise<(close: readonly BookId[]) => void> => {
   const releases: (() => void)[] = [];
-  for (const file of ids.flatMap((id) => savedFiles(id, dataDir))) releases.push(await hold(file));
+  for (const file of ids.flatMap((id) => savedFiles(id, dataDir))) releases.push(await holdFile(file));
   return (close) => {
     for (const file of close.flatMap((id) => savedFiles(id, dataDir))) closed.add(file);
     for (const release of releases) release();
@@ -154,7 +168,7 @@ export const readBookState = async (id: BookId, dataDir = getConfig().dataDir): 
 export const saveBookPosition = (id: BookId, position: Position, dataDir = getConfig().dataDir, at = new Date()): Promise<void> => {
   const file = positionFile(id, dataDir);
   const saved: SavedPosition = { position, lastReadAt: at.toISOString() };
-  return serialized(file, async () => {
+  return serializedFile(file, async () => {
     refuseClosed(id, file);
     await writeFileAtomic(file, compact(saved));
   });
@@ -172,7 +186,7 @@ export const updateBookState = (
   dataDir = getConfig().dataDir,
 ): Promise<BookState> => {
   const file = stateFile(id, dataDir);
-  return serialized(file, async () => {
+  return serializedFile(file, async () => {
     refuseClosed(id, file);
     const saved = await readPosition(id, dataDir);
     const current = withPosition(normalize(await readJson<Partial<StoredState>>(file)), saved);
@@ -184,7 +198,7 @@ export const updateBookState = (
     const { position, lastReadAt, ...rest } = next;
     if (position !== current.position || lastReadAt !== current.lastReadAt) {
       const target = positionFile(id, dataDir);
-      await serialized(target, () => writeFileAtomic(target, compact({ position, lastReadAt } satisfies SavedPosition)));
+      await serializedFile(target, () => writeFileAtomic(target, compact({ position, lastReadAt } satisfies SavedPosition)));
     }
     await writeFileAtomic(file, compact(rest));
     return next;

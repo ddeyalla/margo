@@ -1,4 +1,5 @@
 import type { FocusBlocking, FocusStart } from "@/lib/shared/focus";
+import type { Decision } from "@/lib/shared/suggestions";
 import type { BookId, Position, SettingsChange } from "@/lib/shared/types";
 
 interface StatePatch {
@@ -55,6 +56,9 @@ export const relinkBook = (id: BookId, targetId: BookId) => send("/api/library/m
 
 /** Moves what the data folder keeps for a missing book to its forgotten folder. Returns the server's message when it refuses, otherwise null. */
 export const forgetBook = (id: BookId) => send(`/api/library/missing/${id}`, "DELETE", undefined, "Forgetting");
+
+/** Accepts or rejects a suggestion an agent proposed. Returns the server's message when it can't, otherwise null. */
+export const decideSuggestion = (id: string, decision: Decision) => send("/api/suggestions", "POST", { id, decision }, decision === "accept" ? "Accepting" : "Rejecting");
 
 /** What a focus session would block right now; a server that can't be reached blocks nothing. */
 export const fetchFocusPreview = async (): Promise<FocusBlocking> => {

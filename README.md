@@ -152,6 +152,8 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 | Book covers, made from each book the first time it's shown | `data/covers/`. Safe to delete; they're made again. |
 | Images you show the tutor | `data/attachments/<book id>/`. Nothing deletes them yet, so images you removed before sending stay here too. |
 | The speech model for voice input, downloaded the first time you use the mic | `models/`, beside the data folder. Safe to delete; it is downloaded again when asked. |
+| What agents proposed and what you decided about each | `data/suggestions.json` |
+| Every tool call an agent made: when, which tool, who called, a short form of the arguments, and how it went | `data/tool-log.jsonl`, one line per call. Lines are only added. Safe to delete. |
 | The markdown copy of each book's highlights, notes and cards | `<notes folder>/<book title>.md`. The notes folder is `NOTES_DIR`, or the one you chose in the app. |
 
 The `data/` folder is the real record. Git ignores it. Back it up if your notes matter to you.
@@ -163,6 +165,32 @@ The `data/` folder is the real record. Git ignores it. Back it up if your notes 
 You can have the same book open in two windows, say a browser tab and the Mac app. When you switch back to one, it shows what the other changed: your place, highlights, notes, cards, chats and settings. Your own changes never reload your window. Your place is saved the moment you leave a window, so the other one starts from there.
 
 To use a different model, add it to `data/settings.json` under the tutor's name (`claude`, `codex` or `api`). For example, `"models": { "claude": "claude-opus-5-5" }`.
+
+## Agents
+
+Claude Code and Codex can use your library as tools: search your books, read a chapter, see your highlights, notes, tutor chats, Courses and whiteboards, and check what is due for review. The app doesn't need to be open.
+
+```bash
+npm run mcp:setup
+```
+
+That registers a server called `rigg-learn` with each of the two that is installed, for every project on this Mac (`claude mcp add --scope user` and `codex mcp add`). Run it again if you move this folder. Then ask in any Claude Code or Codex session, for example "which of my books explains attention, and what cards are due today?"
+
+The server reads the same folders the app does: `DATA_DIR`, `BOOKS_DIR` and `NOTES_DIR` from `.env.local` in this folder, otherwise `./data` and the folders you chose in the app. To point it at the Mac app's data instead:
+
+```bash
+npm run mcp:setup -- --data-dir "$HOME/Library/Application Support/rigg learn/data"
+```
+
+What an agent can do:
+
+| Tools | What they do |
+| --- | --- |
+| `list_library`, `get_book_text`, `search_library`, `list_annotations`, `list_threads`, `get_thread`, `review_queue`, `get_today`, `list_courses`, `list_boards`, `read_board`, `list_suggestions` | Read. Nothing changes. |
+| `park_question`, `log_activity` | Write directly: a question left on a passage for you to ask later, and learning time added to today. |
+| `propose_card` | Propose. The cards wait on the Today card with **Add** and **Reject**, and are only added when you accept. |
+
+An agent can't change your highlights, notes, cards or boards any other way, and the server has no tool that reaches the web or asks a model. Every call is written to `data/tool-log.jsonl`.
 
 ## What Phase 2 might add
 
@@ -187,7 +215,9 @@ It's a [Next.js](https://nextjs.org) app. The browser shows the books and the pa
 | Images | `lib/client/images.ts`, `lib/server/attachments.ts` | The browser shrinks each image to 1568 px on its longest side before upload. The server reads its type from its bytes, not its name, and keeps it under a random id. |
 | Folders | `lib/server/config.ts`, `components/library/FolderForm.tsx` | The environment first, then `data/settings.json`. The setup screen and the Folders button save to `PATCH /api/settings`, which accepts only a folder that exists. Inside the Mac app, `window.riggApp.pickFolder` opens a native picker. |
 | Two windows | `components/book/useRefreshOnReturn.ts`, `app/api/books/[bookId]/revision/route.ts` | A window notes the book's revision (the saved state's and the settings' modified times) when it loses focus, and asks again when it returns. If it changed, the page refreshes. `/api/health` tells the Mac app that a server is already running. |
-| Saving | `lib/server/store.ts` | Writes `data/<book id>.json` safely: to a temp file first, one write at a time per book. |
+| Saving | `lib/server/store.ts`, `lib/server/file-lock.ts` | Writes `data/<book id>.json` safely: to a temp file first, one write at a time per book. A lock file beside each data file (`<file>.lock`) keeps that true when the app and an agent's server write at once; a lock left by a process that died is taken over. |
+| Tools | `lib/server/tools/`, `lib/server/mcp/server.ts`, `scripts/mcp-server.mjs` | One list of tools, each with a name, a description, its input fields and a typed function. The fields make both the schema an agent reads and the check its arguments pass. The MCP server is that list over stdio; routes that do the same thing call the same functions. |
+| Suggestions | `lib/server/suggestions.ts`, `components/courses/SuggestionInbox.tsx` | What agents propose is kept in `data/suggestions.json` until you decide. Accepting a card stores it through the same code the Cards button uses. |
 | Obsidian copy | `lib/server/vault.ts` | Rewrites the book's markdown file after every highlight, note or card change. |
 | Cards | `app/api/books/[bookId]/cards/route.ts`, `lib/server/cards/` | Sends the passage to the chosen tutor with the card prompt in `lib/server/cards/prompt.md`, outside any chat, and checks the JSON it returns. A bad reply goes back once with what was wrong. |
 | Review schedule | `lib/shared/schedule.ts` | [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) with 90 % retention. Each passage has one schedule; its questions take turns, the ones you rate lower more often. The study day starts at 04:00. |
