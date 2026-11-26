@@ -9,7 +9,9 @@ Effort: `S` hours · `M` a day or two · `L` a week or more.
 
 ## Ground rules
 
-- **Review never calls a model.** Flip and rate, on the reader's machine.
+- **Card review never waits on a model.** Flip and rate, on the reader's machine. A free-text
+  answer is another matter: since 2026-11-26 the checker may grade one the reader wrote
+  (Phases 27 and 28), and one tap overrules the grade.
 - **The highlight owns the schedule, not the card.** Three cards on one highlight are one
   review, not three.
 - **Cards outlive the highlight.** Deleting a highlight keeps its cards and their schedule.
@@ -95,6 +97,9 @@ Done when those cases have tests.
 
 ## Phase 6 — Work it out · M
 
+Folded into Go deeper in Phase 28: the button is gone, and threads saved as Work it out still
+run on the rules below.
+
 A fourth toolbar action. The tutor leads the reader to the answer instead of giving it.
 Check it on 20 passages first: one question per turn, no early answer, nudges use the
 reader's own words. Passed on round 2: 16 · 17 · 19 of 20, and 17 of 20 for Hint 1.
@@ -113,6 +118,8 @@ Questions joined by "and" still slip through; see `scripts/work-eval/README.md`.
 
 - [x] Toolbar action: the reader writes two lines on the passage; the tutor points to the
       first mistake, or says it holds. No grade.
+      *Folded into Go deeper in Phase 28, where an explain-back is graded. Threads saved
+      this way still run as written here.*
 
 ## Phase 8 — Mac app · L
 
@@ -365,8 +372,8 @@ library was read, so a failure there left an unanswered message.
       *`lib/shared/quiz.ts`. A quiz belongs to a chapter of a book, keyed by its contents
       label, and lives in the book's state, so two Courses reading the same chapter share
       it. Passing needs 80 % (4 of 5 up to 7 of 8). Answers are self-graded after the answer
-      is shown, like card reviews, because model-graded free text is under "Not building";
-      each answer also asks "how sure" and "your answer, in a line" with Phase 14's
+      is shown, like card reviews. That was the rule for all free text until 2026-11-26, when
+      grading it was approved (Phases 27 and 28); quizzes have not moved to it. Each answer also asks "how sure" and "your answer, in a line" with Phase 14's
       `StanceInput`. "Unlocks" is advice, not a wall: the book always opens, a chapter whose
       step comes before is shown as locked on the Course page, and the book says once "in
       this Course, this comes after …". The order runs across books, in the order the units
@@ -849,8 +856,7 @@ and free-text answers can be graded by a call that is not the tutor.
 - [ ] Check cards an agent proposes. `propose_card` stores what it is given, so those cards
       have no `verifiedAt`; the server's instructions tell the agent to call `verify_item`
       first, and nothing enforces it.
-- [ ] A reader-facing use of the grade, with the one-tap overrule. Nothing in the app calls
-      `gradeAnswer` yet, and nothing stores a grade.
+- [x] A reader-facing use of the grade, with the one-tap overrule. *Go deeper, Phase 28.*
 - [ ] Score Codex once its account can run. It keeps its default model, unscored.
 - [ ] A larger evaluation set drawn from real chapters. Checking scored 16/16 on every run,
       which says the set is too easy to tell models apart.
@@ -865,6 +871,70 @@ checked. With the app closed, a real `claude -p` called both tools through the M
 "Trains were quicker I think" came back `partly`, `unsure: true`. Not checked: Codex, the API
 provider with a key, a PDF chapter, and a quiz failing for too few questions outside the unit
 test.
+
+## Phase 28 — Ask and Go deeper · M
+
+The five passage modes fold into two, because only two were ever used, and the reader's turn
+moves out of the chat into a sheet over the book. The same 393 complaints set the bar: be
+tested, don't be lectured, and be able to trust the verdict.
+
+- [x] **Toolbar: Ask, Go deeper, Highlight, and More** (Note, Park, Make cards). Explain, Work
+      it out and Explain it back are no longer buttons.
+      *Ask sent empty means "explain this" and starts an `explain` thread; a typed question
+      starts an `ask` thread. Threads saved as `work`, `explainBack` or the old `deeper` keep
+      their own request strings and open as before.*
+- [x] **Ask answers first and briefly**, about 120 words, then may close with one "Your turn"
+      question. The app lifts that line out of the answer and shows it as a prompt with a
+      skip button.
+      *Passing over a prompt is dismissing it or sending the tutor anything else while it is
+      on offer. Two in a session and no more are shown until the app is opened again; the
+      count is in `sessionStorage`. Taking one opens Go deeper on its question.*
+- [x] **Go deeper is a sheet over the book** with the passage hidden and the chat folded away.
+      A passage with no earlier thread gets one question written by the tutor, to try first;
+      one already asked about gets an explain-back, with no model call. Hint, up to four
+      steps, and Just tell me are always there. Enter checks, Esc saves the draft and closes,
+      and the thread opens the sheet again.
+      *`lib/server/study.ts`, one route with an `op`. "Already asked about" is an earlier
+      thread on the same text, or one whose passage holds the selection or is held by it for
+      at least 24 characters. The question is written with
+      its expected answer in one `structured` call on the tutor's model; hints and Just tell
+      me are ordinary tutor turns in the thread, sent without opening it in the chat.*
+- [x] **Answers are graded by `gradeAnswer`**, on the checking model, not by the tutor. The
+      sheet shows right or not right, the first gap and the stretch of the passage that shows
+      it, marked in the passage. An unsure grade says so and leaves the call to the reader.
+      **I had it** and **I missed it** overrule any grade in one tap.
+      *An explain-back is graded against the passage itself. A prompt taken from an Ask
+      answer is graded against that answer. The rubric from the first grade is kept, so a
+      second try is marked against the same points.*
+- [x] **Each turn is kept on the thread** in the book's JSON, in `study.turns`: the answer,
+      verdict, score, unsure, the gap, hints used and the reader's overrule. The answer and
+      the grade's note also join the thread's messages, so the transcript reads whole and the
+      tutor knows where the reader stands.
+- [x] **Focus sessions no longer need Three.** The timer, the folded chrome and the recall at
+      the end are the app's own; nothing outside it is blocked, and `/api/focus` is gone.
+      *Fixed on the way: the recall was sent as a reply to the open thread and silently
+      dropped when none was open. It now starts a thread of its own.*
+- [ ] The question the tutor writes for Go deeper is not checked with `verifyItem` before it
+      is asked. It is asked once and not stored as a card or quiz question, and checking would
+      add about 7 s to opening the sheet.
+- [ ] Record graded turns in the learner ledger. The data is on the thread; nothing reads it.
+- [ ] Dictation in the Go deeper sheet. The Ask and Park fields have it.
+- [ ] The focus recall goes to the tutor with no passage, so it can't be checked against what
+      was read. It could carry the text of the pages read during the session.
+
+Tried **2026-11-26** in the app with Claude Code, on a copy of the real data and three of the
+real books. Ask sent empty on a paragraph of *Evals for AI Engineers* answered in about 95
+words and offered one prompt. Taking it opened the sheet; a deliberately vague answer came back
+"Not sure about this one" with the gap and the span marked, and **I had it** was saved as
+`override: "right"` on a turn graded `partly`, 0.5, `unsure`. Go deeper on a paragraph not
+asked about took about 12 s to write its question; Hint 1 named where to think back to without
+the answer; a full answer was graded right; Just tell me explained in the sheet. Go deeper on
+the paragraph already asked about opened at once as an explain-back. Esc saved a half-written
+answer to `study.draft`, and the thread's button reopened the sheet. A `deeper` thread saved on
+13 November opened as an ordinary thread. After two prompts were passed over, the next Ask
+answer showed none. A focus session started, ran and ended with no call to Three, and its
+recall arrived as a new thread. Not checked: a PDF, Codex, the API provider, and grading when
+the tutor is signed out.
 
 ## Open: where the books come from
 
