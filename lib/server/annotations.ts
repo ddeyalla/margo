@@ -7,6 +7,8 @@ import {
 } from "@/lib/shared/annotations";
 import { normalizeText } from "@/lib/shared/context";
 import type { Annotations, BookFormat, LibraryBook, VaultStatus } from "@/lib/shared/types";
+import { evidenceOf } from "@/lib/shared/ledger";
+import { noteEvidence } from "./ledger";
 import { updateBookState } from "./store";
 import { isObject, MAX_QUOTE, parseAnchor, shortText } from "./validate";
 import { mirrorVault } from "./vault";
@@ -61,6 +63,7 @@ export const changeAnnotations = async (
 ): Promise<{ annotations: Annotations; vault: VaultStatus }> => {
   const now = new Date().toISOString();
   const state = await updateBookState(book.id, (current) => ({ ...current, ...applyChange(current, change, now) }), dirs.dataDir);
+  if (change.op === "add-highlight" || change.op === "add-note") noteEvidence(evidenceOf(book.id, state), dirs.dataDir);
   const vault = await mirrorVault(book, dirs.dataDir, dirs.notesDir);
   return { annotations: { highlights: state.highlights, notes: state.notes }, vault };
 };

@@ -1,33 +1,18 @@
 // The app's tools as an MCP server on stdio, for Claude Code, Codex and other agents.
 // Usage: node scripts/mcp-server.mjs
 // It runs on its own: neither the Next server nor the Mac app needs to be open. `npm run mcp:setup` registers it.
-//
-// It reads the same folders the app does. DATA_DIR, BOOKS_DIR and NOTES_DIR come from the environment first,
-// then from .env.local in this repo, the way `npm run dev` gets them; with neither, the data folder is ./data
-// in this repo, whatever folder the agent was started in.
-import fs from "node:fs";
-import path from "node:path";
-import { createJiti } from "../node_modules/jiti/lib/jiti.mjs";
-
-const repo = path.resolve(import.meta.dirname, "..");
+// It reads the same folders the app does; scripts/load-app.mjs says where they come from.
 
 // stdout carries the protocol and nothing else: anything the app logs goes to stderr.
 console.log = console.error;
 console.info = console.error;
 console.warn = console.error;
 
-const FOLDERS = ["DATA_DIR", "BOOKS_DIR", "NOTES_DIR"];
-try {
-  for (const line of fs.readFileSync(path.join(repo, ".env.local"), "utf8").split("\n")) {
-    const match = /^\s*(?:export\s+)?([A-Z_]+)\s*=\s*(.*?)\s*$/.exec(line);
-    if (!match || !FOLDERS.includes(match[1]) || process.env[match[1]]) continue;
-    process.env[match[1]] = match[2].replace(/^(['"])(.*)\1$/, "$2");
-  }
-} catch {}
-process.env.DATA_DIR ||= path.join(repo, "data");
-
-const jiti = createJiti(import.meta.url, { alias: { "@": repo } });
-const { serve } = await jiti.import(path.join(repo, "lib/server/mcp/server.ts"));
+const { loadApp } = await import("./load-app.mjs");
+const { serve } = await loadApp("lib/server/mcp/server.ts");
+const { ledgerIdle } = await loadApp("lib/server/ledger.ts");
 await serve(process.stdin, process.stdout);
+// A parked question's ledger line may still be on its way to the file.
+await ledgerIdle();
 // Background work, such as reading books for search, ends with the connection.
 process.exit(0);

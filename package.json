@@ -16,6 +16,7 @@
     "test": "vitest run",
     "mcp": "node scripts/mcp-server.mjs",
     "mcp:setup": "node scripts/mcp-setup.mjs",
+    "ledger:backfill": "node scripts/ledger-backfill.mjs",
     "app": "electron .",
     "app:server": "next build && node electron/assemble-server.mjs",
     "app:build": "npm run app:server && electron-builder --mac dmg --arm64"

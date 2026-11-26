@@ -1,9 +1,11 @@
+import { noteEvidence } from "@/lib/server/ledger";
 import { startQuiz, quizJobs } from "@/lib/server/quiz/jobs";
 import { readBookState, updateBookState } from "@/lib/server/store";
 import { isProviderId } from "@/lib/server/tutor/providers";
 import { isObject, shortText } from "@/lib/server/validate";
 import { readBody, withBook } from "@/lib/server/with-book";
 import { cleanStance, isConfidence } from "@/lib/shared/confidence";
+import { evidenceOf } from "@/lib/shared/ledger";
 import { scoreAttempt, type QuizAnswer } from "@/lib/shared/quiz";
 
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
@@ -59,6 +61,7 @@ export const POST = withBook(async (found) => {
       }),
     }));
     if (!found) return Response.json({ error: "That chapter has no quiz." }, { status: 404 });
+    noteEvidence(evidenceOf(book.id, saved));
     return Response.json({ quizzes: saved.quizzes, ...quizJobs(book.id) });
   }
   return badRequest('op is "write" or "attempt".');

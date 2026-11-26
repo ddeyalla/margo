@@ -1,3 +1,6 @@
+import { queryLedger } from "./ledger-query";
+import { recordEvidenceTool } from "./ledger-record";
+import { weakestItems } from "./ledger-weakest";
 import { logToolCall, summarizeArgs } from "./log";
 import { READ_TOOLS } from "./read";
 import { ToolError, type Fields } from "./schema";
@@ -6,10 +9,10 @@ import { runTool, type Tool } from "./tool";
 import { WRITE_TOOLS } from "./write";
 
 /**
- * Everything the app can do for an agent, by name. An agent reads, writes the two things that are safe to write
- * directly, and proposes the rest as suggestions the reader accepts. Nothing here searches the web or runs a model.
+ * Everything the app can do for an agent, by name. An agent reads, writes the few things that are safe to write
+ * directly (a parked question, learning time, an event in the learner ledger), and proposes the rest as suggestions the reader accepts. Nothing here searches the web or runs a model.
  */
-export const TOOLS: readonly Tool<Fields>[] = [...READ_TOOLS, ...WRITE_TOOLS, ...SUGGESTION_TOOLS] as unknown as Tool<Fields>[];
+export const TOOLS: readonly Tool<Fields>[] = [...READ_TOOLS, ...WRITE_TOOLS, ...SUGGESTION_TOOLS, queryLedger, weakestItems, recordEvidenceTool] as unknown as Tool<Fields>[];
 
 export type ToolResult = { ok: true; value: unknown } | { ok: false; error: string };
 

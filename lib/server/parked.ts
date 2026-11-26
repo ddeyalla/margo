@@ -1,6 +1,8 @@
 import type { BookId, LibraryBook, PassageThread, Thread } from "@/lib/shared/types";
 import { isParked } from "@/lib/shared/parked";
+import { threadEvidence } from "@/lib/shared/ledger";
 import { getConfig } from "./config";
+import { noteEvidence } from "./ledger";
 import { updateBookState } from "./store";
 import { passageThread } from "./passage";
 import { isProviderId } from "./tutor/providers";
@@ -17,8 +19,11 @@ export const parkThread = (body: Record<string, unknown>, book: LibraryBook): Pa
   return { ...thread, parkedAt: thread.createdAt };
 };
 
-export const saveParked = async (bookId: BookId, thread: PassageThread, dataDir = getConfig().dataDir): Promise<Thread[]> =>
-  (await updateBookState(bookId, (state) => ({ ...state, threads: [...state.threads, thread] }), dataDir)).threads;
+export const saveParked = async (bookId: BookId, thread: PassageThread, dataDir = getConfig().dataDir): Promise<Thread[]> => {
+  const { threads } = await updateBookState(bookId, (state) => ({ ...state, threads: [...state.threads, thread] }), dataDir);
+  noteEvidence(threadEvidence(bookId, thread), dataDir);
+  return threads;
+};
 
 /** Removes a parked question. A thread that was sent is a conversation and stays. */
 export const discardParked = async (bookId: BookId, id: string, dataDir = getConfig().dataDir): Promise<Thread[]> =>

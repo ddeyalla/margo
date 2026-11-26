@@ -17,7 +17,7 @@ export const SERVER_NAME = "rigg-learn";
 
 const INSTRUCTIONS = `The reader's own library in rigg learn: their books, highlights, notes, review cards, tutor conversations, Courses and whiteboards, on this machine.
 Start with list_library for book ids. search_library and get_book_text give passages with anchors; quote the book from them, not from memory.
-You may read anything. You may write two things directly: park_question and log_activity. Any other change is proposed with propose_card and waits for the reader to accept it in the app.`;
+You may read anything. You may write three things directly: park_question, log_activity and record_evidence. For what the reader knows and where they are weak, call weakest_items or query_ledger. Any other change is proposed with propose_card and waits for the reader to accept it in the app.`;
 
 type Id = string | number | null;
 
