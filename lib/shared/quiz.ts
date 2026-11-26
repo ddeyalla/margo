@@ -1,5 +1,6 @@
 import { firstObject } from "./json";
 import type { CourseStep } from "./courses";
+import type { LearnerTurn } from "./study";
 import type { Anchor, BookId, Stance } from "./types";
 
 /** "recall" asks for something the chapter says; "why" asks the reader to explain a reason or a mechanism. */
@@ -13,18 +14,50 @@ export interface QuizQuestion {
   /** Where in the chapter the answer is: the start of the block the tutor cited, and that block's text. */
   anchor: Anchor;
   quote: string;
+  /** When the question was checked against the chapter's text and passed. Absent on quizzes saved before checking. */
+  verifiedAt?: string;
+  /** The points a right answer must make, kept from the first time a written answer to it was graded, so every later one is marked against the same points. */
+  rubric?: string[];
 }
 
-/** One answer in an attempt. The reader marks it right or wrong themselves after seeing the answer. */
+/**
+ * One answer in an attempt: the first one given to the question in that sitting. A recall question is marked right
+ * or wrong by the reader after seeing the answer; an explain question is graded, and the reader's call stands over it.
+ */
 export interface QuizAnswer extends Stance {
   questionId: string;
   correct: boolean;
+  /** The written answer and its grade, when the question was asked as an explain. */
+  turn?: LearnerTurn;
+  /** How the second go went, for a question missed and asked once more in the same sitting. */
+  again?: boolean;
 }
+
+/**
+ * What an attempt was part of. "test": the chapter's end-of-chapter test. "retest": the short test of that test's
+ * misses, a day or more later. "review": this chapter's questions asked inside another chapter's test or retest,
+ * which is never a pass. Absent on attempts saved before tests mixed chapters: the whole quiz, taken on its own.
+ */
+export type AttemptKind = "test" | "retest" | "review";
 
 export interface QuizAttempt {
   at: string;
+  /** Answers to this quiz's own questions. One sitting writes an attempt, with the same `at`, to every quiz it asked from. */
   answers: QuizAnswer[];
   passed: boolean;
+  kind?: AttemptKind;
+  /** For a test or retest: the sitting's score over everything it asked, other chapters' questions included. */
+  right?: number;
+  of?: number;
+  /** For a retest: the `at` of the test whose misses it asked again. */
+  retestOf?: string;
+}
+
+/** A notice the reader passed over, kept so it is not shown again: a chapter's test, or the retest of one sitting. */
+export interface QuizSkip {
+  chapter: string;
+  /** The `at` of the test whose retest was passed over. Absent when it was the chapter's test itself. */
+  retestOf?: string;
 }
 
 /** A chapter's quiz, written once in one batch when the chapter is finished, and every attempt at it. */
@@ -39,26 +72,16 @@ export interface ChapterQuiz {
 }
 
 export const MIN_QUESTIONS = 5;
+/** The fewest questions a quiz is saved with, when some of what the tutor wrote didn't pass the check against the text. */
+export const MIN_CHECKED_QUESTIONS = 3;
 export const MAX_QUESTIONS = 8;
 
-/** Share of questions to get right to pass: 4 of 5, 5 of 6, 6 of 7, 7 of 8. */
+/** Share of questions to get right to pass: 4 of 5, 5 of 6, 6 of 7, 7 of 8. A quiz cut to 3 or 4 by the check needs them all. */
 export const PASS_SHARE = 0.8;
 
 export const passMark = (questions: number) => Math.ceil(questions * PASS_SHARE - 1e-9);
 
 export const isPassed = (quiz: ChapterQuiz | undefined): boolean => !!quiz?.attempts.some((attempt) => attempt.passed);
-
-/** Builds an attempt from the reader's answers, keeping only answers to questions the quiz has, once each. */
-export const scoreAttempt = (quiz: ChapterQuiz, answers: readonly QuizAnswer[], at: Date): QuizAttempt => {
-  const seen = new Set<string>();
-  const kept = answers.filter((answer) => {
-    if (seen.has(answer.questionId) || !quiz.questions.some((q) => q.id === answer.questionId)) return false;
-    seen.add(answer.questionId);
-    return true;
-  });
-  const right = kept.filter((answer) => answer.correct).length;
-  return { at: at.toISOString(), answers: kept, passed: kept.length === quiz.questions.length && right >= passMark(quiz.questions.length) };
-};
 
 /** A chapter of a table of contents: its own entry and the entries nested under it, by index. */
 export interface ChapterSpan {
@@ -125,8 +148,12 @@ const field = (value: unknown): string | null => {
   return trimmed && trimmed.length <= MAX_FIELD ? trimmed : null;
 };
 
-/** Reads the quiz prompt's reply. Returns a message to send back for repair when it can't. */
-export const parseQuizReply = (text: string, blocks: number): QuizDraft | string => {
+/**
+ * Reads the quiz prompt's reply. Returns a message to send back for repair when it can't. A whole quiz needs
+ * `MIN_QUESTIONS` and a "why" among them; `replacing` reads a reply asked for that many replacement questions,
+ * and keeps every question in it, since the caller still has to take out the ones the quiz already asks.
+ */
+export const parseQuizReply = (text: string, blocks: number, replacing?: number): QuizDraft | string => {
   const json = firstObject(text);
   if (!json) return "The reply had no JSON object.";
   let value: unknown;
@@ -149,6 +176,7 @@ export const parseQuizReply = (text: string, blocks: number): QuizDraft | string
     if (draft.some((d) => d.question.toLowerCase() === question.toLowerCase())) continue;
     draft.push({ kind: q.kind, question, answer, block: block as number });
   }
+  if (replacing) return draft.length ? draft : `Write ${replacing} question${replacing === 1 ? "" : "s"}; the reply had none.`;
   if (draft.length < MIN_QUESTIONS) return `Write ${MIN_QUESTIONS} to ${MAX_QUESTIONS} questions; the reply had ${draft.length}.`;
   if (!draft.some((d) => d.kind === "why")) return 'Include at least one "why" question.';
   return draft.slice(0, MAX_QUESTIONS);

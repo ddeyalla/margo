@@ -1,9 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { lastRecord, misconceptions } from "@/lib/shared/confidence";
+import type { NewCards } from "@/lib/shared/cards";
 import type { CardSet } from "@/lib/shared/types";
+import type { Checker } from "../check/provider";
+import { checked, CHECKS_AT_ONCE, isVerified } from "../check/verify";
 import type { BookLabel } from "../tutor/prompt";
-import type { Provider, TutorMessage } from "../tutor/types";
+import { pooled, structured } from "../tutor/structured";
+import type { Provider } from "../tutor/types";
 import { parseCardReply, type CardReply } from "./reply";
 
 /** The passage cards are made from, already validated and trimmed. */
@@ -59,35 +63,29 @@ export const cardRequest = (book: BookLabel, source: CardSource, existing: CardS
     .join("\n");
 };
 
-const collect = async (provider: Provider, messages: TutorMessage[], model: string | null, signal: AbortSignal): Promise<string> => {
-  let text = "";
-  for await (const event of provider.run({ system: cardSystem(), messages, sessionId: null, model }, signal)) {
-    if (event.type === "text") text += event.delta;
-    else if (event.type === "error") throw new Error(event.message);
-  }
-  return text;
-};
+/** Asks the tutor for cards. A reply that can't be read goes back once with the reason. */
+export const generateCards = (provider: Provider, request: string, model: string | null, signal: AbortSignal): Promise<CardReply> =>
+  structured(provider, { system: cardSystem(), request, parse: parseCardReply, failure: "The tutor's cards couldn't be read." }, model, signal);
+
+/** The text a card's answer may rest on: the selection and what the prompt was shown around it. */
+export const cardPassage = (source: CardSource): string => [source.before, source.quote, source.after].filter(Boolean).join("\n");
 
 /**
- * Asks the tutor for cards. A reply that can't be read goes back once with the
- * reason, in the same conversation, rather than starting over.
+ * Checks each new card against its passage before it is stored. A card that fails is dropped with why; a card
+ * that passes carries the time it was checked.
  */
-export const generateCards = async (
-  provider: Provider,
-  request: string,
-  model: string | null,
+export const verifyCards = async (
+  { provider, model }: Checker,
+  source: CardSource,
+  cards: readonly { question: string; answer: string }[],
   signal: AbortSignal,
-): Promise<CardReply> => {
-  const messages: TutorMessage[] = [{ role: "user", content: request, images: [] }];
-  const first = await collect(provider, messages, model, signal);
-  const parsed = parseCardReply(first);
-  if (typeof parsed !== "string") return parsed;
-  const repair: TutorMessage[] = [
-    ...messages,
-    { role: "assistant", content: first, images: [] },
-    { role: "user", content: `That reply couldn't be used. ${parsed} Reply again with exactly one JSON object in the format you were given.`, images: [] },
-  ];
-  const second = parseCardReply(await collect(provider, repair, model, signal));
-  if (typeof second === "string") throw new Error(`The tutor's cards couldn't be read. ${second}`);
-  return second;
+  now = new Date(),
+): Promise<{ kept: NewCards["cards"]; dropped: { question: string; reason: string }[] }> => {
+  const passage = cardPassage(source);
+  const results = await pooled(cards, CHECKS_AT_ONCE, (card) => checked(provider, { question: card.question, expected: card.answer, passage }, model, signal));
+  const verifiedAt = now.toISOString();
+  return {
+    kept: cards.filter((_, i) => isVerified(results[i])).map((card) => ({ ...card, verifiedAt })),
+    dropped: cards.flatMap((card, i) => (isVerified(results[i]) ? [] : [{ question: card.question, reason: results[i].reason }])),
+  };
 };

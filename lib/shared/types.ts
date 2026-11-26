@@ -1,5 +1,6 @@
 import type { Board, BoardMention } from "./boards";
-import type { ChapterQuiz } from "./quiz";
+import type { ChapterQuiz, QuizSkip } from "./quiz";
+import type { Study } from "./study";
 
 export type BookFormat = "epub" | "pdf";
 
@@ -75,6 +76,11 @@ export interface BookMeta {
 
 export type ProviderId = "claude" | "codex" | "api";
 
+/**
+ * What a passage thread was started as. The toolbar now starts three: "ask" for a typed question, "explain" for Ask
+ * with nothing typed, and "deeper" for Go deeper. "work" and "explainBack" are on threads saved before they were
+ * folded into those, and still load and carry on as they were.
+ */
 export type TutorAction = "explain" | "deeper" | "work" | "ask" | "explainBack" | "recap";
 
 /** Actions whose first message is what the reader typed, not a fixed line. */
@@ -178,6 +184,8 @@ export interface PassageThread extends ThreadBase {
    * message and no answer. Sending it clears this. Absent on threads saved before parking existed.
    */
   parkedAt?: string | null;
+  /** The reader's turn in the Go deeper sheet, with each answer and its grade. Absent on every other thread, and on "deeper" threads saved before the sheet. */
+  study?: Study;
 }
 
 /** A question asked with no passage selected, such as one about an image. */
@@ -257,6 +265,8 @@ export interface Cue {
   answer: string;
   createdAt: string;
   lastRating: Rating | null;
+  /** When the card was checked against its passage and passed. Absent on cards saved before checking or edited since. */
+  verifiedAt?: string;
 }
 
 /**
@@ -302,8 +312,10 @@ export interface BookState {
   highlights: Highlight[];
   notes: Note[];
   cardSets: CardSet[];
-  /** Chapter quizzes of the book's chapters in a Course, each with every attempt. */
+  /** The quizzes written for the book's chapters, each with every attempt. */
   quizzes: ChapterQuiz[];
+  /** Test and retest notices the reader passed over, so they are not shown again. */
+  quizSkips: QuizSkip[];
   /** The book's whiteboards: each one's title, where its file is, and a chapter board's draw-it-back attempts. */
   boards: Board[];
   /** When the reader last moved through the book, an ISO time, or null if never or saved before this was kept. */
@@ -319,6 +331,7 @@ export const emptyBookState = (): BookState => ({
   notes: [],
   cardSets: [],
   quizzes: [],
+  quizSkips: [],
   boards: [],
   lastReadAt: null,
 });

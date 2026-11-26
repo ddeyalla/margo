@@ -9,19 +9,29 @@ Effort: `S` hours · `M` a day or two · `L` a week or more.
 
 ## Ground rules
 
-- **Review never calls a model.** Flip and rate, on the reader's machine.
+- **Card review never waits on a model.** Flip and rate, on the reader's machine. A free-text
+  answer is another matter: since 2026-11-26 the checker may grade one the reader wrote
+  (Phases 27 and 28), and one tap overrules the grade.
 - **The highlight owns the schedule, not the card.** Three cards on one highlight are one
   review, not three.
 - **Cards outlive the highlight.** Deleting a highlight keeps its cards and their schedule.
 - **Cards and tutor questioning are opt-in.** Nothing happens until the reader asks.
-  The exception is a chapter quiz inside a Course (Phase 17), which is part of finishing
-  the chapter.
+  The exception is the quiz at the end of a chapter (Phases 17 and 29). Inside a Course it
+  is part of finishing the chapter; anywhere else it is offered once, and passing over it
+  is remembered.
 - **Every questioning mode has a way out.** "Just tell me" is always one click away. A
   chapter quiz can be retaken without limit, and a missed question shows its answer.
 - **Mastery is computed from evidence, never stored as a number.** Coverage and retention
   are read from reading position, card schedules and quiz results, so they can't be
   inflated and they fall when you stop reviewing.
-- **Quizzes are written ahead, not on the spot.** Taking a quiz never waits on a model.
+- **Quizzes are written ahead, not on the spot.** Recall questions never wait on a model.
+  The one written answer in a chapter test waits on the checker, and falls back to the
+  reader's own mark when it can't be graded (Phase 29).
+- **Nothing the tutor writes as a question is saved unchecked.** A quiz question or a card is
+  kept only after a second model call answered it from its passage without seeing the stored
+  answer, and the two agreed (Phase 27).
+- **A model's grade is advice.** The reader can overrule it in one tap, and a middling answer
+  is reported as unsure, not given a verdict. Flip-and-rate review never waits on one.
 
 ## Phase 1 — Tighter tutor answers · S
 
@@ -90,6 +100,9 @@ Done when those cases have tests.
 
 ## Phase 6 — Work it out · M
 
+Folded into Go deeper in Phase 28: the button is gone, and threads saved as Work it out still
+run on the rules below.
+
 A fourth toolbar action. The tutor leads the reader to the answer instead of giving it.
 Check it on 20 passages first: one question per turn, no early answer, nudges use the
 reader's own words. Passed on round 2: 16 · 17 · 19 of 20, and 17 of 20 for Hint 1.
@@ -108,6 +121,8 @@ Questions joined by "and" still slip through; see `scripts/work-eval/README.md`.
 
 - [x] Toolbar action: the reader writes two lines on the passage; the tutor points to the
       first mistake, or says it holds. No grade.
+      *Folded into Go deeper in Phase 28, where an explain-back is graded. Threads saved
+      this way still run as written here.*
 
 ## Phase 8 — Mac app · L
 
@@ -357,11 +372,14 @@ library was read, so a failure there left an unanswered message.
 
 - [x] A short quiz (5–8 questions, recall and "explain why") at the end of each chapter of
       a book in a Course. Passing it marks the chapter done and unlocks the next one.
+      Since Phase 29 every chapter of every book gets one, and only a Course's are gated.
       *`lib/shared/quiz.ts`. A quiz belongs to a chapter of a book, keyed by its contents
       label, and lives in the book's state, so two Courses reading the same chapter share
-      it. Passing needs 80 % (4 of 5 up to 7 of 8). Answers are self-graded after the answer
-      is shown, like card reviews, because model-graded free text is under "Not building";
-      each answer also asks "how sure" and "your answer, in a line" with Phase 14's
+      it. Passing needs 80 % (4 of 5 up to 7 of 8), since Phase 29 of everything the test
+      asked, earlier chapters' questions included. Answers are self-graded after the answer
+      is shown, like card reviews. That was the rule for all free text until 2026-11-26, when
+      grading it was approved (Phases 27 and 28); since Phase 29 one question in each test is
+      answered in writing and graded. Each answer also asks "how sure" and "your answer, in a line" with Phase 14's
       `StanceInput`. "Unlocks" is advice, not a wall: the book always opens, a chapter whose
       step comes before is shown as locked on the Course page, and the book says once "in
       this Course, this comes after …". The order runs across books, in the order the units
@@ -374,10 +392,12 @@ library was read, so a failure there left an unanswered message.
       read goes back once with the reason. The book shows "Finished …, its quiz is being
       written", then "Take quiz". A written quiz is never replaced.*
 - [x] Retake without limit. A missed question shows its answer and where in the chapter.
+      Since Phase 29 it is also asked once more before the test ends, and again the next day.
       *The result lists each missed question with its answer and a link to its place;
       Phase 14's signal summary ("1 held", "1 misconception") sits above it.*
 - [x] Books outside a Course are never gated.
-      *They get no quizzes, notices or locks at all.*
+      *They got no quizzes, notices or locks at all until Phase 29. Now they get the quiz and
+      its notice, and still no lock: the 80 % mark is shown and decides nothing.*
 - [x] Results feed retention (Phase 18).
       *Every attempt keeps each answer with right or wrong, confidence and thinking, ready
       for Phase 18 to read.*
@@ -394,7 +414,9 @@ sheet, and a chapter with no quiz yet says so and offers to write it instead of 
 Not checked live: a PDF book in a Course (its extracted chapter labels look right), and a
 quiz failing to write. Left as is: a Course listing both a chapter and a section nested in
 it (as with *The Mom Test*) gets overlapping quizzes, since the parent's quiz covers its
-sections too.
+sections too. Phase 29 adds no overlap of its own, and leaves this one: writing the parent's
+quiz from the text outside its sections fails when the sections hold all of its text, and a
+Course chapter with no quiz can't be passed.
 
 ## Phase 18 — Mastery and daily learning · M
 
@@ -782,13 +804,244 @@ whiteboard edits do. This phase is the foundation; playbooks and scheduled runs 
       agent's server see it too.
 - [ ] Ship the server inside the Mac app, so it needs no checkout of this repo.
 
-No web search or fetch tool: the agents have their own. No tool that asks a model.
+No web search or fetch tool: the agents have their own. No tool that asks a model, until
+Phase 27 added two that check and grade and change nothing.
 
 Done when the type check and tests pass, a real `claude -p` and a real `codex exec` each list
 the tools and answer a question that needs search and the review queue with the app closed, and
 a card proposed through the server shows on Today and is created on accept.
 
-## Phase 27 — Learner ledger · M
+## Phase 27 — Checked questions and graded answers · M
+
+In 393 real complaints about learning tools, the largest trust problem was AI-written questions
+with wrong answers. So a question is checked against its passage before the reader can meet it,
+and free-text answers can be graded by a call that is not the tutor.
+
+- [x] **`verifyItem`** in `lib/server/check/verify.ts`: given a question, its stored answer and
+      the passage, a fresh call answers from the passage alone, without the stored answer; a
+      second call says whether the two answers match and whether the passage backs the stored
+      one. Returns answerable, matches, supported and a one-line reason.
+      *The first call must quote the stretch of the passage its answer rests on, and the quote
+      is looked up in the passage word for word, so an answer from general knowledge fails. A
+      question the passage can't answer stops after one call. Replies are validated and sent
+      back once with the reason, through `structured` in `lib/server/tutor/structured.ts`,
+      which the quiz and card generators now share.*
+- [x] **Quiz questions are checked before they are saved**, in the background job that writes
+      the quiz. A question that fails is dropped and asked for again once.
+      *Each is checked against the block it cites and the block either side. At most 12
+      questions are checked per quiz (8 written, 4 replacements), two calls each, four at a
+      time. Fewer than 3 passing saves nothing and the job reports "Only 2 of the 9 questions
+      … held up", with the first reason; 3 or 4 passing saves a short quiz. A check that
+      couldn't run counts as a fail. A quiz can now be shorter than 5 and can lack a "why",
+      and at 3 or 4 questions the 80 % pass mark rounds up to all of them.*
+- [x] **Cards are checked before they are stored.** A card that fails is dropped; if none
+      pass, nothing is added and the reader is told why.
+      *This runs on the Cards click, which already waited on the tutor. The one real run took
+      25 s for writing and checking one card; how much of that is the check wasn't measured
+      apart. No second try.*
+- [x] **`verifiedAt`** on each saved question and card. Older ones have none and load as
+      before. A card the reader rewrites loses it.
+- [x] **`gradeAnswer`** in `lib/server/check/grade.ts`: a score from 0 to 1, a verdict (right,
+      partly, wrong), a confidence, the first gap with the stretch of the passage that shows
+      it, and `unsure`.
+      *Two calls. The first writes the rubric, one to four points, from the passage and the
+      expected answer, and never sees the reader's answer, so the answer can't bend what
+      counts as right. The second marks each point yes, partly or no. A caller that kept the
+      rubric passes it back and only the second runs. The score and the verdict are computed
+      from the marks, not asked for: right at 0.85 or more, wrong only at 0, anything between
+      is "partly" and always `unsure`, as is any grade with confidence under 0.7. The gap's
+      note is about the answer, never the reader.*
+- [x] **Two tools**, `verify_item` and `grade_answer`, each in its own file in
+      `lib/server/tools/`, listed by the MCP server and written to the tool log like the rest.
+      *Both only read. They run on the tutor the reader chose in the app, or the first one
+      that is ready.*
+- [x] **A fixed evaluation set** in `tests/eval/`: 16 questions for checking, half of them
+      broken on purpose, and 24 answers for grading. `node scripts/check-eval/run.mjs <model>`
+      runs the real model over it; it is not part of `npm test`.
+- [x] **The cheapest model that passes.** Checks run on Haiku 5.5 through Claude Code and the
+      API, not on the tutor's model.
+      *Haiku 16/16 on checking and 21/24 then 23/24 on grading; Sonnet 16/16 and 22/24; no
+      confident right-for-wrong on either. About $0.0003 a check on Haiku against $0.004 on
+      Sonnet at list price, and 6 to 7 s. Every miss is in `scripts/check-eval/README.md`.*
+- [x] **Cards an agent proposes are checked when they are proposed**, against the quote the
+      agent gave. The agent waits on the model; the reader's Add stays instant.
+      *Cards that fail are left out and shown on the suggestion with why. When none pass,
+      the suggestion is stored as "failed", the agent is told, and the reader isn't asked. A
+      suggestion from before this has no checked cards and can only be rejected.*
+- [x] A reader-facing use of the grade, with the one-tap overrule. *Go deeper, Phase 28.*
+- [ ] Score Codex once its account can run. It keeps its default model, unscored.
+- [ ] A larger evaluation set drawn from real chapters. Checking scored 16/16 on every run,
+      which says the set is too easy to tell models apart.
+
+Tried **2026-11-26** with Claude Code on a copy of the real data. Writing the quiz for "The Mom
+Test" chapter through the app took 51 s and saved eight questions, each with `verifiedAt`. For
+"Asking important questions" the server log read "kept 8, dropped 3": one answer added a claim
+the passage doesn't make, and one question's answer ran past the cited paragraphs, which is the
+check being stricter than a person would be. Cards on a 422-character passage saved one card,
+checked. With the app closed, a real `claude -p` called both tools through the MCP server:
+"about nine hours" verified, the same question with "about three hours" was rejected, and
+"Trains were quicker I think" came back `partly`, `unsure: true`. Not checked: Codex, the API
+provider with a key, a PDF chapter, and a quiz failing for too few questions outside the unit
+test.
+
+## Phase 28 — Ask and Go deeper · M
+
+The five passage modes fold into two, because only two were ever used, and the reader's turn
+moves out of the chat into a sheet over the book. The same 393 complaints set the bar: be
+tested, don't be lectured, and be able to trust the verdict.
+
+- [x] **Toolbar: Ask, Go deeper, Highlight, and More** (Note, Park, Make cards). Explain, Work
+      it out and Explain it back are no longer buttons.
+      *Ask sent empty means "explain this" and starts an `explain` thread; a typed question
+      starts an `ask` thread. Threads saved as `work`, `explainBack` or the old `deeper` keep
+      their own request strings and open as before.*
+- [x] **Ask answers first and briefly**, about 120 words, then may close with one "Your turn"
+      question. The app lifts that line out of the answer and shows it as a prompt with a
+      skip button.
+      *Passing over a prompt is dismissing it or sending the tutor anything else while it is
+      on offer. Two in a session and no more are shown until the app is opened again; the
+      count is in `sessionStorage`. Taking one opens Go deeper on its question.*
+- [x] **Go deeper is a sheet over the book** with the passage hidden and the chat folded away.
+      A passage with no earlier thread gets one question written by the tutor, to try first;
+      one already asked about gets an explain-back, with no model call. Hint, up to four
+      steps, and Just tell me are always there. Enter checks, Esc saves the draft and closes,
+      and the thread opens the sheet again.
+      *`lib/server/study.ts`, one route with an `op`. "Already asked about" is an earlier
+      thread on the same text, or one whose passage holds the selection or is held by it for
+      at least 24 characters. The question is written with
+      its expected answer in one `structured` call on the tutor's model; hints and Just tell
+      me are ordinary tutor turns in the thread, sent without opening it in the chat.*
+- [x] **Answers are graded by `gradeAnswer`**, on the checking model, not by the tutor. The
+      sheet shows right or not right, the first gap and the stretch of the passage that shows
+      it, marked in the passage. An unsure grade says so and leaves the call to the reader.
+      **I had it** and **I missed it** overrule any grade in one tap.
+      *An explain-back is graded against the passage itself. A prompt taken from an Ask
+      answer is graded against that answer. The rubric from the first grade is kept, so a
+      second try is marked against the same points.*
+- [x] **Each turn is kept on the thread** in the book's JSON, in `study.turns`: the answer,
+      verdict, score, unsure, the gap, hints used and the reader's overrule. The answer and
+      the grade's note also join the thread's messages, so the transcript reads whole and the
+      tutor knows where the reader stands.
+- [x] **Focus sessions no longer need Three.** The timer, the folded chrome and the recall at
+      the end are the app's own; nothing outside it is blocked, and `/api/focus` is gone.
+      *Fixed on the way: the recall was sent as a reply to the open thread and silently
+      dropped when none was open. It now starts a thread of its own.*
+- [ ] The question the tutor writes for Go deeper is not checked with `verifyItem` before it
+      is asked. It is asked once and not stored as a card or quiz question, and checking would
+      add about 7 s to opening the sheet.
+- [ ] Record graded turns in the learner ledger. The data is on the thread; nothing reads it.
+- [ ] Dictation in the Go deeper sheet. The Ask and Park fields have it.
+- [ ] The focus recall goes to the tutor with no passage, so it can't be checked against what
+      was read. It could carry the text of the pages read during the session.
+
+Tried **2026-11-26** in the app with Claude Code, on a copy of the real data and three of the
+real books. Ask sent empty on a paragraph of *Evals for AI Engineers* answered in about 95
+words and offered one prompt. Taking it opened the sheet; a deliberately vague answer came back
+"Not sure about this one" with the gap and the span marked, and **I had it** was saved as
+`override: "right"` on a turn graded `partly`, 0.5, `unsure`. Go deeper on a paragraph not
+asked about took about 12 s to write its question; Hint 1 named where to think back to without
+the answer; a full answer was graded right; Just tell me explained in the sheet. Go deeper on
+the paragraph already asked about opened at once as an explain-back. Esc saved a half-written
+answer to `study.draft`, and the thread's button reopened the sheet. A `deeper` thread saved on
+13 November opened as an ordinary thread. After two prompts were passed over, the next Ask
+answer showed none. A focus session started, ran and ended with no call to Three, and its
+recall arrived as a new thread. Not checked: a PDF, Codex, the API provider, and grading when
+the tutor is signed out.
+
+## Phase 29 — A test at the end of every chapter · M
+
+"Not sure I actually understood" and "I want to be tested" were among the largest themes in the
+393 complaints, and review backlog was the main reason people gave up on review tools. So every
+chapter ends in a short test, and none of it stands between the reader and the book.
+
+- [x] **Finishing any chapter of any book offers its quiz**, with a quiet notice, and starts
+      writing it in the background when it has none. Depends on Phases 26 to 28.
+      *Outside a Course a chapter is a top-level entry of the book's contents, or an entry
+      directly under a top-level entry that only groups chapters: one named "Part", "Book" or
+      "Volume", or one whose entries are numbered as chapters ("I. Foundations" over
+      "1. Introduction"). Sections nested in a chapter are covered by its quiz and get none, so
+      nothing overlaps. Entries named exactly Cover, Copyright, Contents, Index, Notes and the
+      like are not chapters. In a book a Course reads, the Course's own chapters stay as they
+      were and any entry that overlaps one of them is left to the Course. `bookChapters` in
+      `lib/shared/sitting.ts`. Such a chapter is finished by reading on into the entry after
+      it, or the one after that, having had it open for 20 seconds; a jump further ahead is
+      not finishing, so paging through a book doesn't have a quiz written for every chapter
+      passed. The notice shows only while the quiz is being written or is ready. One that
+      couldn't be written, as for a chapter with too little text, is not announced.*
+- [x] **Nothing is gated outside a Course.** The result says "6 of 8 right" and "the 80 % mark
+      is 7", and nothing follows from it. Closing the notice is one tap and is kept in the
+      book's state, in `quizSkips`, so that chapter's notice does not come back. A chapter
+      already tested is not offered again either. In a Course the notice, the pass and the
+      order of chapters work as in Phase 17.
+- [x] **The test mixes in earlier chapters.** Six to eight questions: up to six of the
+      chapter's own and two from quizzes already written for chapters before it in the book,
+      three when the chapter's quiz is short. With nothing earlier it is the chapter's own
+      quiz, up to eight.
+      *`composeTest`. No model call: earlier questions are drawn from saved quizzes, the ones
+      last answered wrong first, then ones never asked, then the rest. When the chapter has
+      more than six, the same order picks which are asked, spread evenly through the chapter
+      on a first test, so a retake brings the ones left out. "Earlier" goes by the book's
+      contents. Six of the chapter's and two earlier is 75 to 25, five and two is 71 to 29.*
+- [x] **One question in each test is answered in writing and graded** by `gradeAnswer`, on the
+      checking model: a "why" when the quiz has one. The sheet shows the first gap and the
+      stretch of the text that shows it, says so when the grader is unsure and leaves the
+      call to the reader, and **I had it** or **I missed it** overrules any grade in one tap.
+      Recall questions are as they were: show the answer, then mark it.
+      *The graded view is the one Go deeper uses, moved to `components/study/Outcome.tsx`. The
+      two sheets stay two components: Go deeper is one thread with the tutor, hints and a
+      saved draft, a test is a queue of questions, and one component for both would have
+      been mostly branches. The answer is graded against the block the question cites and
+      the block either side, read from the book again, which is what it was checked against
+      when it was written. The rubric of the first grade is kept on the question, so later
+      answers are marked against the same points with one call. With no tutor, or when
+      grading fails, the reader sees the answer and marks it. **Just show me** does the same
+      without waiting. The graded turn is saved on the answer with the reader's overrule.*
+- [x] **A missed question is asked once more before the test ends.** The score is the first
+      answers; how the second go went is kept beside the first.
+- [x] **The misses come back the next day** as a retest of three or four questions, offered
+      by the same notice when the book is opened.
+      *Up to four misses, filled up to three with the questions the reader was least sure of.
+      Nothing is stored for it: `retestDue` reads the chapter's latest test, and a retest
+      taken or passed over is what ends it. A new test replaces an older one's retest. A
+      retest never passes a Course chapter.*
+- [x] **Each answer is kept with the quiz its question belongs to.** A test that asked two
+      questions from Chapter 1 adds an attempt of kind "review" to Chapter 1's quiz, with the
+      same time as the test, so a question's history is in one place and retention (Phase 18)
+      reads it with no change. Attempts have a `kind`, and a test's attempt has its score over
+      everything asked. Attempts saved before have no kind and read as the whole quiz taken
+      alone; they pass a chapter as before and never start a retest.
+- [x] **Only checked questions are asked.** Other chapters' questions are drawn only when they
+      carry `verifiedAt`. A quiz saved before Phase 27 has none checked: it still opens, each
+      question marked "written before questions were checked", and is never mixed into
+      another chapter's test.
+- [x] Retakes without limit, as before.
+- [ ] A way to open a chapter's quiz from the contents. Outside a Course the notice is the
+      only way in, so a quiz that finishes writing after the book is closed is not offered
+      until that chapter is finished again.
+- [ ] Check the old quizzes' questions, so they can be mixed in too.
+- [ ] The overlap between a Course chapter and a Course section nested in it (Phase 17).
+- [x] Record test answers in the learner ledger. *Phase 30: one event for each answer, on the
+      quiz its question belongs to, written answers included.*
+
+Tried **2026-11-26** in the app with Claude Code, on a copy of the real data. *Evals for AI
+Engineers* is in no Course. Moving from Chapter 2 into Chapter 3 after half a minute showed
+"Finished … A short quiz on it is being written", and "ready" about a minute later, with seven
+checked questions. A miss on the first came back as "Question 8 of 8 · once more". A vague
+written answer came back "Not sure about this one" with the gap and the span marked; **I had
+it** saved it as `partly`, `unsure`, `override: "right"`. The result read "6 of 7 right. The
+80 % mark is 6." Once Chapter 1 had a quiz, a retake asked eight: six of the chapter's and two
+marked "from 1. Introduction", saved as a test on Chapter 2 and a review on Chapter 1 at the
+same time. Closing the notice for Chapter 3 saved the skip, and leaving Chapter 3 again showed
+nothing. With the saved attempts moved back a day by hand, opening the book offered "A
+3-question retest", two misses and one fill. A hand-made quiz with no `verifiedAt` and an
+attempt with no kind opened from `?quiz=` and ran, each question marked as unchecked. *Inspired*
+in a two-chapter scratch Course: moving from Chapter 1 to Chapter 2 offered the quiz at once, 7
+of 8 read "Passed. The chapter is done.", and the Course page read "1 of 2 chapters passed" with
+Chapter 2 open. Not checked: a PDF, Codex, the API provider, a grade that fails (only **Just
+show me** and the unit test), a retest on a real next day, the "comes after" notice on a locked
+Course chapter, and the Mac app.
+
+## Phase 30 — Learner ledger · M
 
 The tutor sees one passage and one thread, mastery reads only cards and quizzes, and nothing is
 shared across books. The ledger is the record under all of it: one line per piece of evidence
@@ -803,7 +1056,7 @@ query, not a profile pasted into a prompt.
 - [x] **Evidence strength** as one pure function: strong is an unaided answer a day or more
       after the last meeting, medium the same on the day, weak anything hinted or picked from
       options, exposure no check at all.
-- [x] **Written by what the reader already does**: rating a card, answering a quiz, a
+- [x] **Written by what the reader already does**: rating a card, answering a quiz or a chapter test, a
       draw-it-back, a highlight, a parked question, a question to the tutor. No model call. A
       ledger that can't be written is logged and never fails the action.
       *Each path hands over the book's saved state; events are named by what happened, so the
@@ -851,4 +1104,6 @@ folder. Not building any automated downloading from shadow libraries.
   in Phase 14; the dashboards around it are not.)
 - Other questioning modes (find the flaw, counter-examples, argument maps, chapter
   debriefs, cold opens). Revisit only if Phase 6 gets used.
-- Model-graded free-text review.
+- Model-graded card review. Flip and rate stays on the reader's machine. Grading a free-text
+  answer on request is Phase 27, approved 2026-11-26 on two conditions: one tap overrules any
+  grade, and plain review never waits on a model.

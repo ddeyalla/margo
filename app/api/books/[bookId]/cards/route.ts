@@ -1,5 +1,6 @@
-import { cardRequest, generateCards } from "@/lib/server/cards/generate";
+import { cardRequest, generateCards, verifyCards } from "@/lib/server/cards/generate";
 import { storeCards } from "@/lib/server/cards/store";
+import { checkerFor } from "@/lib/server/check/provider";
 import { getConfig } from "@/lib/server/config";
 import { readSettings } from "@/lib/server/settings";
 import { noteEvidence } from "@/lib/server/ledger";
@@ -25,7 +26,8 @@ const dirs = () => {
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
 
 /**
- * Makes cards for a selected passage through the chosen tutor and stores them.
+ * Makes cards for a selected passage through the chosen tutor, checks each
+ * against the passage, and stores those that pass.
  * Answers with every card set, how many cues were added and, when none were,
  * why. Takes as long as the tutor does; nothing is stored if it fails.
  */
@@ -50,16 +52,25 @@ export const POST = withBook(async ({ book, request }) => {
   const model = modelFor(settings.models, providerId);
 
   let reply;
+  let verified;
   try {
     reply = await generateCards(PROVIDERS[providerId], cardRequest(label, source, existing), model, request.signal);
+    if (reply.fact !== null) verified = await verifyCards(checkerFor(providerId), source, reply.cards, request.signal);
   } catch (error) {
     if (request.signal.aborted) return new Response(null, { status: 499 });
     return Response.json({ error: error instanceof Error ? error.message : "The tutor could not make cards." }, { status: 502 });
   }
 
-  if (reply.fact === null) return Response.json({ cardSets: state.cardSets, added: 0, reason: reply.reason });
+  if (reply.fact === null || !verified) return Response.json({ cardSets: state.cardSets, added: 0, reason: reply.fact === null ? reply.reason : null });
+  if (!verified.kept.length) {
+    return Response.json({
+      cardSets: state.cardSets,
+      added: 0,
+      reason: `The tutor's cards didn't hold up when checked against the passage, so none were saved. ${verified.dropped[0]?.reason ?? ""}`.trim(),
+    });
+  }
   const [dataDir, notesDir] = dirs();
-  const { cardSets, added } = await storeCards(book, { anchor, ...source, fact: reply.fact, cards: reply.cards }, { dataDir, notesDir });
+  const { cardSets, added } = await storeCards(book, { anchor, ...source, fact: reply.fact, cards: verified.kept }, { dataDir, notesDir });
   return Response.json({
     cardSets,
     added,

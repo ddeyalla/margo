@@ -8,7 +8,11 @@ import type { Anchor, BookId } from "./types";
  * `{ kind: "board", target: { bookId, boardId }, payload: { ops } }`; today those still live on the board itself.
  */
 
-export type SuggestionStatus = "pending" | "accepted" | "rejected";
+/**
+ * "pending" waits for the reader, who makes it "accepted" or "rejected". "failed" never reached them: nothing in it
+ * passed the check against its passage, and it is kept so the agent that proposed it can see why.
+ */
+export type SuggestionStatus = "pending" | "accepted" | "rejected" | "failed";
 
 interface SuggestionFrame {
   id: string;
@@ -16,7 +20,7 @@ interface SuggestionFrame {
   proposer: string;
   createdAt: string;
   status: SuggestionStatus;
-  /** When the reader accepted or rejected it, or null while it waits. */
+  /** When the reader accepted or rejected it, or when it failed its check; null while it waits. */
   decidedAt: string | null;
 }
 
@@ -28,7 +32,10 @@ export interface CardSuggestion extends SuggestionFrame {
     quote: string;
     chapterTitle: string | null;
     fact: string;
-    cards: { question: string; answer: string }[];
+    /** The cards the reader can add: each passed the check against the quote when it was proposed, at `verifiedAt`. */
+    cards: { question: string; answer: string; verifiedAt?: string }[];
+    /** Proposed cards that didn't pass, with why. They are shown as left out and are never added. */
+    failed?: { question: string; answer: string; reason: string }[];
   };
 }
 
@@ -41,7 +48,7 @@ export interface SuggestionsFile {
 
 export const emptySuggestions = (): SuggestionsFile => ({ suggestions: [] });
 
-export const SUGGESTION_STATUSES: readonly SuggestionStatus[] = ["pending", "accepted", "rejected"];
+export const SUGGESTION_STATUSES: readonly SuggestionStatus[] = ["pending", "accepted", "rejected", "failed"];
 
 export type Decision = "accept" | "reject";
 export const isDecision = (value: unknown): value is Decision => value === "accept" || value === "reject";
@@ -51,15 +58,21 @@ export const MAX_PENDING = 100;
 /** Decided suggestions are kept as a record, the newest this many. */
 export const MAX_DECIDED = 200;
 
-/** The file with `added` waiting at the end, or null when the inbox is full. */
-export const withProposed = (file: SuggestionsFile, added: Suggestion): SuggestionsFile | null =>
-  file.suggestions.filter((entry) => entry.status === "pending").length >= MAX_PENDING ? null : { suggestions: [...file.suggestions, added] };
-
-/** The file with one suggestion decided, and only the newest decided ones kept. A suggestion already decided, or gone, changes nothing. */
-export const withDecision = (file: SuggestionsFile, id: string, status: Exclude<SuggestionStatus, "pending">, now: Date): SuggestionsFile => {
-  if (!file.suggestions.some((entry) => entry.id === id && entry.status === "pending")) return file;
-  const all = file.suggestions.map((entry) => (entry.id === id ? { ...entry, status, decidedAt: now.toISOString() } : entry));
+/** The suggestions with only the newest decided ones kept. Waiting ones all stay. */
+const trimmed = (all: Suggestion[]): Suggestion[] => {
   const decided = all.filter((entry) => entry.status !== "pending");
   const dropped = new Set(decided.slice(0, Math.max(0, decided.length - MAX_DECIDED)).map((entry) => entry.id));
-  return { suggestions: all.filter((entry) => !dropped.has(entry.id)) };
+  return all.filter((entry) => !dropped.has(entry.id));
+};
+
+/** The file with `added` at the end, or null when the inbox is full. One that failed its check waits for nobody, so it always fits. */
+export const withProposed = (file: SuggestionsFile, added: Suggestion): SuggestionsFile | null =>
+  added.status === "pending" && file.suggestions.filter((entry) => entry.status === "pending").length >= MAX_PENDING
+    ? null
+    : { suggestions: trimmed([...file.suggestions, added]) };
+
+/** The file with one suggestion decided, and only the newest decided ones kept. A suggestion already decided, or gone, changes nothing. */
+export const withDecision = (file: SuggestionsFile, id: string, status: "accepted" | "rejected", now: Date): SuggestionsFile => {
+  if (!file.suggestions.some((entry) => entry.id === id && entry.status === "pending")) return file;
+  return { suggestions: trimmed(file.suggestions.map((entry) => (entry.id === id ? { ...entry, status, decidedAt: now.toISOString() } : entry))) };
 };

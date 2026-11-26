@@ -9,6 +9,7 @@ import { parkThread, saveParked } from "@/lib/server/parked";
 import { readBookState, updateBookState } from "@/lib/server/store";
 import { callTool } from "@/lib/server/tools";
 import { addCards, changeCards } from "@/lib/shared/cards";
+import { recordSitting } from "@/lib/shared/sitting";
 import { chapterCounts, evidenceOf, evidenceStrength, ledgerItems, newEvents, weakest, type Evidence, type LedgerEvent } from "@/lib/shared/ledger";
 import type { Anchor, BookId, LibraryBook } from "@/lib/shared/types";
 import { makeEpub } from "./fixtures/books";
@@ -224,5 +225,30 @@ describe("the ledger file", () => {
     const refused = await callTool("record_evidence", { bookId: book.id, source: "quiz", topic: "x", anchor: { kind: "pdf", page: 1, start: 0, end: 1 } }, "test-agent");
     expect(refused).toMatchObject({ ok: false });
     await recordEvidence([]);
+  });
+});
+
+describe("a chapter test that mixes chapters", () => {
+  it("gives one event for each answer, on the quiz its question belongs to, written answers included", () => {
+    const anchor: Anchor = { kind: "pdf", page: 1, start: 0, end: 9 };
+    const quiz = (chapter: string, id: string, kind: "recall" | "why") => ({
+      chapter,
+      createdAt: at(0),
+      questions: [{ id, kind, question: `${chapter}?`, answer: "Yes.", anchor, quote: "q", verifiedAt: at(0) }],
+      attempts: [],
+    });
+    const turn = { at: at(1), answer: "Because.", verdict: "right" as const, score: 1, unsure: false, gap: null, hintsUsed: 0, override: null };
+    const answers = [
+      { questionId: "two", correct: true, confidence: null, thinking: null, turn },
+      { questionId: "one", correct: false, confidence: null, thinking: null, again: true },
+    ];
+    const tested = recordSitting([quiz("One", "one", "recall"), quiz("Two", "two", "why")], { chapter: "Two", kind: "test", answers }, new Date(at(1)))!;
+    const retested = recordSitting(tested, { chapter: "Two", kind: "retest", retestOf: at(1), answers: [{ questionId: "one", correct: true, confidence: null, thinking: null }] }, new Date(at(2)))!;
+    const events = newEvents([], evidenceOf(BOOK, { highlights: [], threads: [], cardSets: [], boards: [], quizzes: retested }));
+    expect(events.map((event) => [event.item, event.outcome, event.unaided, event.hintLevel, evidenceStrength(event)])).toEqual([
+      ["quiz:One:one", 0, true, 0, "strong"],
+      ["quiz:Two:two", 1, true, 0, "strong"],
+      ["quiz:One:one", 1, true, 0, "strong"],
+    ]);
   });
 });

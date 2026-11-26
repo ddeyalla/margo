@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffectEvent, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
-import { ArrowUp, BookOpenText, CircleParking, Highlighter, Layers, Lightbulb, MessageCircleQuestion, NotebookPen, PenLine, Sparkles } from "lucide-react";
+import { ArrowUp, BookOpenText, ChevronLeft, CircleParking, Ellipsis, Highlighter, Layers, MessageCircleQuestion, NotebookPen } from "lucide-react";
 import { Toolbar, ToolbarButton, ToolbarInput, ToolbarSeparator } from "@ui-sdk/react/toolbar";
 import { DictationNote, MicButton } from "@/components/chat/MicButton";
 import { useDictation } from "@/components/chat/useDictation";
@@ -25,9 +25,10 @@ interface SelectionToolbarProps {
   disabledReason: string | null;
   /** The tutor is answering; its actions wait, while highlighting, notes and parking stay open. */
   tutorBusy: boolean;
-  onAction(action: "explain" | "deeper" | "work", selection: SelectionContext): void;
-  /** The reader's own words: a question, or an explanation to check. */
-  onAsk(text: string, selection: SelectionContext, kind: Exclude<InputKind, "park">): void;
+  /** The reader's question about the passage, or null when they sent the field empty: explain it. */
+  onAsk(question: string | null, selection: SelectionContext): void;
+  /** Opens the reader's turn on the passage, over the book. */
+  onDeeper(selection: SelectionContext): void;
   /** Saves the reader's question on the passage without asking the tutor. */
   onPark(text: string, selection: SelectionContext): void;
   onHighlight(selection: SelectionContext): void;
@@ -37,15 +38,14 @@ interface SelectionToolbarProps {
   onDismiss(): void;
 }
 
-type InputKind = "ask" | "explainBack" | "park";
+type InputKind = "ask" | "park";
 
 const MAX_QUESTION = 8000;
 
 const INPUTS = {
-  ask: { icon: MessageCircleQuestion, label: "Your question about this passage", placeholder: "Ask about this passage…", button: "Ask" },
+  ask: { icon: MessageCircleQuestion, label: "Your question about this passage. Leave it empty to have the passage explained.", placeholder: "Ask, or press Enter to have it explained…", button: "Ask" },
   park: { icon: CircleParking, label: "A question to park on this passage", placeholder: "Park a question for later…", button: "Park" },
-  explainBack: { icon: PenLine, label: "Your explanation of this passage", placeholder: "Explain it in a line or two…", button: "Check" },
-} satisfies Record<InputKind, { icon: typeof PenLine; label: string; placeholder: string; button: string }>;
+} satisfies Record<InputKind, { icon: typeof CircleParking; label: string; placeholder: string; button: string }>;
 
 const itemClass =
   "press inline-flex h-7 shrink-0 select-none items-center gap-1.5 rounded-sm px-2 text-label text-fog outline-none transition-[color,background-color,scale,opacity] duration-[var(--duration-fast)] ease-out hover:bg-tint hover:text-paper focus-visible:bg-tint focus-visible:text-paper data-[disabled]:opacity-40 data-[disabled]:hover:bg-transparent data-[disabled]:hover:text-fog [&>svg]:size-3.5 [&>svg]:shrink-0";
@@ -61,8 +61,9 @@ function Action({ icon, label, title, disabled, onPress }: { icon: ReactNode; la
 
 /**
  * Floats above the selected passage (below it when there's no room) and offers
- * the tutor's actions, Highlight, Note, Park a question and Make cards. Ask…,
- * Explain it back and Park swap the buttons for an inline text field.
+ * Ask, Go deeper and Highlight, with Note, Park a question and Make cards behind
+ * More. Ask and Park swap the buttons for an inline text field; Ask sent empty
+ * asks for the passage to be explained.
  */
 export function SelectionToolbar({
   ref,
@@ -70,8 +71,8 @@ export function SelectionToolbar({
   readSelection,
   disabledReason,
   tutorBusy,
-  onAction,
   onAsk,
+  onDeeper,
   onPark,
   onHighlight,
   onNote,
@@ -87,6 +88,8 @@ export function SelectionToolbar({
     setShown(next);
   };
   const [asking, setAsking] = useState<InputKind | null>(null);
+  /* The second row of actions, behind More. */
+  const [more, setMore] = useState(false);
   const [question, setQuestion] = useState("");
   const boxRef = useRef<HTMLDivElement>(null);
   /* Read once the reader reaches for the toolbar, before focus can move and clear a PDF selection. */
@@ -116,6 +119,7 @@ export function SelectionToolbar({
     askingRef.current = false;
     snapshot.current = null;
     setAsking(null);
+    setMore(false);
     setQuestion("");
     rectRef.current = null;
     show(false);
@@ -133,7 +137,11 @@ export function SelectionToolbar({
     update(next) {
       /* Focusing the question field clears a PDF selection; the snapshot holds it until the question is sent. */
       if (askingRef.current) return;
-      if (!next) snapshot.current = null;
+      if (!next) {
+        snapshot.current = null;
+        /* The next selection starts on the first row again. */
+        setMore(false);
+      }
       rectRef.current = next;
       if (shownRef.current !== !!next) show(!!next);
       else place();
@@ -154,20 +162,15 @@ export function SelectionToolbar({
 
   useLayoutEffect(() => {
     if (shown) placeLater();
-  }, [shown, asking, bounds]);
+  }, [shown, asking, more, bounds]);
 
   if (!shown) return null;
 
   const take = () => (snapshot.current ??= readSelection());
+  const disabled = disabledReason !== null;
+  const tutorOff = disabled || tutorBusy;
 
-  const act = (action: "explain" | "deeper" | "work") => {
-    const selection = take();
-    if (!selection) return;
-    reset();
-    onAction(action, selection);
-  };
-
-  /* Acts on the passage and closes the bar: Highlight and Note, which work without the tutor, and Make cards. */
+  /* Acts on the passage and closes the bar: Go deeper and Make cards, and Highlight and Note, which work without the tutor. */
   const keep = (save: (selection: SelectionContext) => void) => {
     const selection = take();
     if (!selection) return;
@@ -178,12 +181,13 @@ export function SelectionToolbar({
   const submit = () => {
     const selection = snapshot.current;
     const text = question.trim();
-    if (!selection || !text || !asking) return;
+    if (!selection || !asking) return;
     const kind = asking;
-    if (kind !== "park" && tutorBusy) return;
+    /* A parked question needs its words; Ask sent empty means "explain this". */
+    if (kind === "park" ? !text : tutorOff) return;
     reset();
     if (kind === "park") onPark(text, selection);
-    else onAsk(text, selection, kind);
+    else onAsk(text || null, selection);
   };
 
   const dismiss = () => {
@@ -191,8 +195,6 @@ export function SelectionToolbar({
     onDismiss();
   };
 
-  const disabled = disabledReason !== null;
-  const tutorOff = disabled || tutorBusy;
   const tutorTitle = disabledReason ?? (tutorBusy ? "The tutor is still answering." : undefined);
   /* Parking never calls the tutor, so it works when the tutor is unavailable or busy. */
   const inputDisabled = tutorOff && asking !== "park";
@@ -252,7 +254,7 @@ export function SelectionToolbar({
             <ToolbarButton
               aria-label={input.button}
               title={`${input.button} (Enter)`}
-              disabled={!question.trim() || inputDisabled}
+              disabled={asking === "park" ? !question.trim() : inputDisabled}
               onClick={submit}
               className={`${itemClass} w-7 justify-center px-0`}
             >
@@ -260,25 +262,19 @@ export function SelectionToolbar({
             </ToolbarButton>
             <DictationNote dictation={dictation} className="basis-full max-w-[min(420px,80vw)] px-1.5 pb-1" />
           </>
+        ) : more ? (
+          <>
+            <ToolbarButton aria-label="Back" title="Back" onClick={() => setMore(false)} className={`${itemClass} w-7 justify-center px-0`}>
+              <ChevronLeft />
+            </ToolbarButton>
+            <Action icon={<NotebookPen />} label="Note" title="Write a note on this passage" disabled={false} onPress={() => keep(onNote)} />
+            <Action icon={<CircleParking />} label="Park" title="Park a question for later. It isn't sent to the tutor." disabled={false} onPress={() => open("park")} />
+            <Action icon={<BookOpenText />} label="Make cards" title={disabledReason ?? "Make flashcards from this passage"} disabled={disabled} onPress={() => keep(onCard)} />
+          </>
         ) : (
           <>
-            <Action icon={<Sparkles />} label="Explain" title={tutorTitle} disabled={tutorOff} onPress={() => act("explain")} />
-            <Action icon={<Layers />} label="Go deeper" title={tutorTitle} disabled={tutorOff} onPress={() => act("deeper")} />
-            <Action icon={<Lightbulb />} label="Work it out" title={tutorTitle} disabled={tutorOff} onPress={() => act("work")} />
-            <Action
-              icon={<MessageCircleQuestion />}
-              label="Ask…"
-              title={tutorTitle}
-              disabled={tutorOff}
-              onPress={() => open("ask")}
-            />
-            <Action
-              icon={<PenLine />}
-              label="Explain it back"
-              title={tutorTitle}
-              disabled={tutorOff}
-              onPress={() => open("explainBack")}
-            />
+            <Action icon={<MessageCircleQuestion />} label="Ask" title={tutorTitle ?? "Ask a question, or press Enter to have the passage explained"} disabled={tutorOff} onPress={() => open("ask")} />
+            <Action icon={<Layers />} label="Go deeper" title={tutorTitle ?? "Answer first, then see how you did"} disabled={tutorOff} onPress={() => keep(onDeeper)} />
             <ToolbarSeparator className="mx-1 h-4 w-px shrink-0 bg-line-strong" />
             <ToolbarButton
               aria-label="Highlight"
@@ -288,25 +284,16 @@ export function SelectionToolbar({
             >
               <Highlighter />
             </ToolbarButton>
-            <ToolbarButton aria-label="Note" title="Write a note on this passage" onClick={() => keep(onNote)} className={`${itemClass} w-7 justify-center px-0`}>
-              <NotebookPen />
-            </ToolbarButton>
             <ToolbarButton
-              aria-label="Park a question"
-              title="Park a question for later. It isn't sent to the tutor."
-              onClick={() => open("park")}
+              aria-label="More: note, park a question, make cards"
+              aria-expanded={false}
+              title="More"
+              onClick={() => {
+                if (take()) setMore(true);
+              }}
               className={`${itemClass} w-7 justify-center px-0`}
             >
-              <CircleParking />
-            </ToolbarButton>
-            <ToolbarButton
-              aria-label="Make cards"
-              title={disabledReason ?? "Make flashcards from this passage"}
-              disabled={disabled}
-              onClick={() => keep(onCard)}
-              className={`${itemClass} w-7 justify-center px-0`}
-            >
-              <BookOpenText />
+              <Ellipsis />
             </ToolbarButton>
           </>
         )}
