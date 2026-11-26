@@ -8,7 +8,8 @@ export interface NewCards {
   quote: string;
   chapterTitle: string | null;
   fact: string;
-  cards: { question: string; answer: string }[];
+  /** `verifiedAt` is when a card was checked against the passage; absent on a card that wasn't. */
+  cards: { question: string; answer: string; verifiedAt?: string }[];
 }
 
 export type CardChange =
@@ -32,7 +33,7 @@ export const addCards = (sets: CardSet[], added: NewCards, now: Date, newId: () 
   for (const card of added.cards) {
     if (asked.has(normalized(card.question))) continue;
     asked.add(normalized(card.question));
-    cues.push({ id: newId(), question: card.question, answer: card.answer, createdAt: at, lastRating: null });
+    cues.push({ id: newId(), question: card.question, answer: card.answer, createdAt: at, lastRating: null, ...(card.verifiedAt ? { verifiedAt: card.verifiedAt } : {}) });
   }
   if (!cues.length) return { sets, count: 0 };
   if (existing) return { sets: sets.map((set) => (set === existing ? { ...set, cues: [...set.cues, ...cues] } : set)), count: cues.length };
@@ -51,6 +52,14 @@ export const addCards = (sets: CardSet[], added: NewCards, now: Date, newId: () 
   return { sets: [...sets, set], count: cues.length };
 };
 
+/** A cue with the reader's wording. The check was of the old wording, so its mark goes unless nothing changed. */
+const editedCue = ({ verifiedAt, ...cue }: Cue, question: string, answer: string): Cue => ({
+  ...cue,
+  question,
+  answer,
+  ...(verifiedAt && question === cue.question && answer === cue.answer ? { verifiedAt } : {}),
+});
+
 /** Applies one change. A change naming a set or cue that is gone leaves everything as it was. */
 export const changeCards = (sets: CardSet[], change: CardChange, now: Date): CardSet[] => {
   if (change.op === "delete-set") return sets.filter((set) => set.id !== change.setId);
@@ -58,7 +67,7 @@ export const changeCards = (sets: CardSet[], change: CardChange, now: Date): Car
     if (set.id !== change.setId) return [set];
     switch (change.op) {
       case "edit-cue":
-        return [{ ...set, cues: set.cues.map((cue) => (cue.id === change.cueId ? { ...cue, question: change.question, answer: change.answer } : cue)) }];
+        return [{ ...set, cues: set.cues.map((cue) => (cue.id === change.cueId ? editedCue(cue, change.question, change.answer) : cue)) }];
       case "delete-cue": {
         const cues = set.cues.filter((cue) => cue.id !== change.cueId);
         /* The last cue going takes its set with it; there is nothing left to review. */

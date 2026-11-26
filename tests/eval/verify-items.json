@@ -1,0 +1,130 @@
+[
+  {
+    "id": "v01",
+    "question": "Why are the tides the Sun raises weaker than the ones the Moon raises?",
+    "expected": "Because the Sun is so much farther away.",
+    "passage": "Tides are raised mostly by the Moon. Its gravity pulls harder on the side of the Earth facing it than on the far side, and that difference stretches the oceans into two bulges, one toward the Moon and one away from it. As the Earth turns under the bulges, most coasts see two high tides and two low tides in a little under 25 hours. The Sun raises tides as well, though only about half as strong, because it is so much farther away. When the Sun, Earth and Moon line up, at new and full moon, the two pulls add and the tides run high; these are spring tides. When the Moon is at a right angle to the Sun, at the quarter moons, the pulls partly cancel and the range is small; these are neap tides.",
+    "verified": true,
+    "why": "Stated directly."
+  },
+  {
+    "id": "v02",
+    "question": "When do spring tides occur?",
+    "expected": "At new and full moon, when the Sun, Earth and Moon line up and the two pulls add.",
+    "passage": "Tides are raised mostly by the Moon. Its gravity pulls harder on the side of the Earth facing it than on the far side, and that difference stretches the oceans into two bulges, one toward the Moon and one away from it. As the Earth turns under the bulges, most coasts see two high tides and two low tides in a little under 25 hours. The Sun raises tides as well, though only about half as strong, because it is so much farther away. When the Sun, Earth and Moon line up, at new and full moon, the two pulls add and the tides run high; these are spring tides. When the Moon is at a right angle to the Sun, at the quarter moons, the pulls partly cancel and the range is small; these are neap tides.",
+    "verified": true,
+    "why": "Stated directly."
+  },
+  {
+    "id": "v03",
+    "question": "At which phases of the Moon do neap tides occur?",
+    "expected": "At new and full moon.",
+    "passage": "Tides are raised mostly by the Moon. Its gravity pulls harder on the side of the Earth facing it than on the far side, and that difference stretches the oceans into two bulges, one toward the Moon and one away from it. As the Earth turns under the bulges, most coasts see two high tides and two low tides in a little under 25 hours. The Sun raises tides as well, though only about half as strong, because it is so much farther away. When the Sun, Earth and Moon line up, at new and full moon, the two pulls add and the tides run high; these are spring tides. When the Moon is at a right angle to the Sun, at the quarter moons, the pulls partly cancel and the range is small; these are neap tides.",
+    "verified": false,
+    "why": "Wrong answer: the passage says the quarter moons."
+  },
+  {
+    "id": "v04",
+    "question": "How long does the Moon take to orbit the Earth?",
+    "expected": "About 27 days.",
+    "passage": "Tides are raised mostly by the Moon. Its gravity pulls harder on the side of the Earth facing it than on the far side, and that difference stretches the oceans into two bulges, one toward the Moon and one away from it. As the Earth turns under the bulges, most coasts see two high tides and two low tides in a little under 25 hours. The Sun raises tides as well, though only about half as strong, because it is so much farther away. When the Sun, Earth and Moon line up, at new and full moon, the two pulls add and the tides run high; these are spring tides. When the Moon is at a right angle to the Sun, at the quarter moons, the pulls partly cancel and the range is small; these are neap tides.",
+    "verified": false,
+    "why": "True, but the passage never says it."
+  },
+  {
+    "id": "v05",
+    "question": "About how strong is the Sun's tide-raising pull compared with the Moon's?",
+    "expected": "About a tenth as strong.",
+    "passage": "Tides are raised mostly by the Moon. Its gravity pulls harder on the side of the Earth facing it than on the far side, and that difference stretches the oceans into two bulges, one toward the Moon and one away from it. As the Earth turns under the bulges, most coasts see two high tides and two low tides in a little under 25 hours. The Sun raises tides as well, though only about half as strong, because it is so much farther away. When the Sun, Earth and Moon line up, at new and full moon, the two pulls add and the tides run high; these are spring tides. When the Moon is at a right angle to the Sun, at the quarter moons, the pulls partly cancel and the range is small; these are neap tides.",
+    "verified": false,
+    "why": "Wrong number: the passage says about half."
+  },
+  {
+    "id": "v06",
+    "question": "Why does rereading a chapter feel more effective than it is?",
+    "expected": "The text becomes familiar, and familiarity is easily mistaken for knowing.",
+    "passage": "Rereading a chapter feels productive because the text becomes familiar, and familiarity is easy to mistake for knowing. Testing yourself works differently. Each time you pull an idea out of memory without looking, the memory becomes easier to reach the next time, and the effort of reaching is part of what strengthens it. This is why a recall attempt that fails, followed by checking the answer, still helps more than reading the answer twice. The benefit is largest when some forgetting has happened first: a question answered a minute after reading does little, while the same question a few days later, when the answer comes back with difficulty, does much more.",
+    "verified": true,
+    "why": "Stated directly."
+  },
+  {
+    "id": "v07",
+    "question": "Why does a failed recall attempt followed by checking the answer help more than reading the answer twice?",
+    "expected": "Because the effort of trying to pull the idea out of memory is part of what strengthens the memory.",
+    "passage": "Rereading a chapter feels productive because the text becomes familiar, and familiarity is easy to mistake for knowing. Testing yourself works differently. Each time you pull an idea out of memory without looking, the memory becomes easier to reach the next time, and the effort of reaching is part of what strengthens it. This is why a recall attempt that fails, followed by checking the answer, still helps more than reading the answer twice. The benefit is largest when some forgetting has happened first: a question answered a minute after reading does little, while the same question a few days later, when the answer comes back with difficulty, does much more.",
+    "verified": true,
+    "why": "A 'why' the passage implies in the sentence before."
+  },
+  {
+    "id": "v08",
+    "question": "When does testing yourself on what you read bring the largest benefit?",
+    "expected": "Straight after reading, while the material is still fresh.",
+    "passage": "Rereading a chapter feels productive because the text becomes familiar, and familiarity is easy to mistake for knowing. Testing yourself works differently. Each time you pull an idea out of memory without looking, the memory becomes easier to reach the next time, and the effort of reaching is part of what strengthens it. This is why a recall attempt that fails, followed by checking the answer, still helps more than reading the answer twice. The benefit is largest when some forgetting has happened first: a question answered a minute after reading does little, while the same question a few days later, when the answer comes back with difficulty, does much more.",
+    "verified": false,
+    "why": "Reversed: the passage says after some forgetting."
+  },
+  {
+    "id": "v09",
+    "question": "What does pulling an idea out of memory do to that memory?",
+    "expected": "It makes the memory easier to reach next time, by growing new connections in the hippocampus.",
+    "passage": "Rereading a chapter feels productive because the text becomes familiar, and familiarity is easy to mistake for knowing. Testing yourself works differently. Each time you pull an idea out of memory without looking, the memory becomes easier to reach the next time, and the effort of reaching is part of what strengthens it. This is why a recall attempt that fails, followed by checking the answer, still helps more than reading the answer twice. The benefit is largest when some forgetting has happened first: a question answered a minute after reading does little, while the same question a few days later, when the answer comes back with difficulty, does much more.",
+    "verified": false,
+    "why": "The first half is right; the hippocampus claim is not in the passage."
+  },
+  {
+    "id": "v10",
+    "question": "In a database with a write-ahead log, what must happen before a data page is altered?",
+    "expected": "A record describing the change is appended to the log and forced to disk.",
+    "passage": "A database that crashes halfway through a change must not come back half-changed. The usual protection is a write-ahead log. Before the database alters any page of its data files, it appends a record describing the change to the log and forces that record to disk. Only then may the data page itself be written, and that can happen lazily, seconds or minutes later. After a crash, the database reads the log from the last checkpoint forward, replays every record whose transaction committed, and undoes the changes of transactions that did not. Appending to a log is fast because the writes are sequential, which is why committing a transaction costs one small log write and not a scattered rewrite of every page it touched.",
+    "verified": true,
+    "why": "Stated directly."
+  },
+  {
+    "id": "v11",
+    "question": "After a crash, what does a database with a write-ahead log do with the changes of transactions that never committed?",
+    "expected": "It undoes them.",
+    "passage": "A database that crashes halfway through a change must not come back half-changed. The usual protection is a write-ahead log. Before the database alters any page of its data files, it appends a record describing the change to the log and forces that record to disk. Only then may the data page itself be written, and that can happen lazily, seconds or minutes later. After a crash, the database reads the log from the last checkpoint forward, replays every record whose transaction committed, and undoes the changes of transactions that did not. Appending to a log is fast because the writes are sequential, which is why committing a transaction costs one small log write and not a scattered rewrite of every page it touched.",
+    "verified": true,
+    "why": "Stated directly."
+  },
+  {
+    "id": "v12",
+    "question": "Why is committing a transaction cheap in a database with a write-ahead log?",
+    "expected": "Because every data page the transaction touched is written to disk at once, in one sequential pass.",
+    "passage": "A database that crashes halfway through a change must not come back half-changed. The usual protection is a write-ahead log. Before the database alters any page of its data files, it appends a record describing the change to the log and forces that record to disk. Only then may the data page itself be written, and that can happen lazily, seconds or minutes later. After a crash, the database reads the log from the last checkpoint forward, replays every record whose transaction committed, and undoes the changes of transactions that did not. Appending to a log is fast because the writes are sequential, which is why committing a transaction costs one small log write and not a scattered rewrite of every page it touched.",
+    "verified": false,
+    "why": "Wrong mechanism: one small log write, with the pages written later."
+  },
+  {
+    "id": "v13",
+    "question": "How long did a loaded barge take to travel the Harrow Canal?",
+    "expected": "About nine hours.",
+    "passage": "The Harrow Canal opened in 1811 to carry coal from the Dunmere pits to the mills at Astley, a distance of fourteen miles. It climbed 96 feet through twelve locks, and a loaded barge took about nine hours to make the trip. For three decades it paid its shareholders well. Then in 1843 the Astley and Dunmere Railway opened along almost the same route and cut the journey to under an hour. The canal company halved its tolls within a year, but traffic kept falling, and in 1858 it sold the canal to the railway, which kept it open only as a water supply for its engines.",
+    "verified": true,
+    "why": "Stated directly."
+  },
+  {
+    "id": "v14",
+    "question": "What did the railway do with the Harrow Canal after buying it in 1858?",
+    "expected": "It closed the canal and filled it in.",
+    "passage": "The Harrow Canal opened in 1811 to carry coal from the Dunmere pits to the mills at Astley, a distance of fourteen miles. It climbed 96 feet through twelve locks, and a loaded barge took about nine hours to make the trip. For three decades it paid its shareholders well. Then in 1843 the Astley and Dunmere Railway opened along almost the same route and cut the journey to under an hour. The canal company halved its tolls within a year, but traffic kept falling, and in 1858 it sold the canal to the railway, which kept it open only as a water supply for its engines.",
+    "verified": false,
+    "why": "Wrong: it kept it open as a water supply."
+  },
+  {
+    "id": "v15",
+    "question": "What dividend did the Harrow Canal pay its shareholders?",
+    "expected": "Eight percent a year.",
+    "passage": "The Harrow Canal opened in 1811 to carry coal from the Dunmere pits to the mills at Astley, a distance of fourteen miles. It climbed 96 feet through twelve locks, and a loaded barge took about nine hours to make the trip. For three decades it paid its shareholders well. Then in 1843 the Astley and Dunmere Railway opened along almost the same route and cut the journey to under an hour. The canal company halved its tolls within a year, but traffic kept falling, and in 1858 it sold the canal to the railway, which kept it open only as a water supply for its engines.",
+    "verified": false,
+    "why": "The passage says only that it paid them well."
+  },
+  {
+    "id": "v16",
+    "question": "How did the Harrow Canal company respond when the railway opened?",
+    "expected": "It halved its tolls within a year.",
+    "passage": "The Harrow Canal opened in 1811 to carry coal from the Dunmere pits to the mills at Astley, a distance of fourteen miles. It climbed 96 feet through twelve locks, and a loaded barge took about nine hours to make the trip. For three decades it paid its shareholders well. Then in 1843 the Astley and Dunmere Railway opened along almost the same route and cut the journey to under an hour. The canal company halved its tolls within a year, but traffic kept falling, and in 1858 it sold the canal to the railway, which kept it open only as a water supply for its engines.",
+    "verified": true,
+    "why": "Stated directly."
+  }
+]

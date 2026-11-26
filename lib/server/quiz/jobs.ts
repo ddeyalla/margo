@@ -2,6 +2,7 @@ import type { ProviderId } from "@/lib/shared/types";
 import type { FoundBook } from "../library";
 import { readSettings } from "../settings";
 import { readBookState, updateBookState } from "../store";
+import { CHECK_MODEL } from "../check/provider";
 import { PROVIDERS, modelFor } from "../tutor/providers";
 import { writeQuiz } from "./generate";
 
@@ -31,8 +32,9 @@ export const quizJobs = (bookId: string) => {
 };
 
 /**
- * Starts writing a chapter's quiz unless one is being written or already exists. The written quiz is stored in
- * the book's state; a quiz already taken is never replaced.
+ * Starts writing a chapter's quiz unless one is being written or already exists. Writing includes checking every
+ * question against the chapter's text, which is the slow part and why it all happens here, off the request. The
+ * written quiz is stored in the book's state; a quiz already taken is never replaced.
  */
 export const startQuiz = async ({ book }: FoundBook, chapter: string, labels: string[], providerId: ProviderId): Promise<void> => {
   const id = key(book.id, chapter);
@@ -44,7 +46,7 @@ export const startQuiz = async ({ book }: FoundBook, chapter: string, labels: st
   const label = { title: state.meta?.title ?? book.fileTitle, author: state.meta?.author ?? book.fileAuthor };
   void (async () => {
     try {
-      const quiz = await writeQuiz(PROVIDERS[providerId], { bookId: book.id, book: label, chapter, labels }, modelFor(settings.models, providerId), new AbortController().signal);
+      const quiz = await writeQuiz(PROVIDERS[providerId], { bookId: book.id, book: label, chapter, labels }, { model: modelFor(settings.models, providerId), checkModel: CHECK_MODEL[providerId] }, new AbortController().signal);
       await updateBookState(book.id, (current) =>
         current.quizzes.some((q) => q.chapter === chapter) ? current : { ...current, quizzes: [...current.quizzes, quiz] },
       );

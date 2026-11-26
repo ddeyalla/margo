@@ -95,11 +95,12 @@ describe("tool inputs", () => {
 });
 
 describe("the registry", () => {
-  it("names every tool once, and offers nothing that reaches the web or runs a model", () => {
+  it("names every tool once, offers nothing that reaches the web, and runs a model only to check and grade", () => {
     const names = TOOLS.map((tool) => tool.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names.filter((name) => /web|fetch|http|url|ask_tutor|chat/.test(name))).toEqual([]);
     expect(TOOLS.filter((tool) => tool.effect === "write").map((tool) => tool.name)).toEqual(["park_question", "log_activity"]);
+    expect(TOOLS.filter((tool) => /verify|grade/.test(tool.name)).map((tool) => [tool.name, tool.effect])).toEqual([["verify_item", "read"], ["grade_answer", "read"]]);
   });
 });
 
