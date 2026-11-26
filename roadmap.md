@@ -1020,7 +1020,8 @@ chapter ends in a short test, and none of it stands between the reader and the b
       until that chapter is finished again.
 - [ ] Check the old quizzes' questions, so they can be mixed in too.
 - [ ] The overlap between a Course chapter and a Course section nested in it (Phase 17).
-- [ ] Record test answers in the learner ledger.
+- [x] Record test answers in the learner ledger. *Phase 30: one event for each answer, on the
+      quiz its question belongs to, written answers included.*
 
 Tried **2026-11-26** in the app with Claude Code, on a copy of the real data. *Evals for AI
 Engineers* is in no Course. Moving from Chapter 2 into Chapter 3 after half a minute showed
@@ -1039,6 +1040,46 @@ of 8 read "Passed. The chapter is done.", and the Course page read "1 of 2 chapt
 Chapter 2 open. Not checked: a PDF, Codex, the API provider, a grade that fails (only **Just
 show me** and the unit test), a retest on a real next day, the "comes after" notice on a locked
 Course chapter, and the Mac app.
+
+## Phase 30 — Learner ledger · M
+
+The tutor sees one passage and one thread, mastery reads only cards and quizzes, and nothing is
+shared across books. The ledger is the record under all of it: one line per piece of evidence
+of what the reader knows, written by what they already do. It is data that code and agents
+query, not a profile pasted into a prompt.
+
+- [x] **An event log for the whole library**, append-only, in `data/ledger.jsonl`: time, book,
+      anchor, chapter, source, outcome from 0 to 1 (none when the reader only met the
+      material), unaided or not, hint level, days since they last met the item, confidence,
+      and a topic in words already stored. Written under the cross-process lock.
+      *No concept ids: the topic is the card's fact, the quiz question or the highlighted line.*
+- [x] **Evidence strength** as one pure function: strong is an unaided answer a day or more
+      after the last meeting, medium the same on the day, weak anything hinted or picked from
+      options, exposure no check at all.
+- [x] **Written by what the reader already does**: rating a card, answering a quiz or a chapter test, a
+      draw-it-back, a highlight, a parked question, a question to the tutor. No model call. A
+      ledger that can't be written is logged and never fails the action.
+      *Each path hands over the book's saved state; events are named by what happened, so the
+      log takes only what it lacks and the next action heals a missed write.*
+- [x] **Backfill** from the book files (`npm run ledger:backfill`), safe to run again.
+- [x] **Held, shaky, untested**, worked out when asked and never stored. Only strong evidence
+      makes an item held, a miss takes it back to shaky until it is proven again, and held
+      fades by replaying the checks through the card scheduler's forgetting curve.
+- [x] **Three tools** for outside agents: `query_ledger`, `weakest_items`, `record_evidence`.
+- [x] **What you know**, a page per book from Today: held, shaky and untested by chapter, and
+      the three items most worth going back to, each with a link to its passage. No scores,
+      no log.
+- [ ] A link to the page from inside the book.
+- [ ] Grade an explain-back and record it as a check. It is exposure-only until then.
+- [ ] A recall check at the end of a focus session (`focus-recall` has no writer yet).
+- [ ] Old evidence added late does not recount the days of events already written after it.
+
+Mastery is unchanged: Courses still read retention from cards, quizzes and boards.
+
+Done when the type check, lint, build and tests pass, the backfill fills the ledger from real
+data and adds nothing on a second run, rating a card, answering a quiz and highlighting each
+add their event in the running app, and a real `claude -p` with the app closed answers what
+the reader is weakest on in a book from the ledger tools.
 
 ## Open: where the books come from
 

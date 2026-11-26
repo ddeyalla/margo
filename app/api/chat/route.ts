@@ -1,4 +1,5 @@
 import { readMessageImages } from "@/lib/server/attachments";
+import { noteEvidence } from "@/lib/server/ledger";
 import { findBook } from "@/lib/server/library";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState } from "@/lib/server/store";
@@ -8,6 +9,7 @@ import { buildTurn } from "@/lib/server/tutor/prompt";
 import { PROVIDERS, isProviderId, modelFor } from "@/lib/server/tutor/providers";
 import type { TutorTurn } from "@/lib/server/tutor/types";
 import { bookNotFound, readObject } from "@/lib/server/with-book";
+import { threadEvidence } from "@/lib/shared/ledger";
 import type { ChatStreamEvent, TurnUsage } from "@/lib/shared/types";
 
 
@@ -38,6 +40,8 @@ export async function POST(request: Request) {
   const turn = await openTurn(found.book.id, parsed, providerId);
   if (typeof turn === "string") return badRequest(turn);
   const { thread } = turn;
+  /* A question on a passage is a meeting with it. Recorded once per thread, however many turns follow. */
+  noteEvidence(threadEvidence(found.book.id, thread));
   let images: Map<string, Buffer>;
   let prompt: TutorTurn;
   try {

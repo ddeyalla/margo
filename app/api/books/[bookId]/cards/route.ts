@@ -3,6 +3,7 @@ import { storeCards } from "@/lib/server/cards/store";
 import { checkerFor } from "@/lib/server/check/provider";
 import { getConfig } from "@/lib/server/config";
 import { readSettings } from "@/lib/server/settings";
+import { noteEvidence } from "@/lib/server/ledger";
 import { readBookState, updateBookState } from "@/lib/server/store";
 import { PROVIDERS, isProviderId, modelFor } from "@/lib/server/tutor/providers";
 import { isObject, MAX_QUOTE, parseAnchor, shortText } from "@/lib/server/validate";
@@ -12,6 +13,7 @@ import { changeCards, type CardChange } from "@/lib/shared/cards";
 import { sameAnchor } from "@/lib/shared/annotations";
 import { trimAfter, trimBefore } from "@/lib/shared/context";
 import { cleanStance, isConfidence } from "@/lib/shared/confidence";
+import { evidenceOf } from "@/lib/shared/ledger";
 import { isRating } from "@/lib/shared/types";
 
 const MAX_FIELD = 2_000;
@@ -109,6 +111,7 @@ const handle = (method: "PATCH" | "DELETE") =>
     const saved = await updateBookState(book.id, (state) => ({ ...state, cardSets: changeCards(state.cardSets, change, new Date()) }));
     /* A review changes only the schedule, which the markdown copy doesn't show. */
     if (change.op !== "review") await mirrorVault(book, ...dirs());
+    else noteEvidence(evidenceOf(book.id, saved));
     return Response.json({ cardSets: saved.cardSets });
   });
 

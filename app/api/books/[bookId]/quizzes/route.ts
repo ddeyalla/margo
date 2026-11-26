@@ -1,11 +1,13 @@
 import { checkerFor } from "@/lib/server/check/provider";
 import { gradeQuizAnswer, QuizGradeError } from "@/lib/server/quiz/grade";
+import { noteEvidence } from "@/lib/server/ledger";
 import { startQuiz, quizJobs } from "@/lib/server/quiz/jobs";
 import { BookClosedError, readBookState, updateBookState } from "@/lib/server/store";
 import { isProviderId } from "@/lib/server/tutor/providers";
 import { isObject, shortText } from "@/lib/server/validate";
 import { readBody, withBook } from "@/lib/server/with-book";
 import { cleanStance, isConfidence } from "@/lib/shared/confidence";
+import { evidenceOf } from "@/lib/shared/ledger";
 import type { QuizAnswer } from "@/lib/shared/quiz";
 import { recordSitting } from "@/lib/shared/sitting";
 import { MAX_ANSWER, standing, type LearnerTurn } from "@/lib/shared/study";
@@ -87,6 +89,7 @@ export const POST = withBook(async (found) => {
       return quizzes ? { ...state, quizzes } : state;
     });
     if (!known) return Response.json({ error: "That chapter has no quiz." }, { status: 404 });
+    noteEvidence(evidenceOf(book.id, saved));
     return Response.json(answerWith(saved, book.id));
   }
 

@@ -94,7 +94,7 @@ export async function TodayCard() {
           ))}
         </p>
       </div>
-      {action || keepReading ? (
+      {action || current ? (
         <div className="flex flex-wrap items-center gap-2">
           {action ? (
             <Link
@@ -112,6 +112,15 @@ export async function TodayCard() {
               className="press inline-flex h-9 max-w-full items-center rounded-full px-4 text-body font-medium text-fog shadow-chip hover:bg-tint hover:text-paper"
             >
               <span className="truncate">Keep reading</span>
+            </Link>
+          ) : null}
+          {current ? (
+            <Link
+              href={`/book/${current.id}/knowledge`}
+              title={`Held, shaky and untested in ${current.title}`}
+              className="press inline-flex h-9 max-w-full items-center rounded-full px-4 text-body font-medium text-fog shadow-chip hover:bg-tint hover:text-paper"
+            >
+              <span className="truncate">What you know</span>
             </Link>
           ) : null}
         </div>

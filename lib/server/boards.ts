@@ -15,7 +15,9 @@ import {
   type CompactScene,
   type OpenedBoard,
 } from "@/lib/shared/boards";
+import { evidenceOf } from "@/lib/shared/ledger";
 import type { BookId } from "@/lib/shared/types";
+import { noteEvidence } from "./ledger";
 import { conflictName, contentHash, createUnique, NotesPathError, readVersioned, resolveInside, saveIfUnchanged } from "./notes-folder";
 import { chapterBlocks, fitBlocks } from "./quiz/generate";
 import { bookText } from "./search/index";
@@ -189,6 +191,7 @@ export const saveBoard = (
 /** Records a draw-it-back attempt on a chapter's board and returns its attempts. */
 export const recordAttempt = async (bookId: BookId, id: string, attempt: BoardAttempt): Promise<BoardAttempt[]> => {
   const state = await changeBoard(bookId, id, (board) => ({ ...board, attempts: [...board.attempts, attempt].slice(-200) }));
+  noteEvidence(evidenceOf(bookId, state));
   return findBoard(state.boards, id)?.attempts ?? [];
 };
 

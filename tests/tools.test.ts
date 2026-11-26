@@ -120,7 +120,7 @@ describe("the registry", () => {
     const names = TOOLS.map((tool) => tool.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names.filter((name) => /web|fetch|http|url|ask_tutor|chat/.test(name))).toEqual([]);
-    expect(TOOLS.filter((tool) => tool.effect === "write").map((tool) => tool.name)).toEqual(["park_question", "log_activity"]);
+    expect(TOOLS.filter((tool) => tool.effect === "write").map((tool) => tool.name)).toEqual(["park_question", "log_activity", "record_evidence"]);
     expect(TOOLS.filter((tool) => /verify|grade/.test(tool.name)).map((tool) => [tool.name, tool.effect])).toEqual([["verify_item", "read"], ["grade_answer", "read"]]);
   });
 });
@@ -358,7 +358,7 @@ describe("the MCP server", () => {
     const tools = reply(2).result!.tools as { name: string; inputSchema: { type: string }; annotations: { readOnlyHint: boolean } }[];
     expect(tools.map((tool) => tool.name)).toEqual(TOOLS.map((tool) => tool.name));
     expect(tools.every((tool) => tool.inputSchema.type === "object")).toBe(true);
-    expect(tools.filter((tool) => !tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(["park_question", "log_activity", "propose_card"]);
+    expect(tools.filter((tool) => !tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(["park_question", "log_activity", "propose_card", "record_evidence"]);
     expect(reply(3).result).toEqual({});
   });
 
