@@ -82,7 +82,7 @@ export function Composer({
     setTaken(handed);
     setDetached(null);
     /* Words already typed stay, after the handed-over ones. */
-    setText(text.trim() ? `${handed.text}${text}` : handed.text);
+    setText((text.trim() ? `${handed.text}${text}` : handed.text).slice(0, MAX_TEXT));
   }
   useEffect(() => {
     if (!handed || !link) return;

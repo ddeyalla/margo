@@ -90,7 +90,9 @@ export const diagramTitle = (source: string): string => {
   const first = rest.trimStart().split("\n", 1)[0];
   const comment = /^%%(?!\{)\s*(.+)$/.exec(first)?.[1]?.trim();
   if (comment) return comment.slice(0, 120);
-  const titled = front && /^title:[ \t]*["']?(.+?)["']?[ \t]*$/m.exec(front[1])?.[1]?.trim();
+  const titleLine = front && /^title:[ \t]*(.*?)[ \t]*$/m.exec(front[1])?.[1];
+  /* Quoted or not; an empty title, quoted or bare, falls through to the diagram's label. */
+  const titled = titleLine?.replace(/^(["'])(.*)\1$/, "$2").trim();
   if (titled) return titled.slice(0, 120);
   const body = rest.replace(/^\s*%%.*$/gm, "");
   const match = /[[({>]+(?:"([^"\n]{1,60})"|([^[({\])}"\n]{1,60}))[\])}]/.exec(body);

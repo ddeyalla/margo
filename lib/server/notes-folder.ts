@@ -154,6 +154,7 @@ export const saveIfUnchanged = (
       await writeFile(temp, text, { flag: "wx" });
       await beforeReplace?.();
       const now = await readVersioned(file);
+      if (now?.text === text) return { state: "saved", hash: now.hash };
       if (now?.hash !== baseHash) return keepBoth(now);
       await rename(temp, file);
       return { state: "saved", hash: contentHash(text) };

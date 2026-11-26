@@ -159,6 +159,8 @@ export default function Whiteboard(props: WhiteboardProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlight = useRef<Promise<void> | null>(null);
   const conflicted = useRef(false);
+  /** Set when the reader chose to leave without saving, until they edit again. */
+  const abandoned = useRef(false);
   const aborter = useRef<AbortController | null>(null);
   const modeRef = useRef(mode);
   useEffect(() => {
@@ -218,6 +220,8 @@ export default function Whiteboard(props: WhiteboardProps) {
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
       for (;;) {
+        /* The reader left without saving: nothing more goes out, the closing save included. */
+        if (abandoned.current) return true;
         /* Another caller may have started the next save while this one waited: wait again until none is running. */
         while (inFlight.current) await inFlight.current;
         const board = latest.current;
@@ -290,6 +294,7 @@ export default function Whiteboard(props: WhiteboardProps) {
       return;
     }
     if (version === savedVersion.current || version === failedVersion.current) return;
+    abandoned.current = false;
     setSave((current) => (current.state === "unsaved" ? current : { state: "unsaved" }));
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), SAVE_DELAY_MS);
@@ -481,7 +486,8 @@ export default function Whiteboard(props: WhiteboardProps) {
   const discard = useRef(false);
   const leaving = useRef<(() => Promise<boolean>) | null>(null);
   leaving.current = async () => {
-    if (!discard.current && !(await flush())) {
+    if (discard.current) abandoned.current = true;
+    else if (!(await flush())) {
       setStuck((current) => current ?? "close");
       return false;
     }

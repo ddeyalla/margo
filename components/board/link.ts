@@ -72,7 +72,11 @@ export const answerChanges = (threadId: string, messages: readonly ChatMessage[]
   const board = asked >= 0 && messages[asked].role === "user" ? messages[asked].board : undefined;
   if (!board) return null;
   const ops = boardOpsIn(answer.content, board.scene);
-  return ops === null ? null : { key: `${threadId}:${index}`, board, ops, fenceAt: answer.content.lastIndexOf("```" + BOARD_FENCE) };
+  if (ops === null) return null;
+  /* The fence's own start: a longer fence (````board) opens with more backticks before the three matched. */
+  let fenceAt = answer.content.lastIndexOf("```" + BOARD_FENCE);
+  while (fenceAt > 0 && answer.content[fenceAt - 1] === "`") fenceAt--;
+  return { key: `${threadId}:${index}`, board, ops, fenceAt };
 };
 
 export const BoardLinkContext = createContext<BoardLink | null>(null);

@@ -172,7 +172,10 @@ describe("the board in the chat", () => {
       { role: "user" as const, content: "And now?", createdAt: "" },
       { role: "assistant" as const, content: fence, createdAt: "" },
     ];
-    expect(answerChanges("t1", messages, 1)).toEqual({ key: "t1:1", board: mention, ops: [{ op: "delete", id: "l1" }], fenceAt: expect.any(Number) });
+    expect(answerChanges("t1", messages, 1)).toEqual({ key: "t1:1", board: mention, ops: [{ op: "delete", id: "l1" }], fenceAt: "Fixed.\n\n".length });
+    /* A longer fence is found at its own start, where the Markdown block begins. */
+    const long = [messages[0], { ...messages[1], content: 'Fixed.\n\n````board\n[{"op": "delete", "id": "l1"}]\n````' }];
+    expect(answerChanges("t1", long, 1)?.fenceAt).toBe("Fixed.\n\n".length);
     expect(answerChanges("t1", messages, 3)).toBeNull();
     expect(answerChanges("t1", [messages[0], { ...messages[1], partial: true }], 1)).toBeNull();
   });
@@ -326,7 +329,10 @@ describe("board files in the notes folder", () => {
     expect(await readFile(saved.copy, "utf8")).toBe(WITH("from the app"));
     /* No temporary file is left behind either way. */
     expect((await readdir(path.dirname(file))).filter((name) => name.endsWith(".tmp"))).toEqual([]);
-    const clean = await replaceIfUnchanged(file, WITH("again"), saved.current!.hash);
+    /* Obsidian writing the very same text meanwhile is no conflict. */
+    const same = await replaceIfUnchanged(file, WITH("twins"), saved.current!.hash, { beforeReplace: () => writeFile(file, WITH("twins")) });
+    expect(same.state).toBe("saved");
+    const clean = await replaceIfUnchanged(file, WITH("again"), same.state === "saved" ? same.hash : "");
     expect(clean.state).toBe("saved");
     expect((await readdir(path.dirname(file))).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
@@ -457,6 +463,10 @@ describe("diagrams drawn for a board", () => {
     expect(diagramTitle(named)).toBe("How attention works");
     expect(diagramTitle("%%{init: {}}%%\nflowchart TD\n  A[Cue] --> B")).toBe("Cue");
     expect(diagramTitle("flowchart TD\n  A[Cue] --> B[Craving]")).toBe("Cue");
+    /* An empty frontmatter title, quoted or bare, falls back to the first label. */
+    expect(diagramTitle('---\ntitle: ""\n---\nflowchart TD\n  A[Cue] --> B')).toBe("Cue");
+    expect(diagramTitle("---\ntitle:\n---\nflowchart TD\n  A[Cue] --> B")).toBe("Cue");
+    expect(diagramTitle("---\ntitle: 'Loop'\n---\nflowchart TD\n  A[Cue] --> B")).toBe("Loop");
     expect(diagramTitle("flowchart TD\n  A --> B")).toBe("Diagram from the chat");
     expect(diagramTitle("mindmap\n  root((AI Engineering))\n    Foundations")).toBe("AI Engineering");
     expect(diagramTitle('flowchart TD\n  A["Query (attention)"] --> B["Keys"]')).toBe("Query (attention)");

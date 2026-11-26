@@ -16,7 +16,7 @@ export interface BoardsApi {
   show(id: string): void;
   /** Opens the pane on the list of boards. */
   list(): void;
-  /** Closes the pane; false when the open board couldn't be saved and stayed open. */
+  /** Closes the pane; false only when the open board couldn't be saved and stayed open, not when a later request took over. */
   close(): Promise<boolean>;
   /**
    * The open board's leaving check, set by its editor: it saves the board and says whether it may go. Every change of
@@ -59,12 +59,15 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
       setBoards(update);
     };
     const added = (board: Board) => changed((current) => [summary(board), ...current.filter((b) => b.id !== board.id)]);
-    /** Moves the pane to `next` once the open board, if it is a different one, has saved and may go. */
-    const go = async (next: BoardsApi["open"], ticket = ++opening.current): Promise<boolean> => {
-      if (open?.id && open.id !== next?.id && leaving.current && !(await leaving.current())) return false;
-      if (ticket !== opening.current) return false;
+    /**
+     * Moves the pane to `next` once the open board, if it is a different one, has saved and may go: "kept" when it
+     * couldn't save and stayed open, "stale" when a later request took over meanwhile.
+     */
+    const go = async (next: BoardsApi["open"], ticket = ++opening.current): Promise<"done" | "kept" | "stale"> => {
+      if (open?.id && open.id !== next?.id && leaving.current && !(await leaving.current())) return "kept";
+      if (ticket !== opening.current) return "stale";
       setOpen(next);
-      return true;
+      return "done";
     };
     const failed = (failure: unknown, doing: string) => onError(failure instanceof Error ? failure.message : `${doing} failed.`);
 
@@ -123,7 +126,7 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
     const remove = async (id: string) => {
       try {
         /* The open board saves before it goes, so the file it leaves in the notes has the reader's last edits. */
-        if (open?.id === id && !(await go({ id: null }))) return;
+        if (open?.id === id && (await go({ id: null })) !== "done") return;
         await removeBoard(bookId, id);
         changed((current) => current.filter((b) => b.id !== id));
         setOpen((current) => (current?.id === id ? { id: null } : current));
@@ -137,12 +140,12 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
       open,
       show: (id) => void go({ id }),
       list: () => {
-        void go({ id: null }).then((done) => done && refresh());
+        void go({ id: null }).then((result) => result === "done" && refresh());
       },
       close: async () => {
-        const done = await go(null);
-        if (done) refresh();
-        return done;
+        const result = await go(null);
+        if (result === "done") refresh();
+        return result !== "kept";
       },
       guard: (leave) => {
         leaving.current = leave;

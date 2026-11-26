@@ -18,8 +18,15 @@ const familiesIn = (elements: readonly ExcalidrawElement[]) =>
  * as Excalidraw would size that shape; an arrow keeps its geometry and its label stays centered on it.
  */
 export async function remeasureText(board: ExcalidrawImperativeAPI): Promise<void> {
+  /* Every family in the scene loaded, including one a text added during the wait brought with it. */
+  const loaded = new Set<string>();
   try {
-    await Promise.all([...familiesIn(board.getSceneElementsIncludingDeleted())].map((name) => document.fonts.load(`20px "${name}"`)));
+    for (let round = 0; round < 4; round++) {
+      const missing = [...familiesIn(board.getSceneElementsIncludingDeleted())].filter((name) => !loaded.has(name));
+      if (!missing.length) break;
+      await Promise.all(missing.map((name) => document.fonts.load(`20px "${name}"`)));
+      for (const name of missing) loaded.add(name);
+    }
   } catch {
     return;
   }

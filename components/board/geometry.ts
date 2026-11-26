@@ -100,6 +100,8 @@ export const containerWidthFor = (type: string, textWidth: number): number => {
   const padding = TEXT_PADDING * 2;
   if (type === "ellipse") return Math.round(((width + padding) / Math.sqrt(2)) * 2);
   if (type === "diamond") return 2 * (width + padding);
+  /* Excalidraw gives an arrow's label its width plus padding on all four sides' worth. */
+  if (type === "arrow") return width + padding * 4;
   return width + padding;
 };
 
