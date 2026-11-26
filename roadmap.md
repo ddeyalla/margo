@@ -16,14 +16,17 @@ Effort: `S` hours · `M` a day or two · `L` a week or more.
   review, not three.
 - **Cards outlive the highlight.** Deleting a highlight keeps its cards and their schedule.
 - **Cards and tutor questioning are opt-in.** Nothing happens until the reader asks.
-  The exception is a chapter quiz inside a Course (Phase 17), which is part of finishing
-  the chapter.
+  The exception is the quiz at the end of a chapter (Phases 17 and 29). Inside a Course it
+  is part of finishing the chapter; anywhere else it is offered once, and passing over it
+  is remembered.
 - **Every questioning mode has a way out.** "Just tell me" is always one click away. A
   chapter quiz can be retaken without limit, and a missed question shows its answer.
 - **Mastery is computed from evidence, never stored as a number.** Coverage and retention
   are read from reading position, card schedules and quiz results, so they can't be
   inflated and they fall when you stop reviewing.
-- **Quizzes are written ahead, not on the spot.** Taking a quiz never waits on a model.
+- **Quizzes are written ahead, not on the spot.** Recall questions never wait on a model.
+  The one written answer in a chapter test waits on the checker, and falls back to the
+  reader's own mark when it can't be graded (Phase 29).
 - **Nothing the tutor writes as a question is saved unchecked.** A quiz question or a card is
   kept only after a second model call answered it from its passage without seeing the stored
   answer, and the two agreed (Phase 27).
@@ -369,11 +372,14 @@ library was read, so a failure there left an unanswered message.
 
 - [x] A short quiz (5–8 questions, recall and "explain why") at the end of each chapter of
       a book in a Course. Passing it marks the chapter done and unlocks the next one.
+      Since Phase 29 every chapter of every book gets one, and only a Course's are gated.
       *`lib/shared/quiz.ts`. A quiz belongs to a chapter of a book, keyed by its contents
       label, and lives in the book's state, so two Courses reading the same chapter share
-      it. Passing needs 80 % (4 of 5 up to 7 of 8). Answers are self-graded after the answer
+      it. Passing needs 80 % (4 of 5 up to 7 of 8), since Phase 29 of everything the test
+      asked, earlier chapters' questions included. Answers are self-graded after the answer
       is shown, like card reviews. That was the rule for all free text until 2026-11-26, when
-      grading it was approved (Phases 27 and 28); quizzes have not moved to it. Each answer also asks "how sure" and "your answer, in a line" with Phase 14's
+      grading it was approved (Phases 27 and 28); since Phase 29 one question in each test is
+      answered in writing and graded. Each answer also asks "how sure" and "your answer, in a line" with Phase 14's
       `StanceInput`. "Unlocks" is advice, not a wall: the book always opens, a chapter whose
       step comes before is shown as locked on the Course page, and the book says once "in
       this Course, this comes after …". The order runs across books, in the order the units
@@ -386,10 +392,12 @@ library was read, so a failure there left an unanswered message.
       read goes back once with the reason. The book shows "Finished …, its quiz is being
       written", then "Take quiz". A written quiz is never replaced.*
 - [x] Retake without limit. A missed question shows its answer and where in the chapter.
+      Since Phase 29 it is also asked once more before the test ends, and again the next day.
       *The result lists each missed question with its answer and a link to its place;
       Phase 14's signal summary ("1 held", "1 misconception") sits above it.*
 - [x] Books outside a Course are never gated.
-      *They get no quizzes, notices or locks at all.*
+      *They got no quizzes, notices or locks at all until Phase 29. Now they get the quiz and
+      its notice, and still no lock: the 80 % mark is shown and decides nothing.*
 - [x] Results feed retention (Phase 18).
       *Every attempt keeps each answer with right or wrong, confidence and thinking, ready
       for Phase 18 to read.*
@@ -406,7 +414,9 @@ sheet, and a chapter with no quiz yet says so and offers to write it instead of 
 Not checked live: a PDF book in a Course (its extracted chapter labels look right), and a
 quiz failing to write. Left as is: a Course listing both a chapter and a section nested in
 it (as with *The Mom Test*) gets overlapping quizzes, since the parent's quiz covers its
-sections too.
+sections too. Phase 29 adds no overlap of its own, and leaves this one: writing the parent's
+quiz from the text outside its sections fails when the sections hold all of its text, and a
+Course chapter with no quiz can't be passed.
 
 ## Phase 18 — Mastery and daily learning · M
 
@@ -937,6 +947,98 @@ answer to `study.draft`, and the thread's button reopened the sheet. A `deeper` 
 answer showed none. A focus session started, ran and ended with no call to Three, and its
 recall arrived as a new thread. Not checked: a PDF, Codex, the API provider, and grading when
 the tutor is signed out.
+
+## Phase 29 — A test at the end of every chapter · M
+
+"Not sure I actually understood" and "I want to be tested" were among the largest themes in the
+393 complaints, and review backlog was the main reason people gave up on review tools. So every
+chapter ends in a short test, and none of it stands between the reader and the book.
+
+- [x] **Finishing any chapter of any book offers its quiz**, with a quiet notice, and starts
+      writing it in the background when it has none. Depends on Phases 26 to 28.
+      *Outside a Course a chapter is a top-level entry of the book's contents, or an entry
+      directly under a top-level entry that only groups chapters: one named "Part", "Book" or
+      "Volume", or one whose entries are numbered as chapters ("I. Foundations" over
+      "1. Introduction"). Sections nested in a chapter are covered by its quiz and get none, so
+      nothing overlaps. Entries named exactly Cover, Copyright, Contents, Index, Notes and the
+      like are not chapters. In a book a Course reads, the Course's own chapters stay as they
+      were and any entry that overlaps one of them is left to the Course. `bookChapters` in
+      `lib/shared/sitting.ts`. Such a chapter is finished by reading on into the entry after
+      it, or the one after that, having had it open for 20 seconds; a jump further ahead is
+      not finishing, so paging through a book doesn't have a quiz written for every chapter
+      passed. The notice shows only while the quiz is being written or is ready. One that
+      couldn't be written, as for a chapter with too little text, is not announced.*
+- [x] **Nothing is gated outside a Course.** The result says "6 of 8 right" and "the 80 % mark
+      is 7", and nothing follows from it. Closing the notice is one tap and is kept in the
+      book's state, in `quizSkips`, so that chapter's notice does not come back. A chapter
+      already tested is not offered again either. In a Course the notice, the pass and the
+      order of chapters work as in Phase 17.
+- [x] **The test mixes in earlier chapters.** Six to eight questions: up to six of the
+      chapter's own and two from quizzes already written for chapters before it in the book,
+      three when the chapter's quiz is short. With nothing earlier it is the chapter's own
+      quiz, up to eight.
+      *`composeTest`. No model call: earlier questions are drawn from saved quizzes, the ones
+      last answered wrong first, then ones never asked, then the rest. When the chapter has
+      more than six, the same order picks which are asked, spread evenly through the chapter
+      on a first test, so a retake brings the ones left out. "Earlier" goes by the book's
+      contents. Six of the chapter's and two earlier is 75 to 25, five and two is 71 to 29.*
+- [x] **One question in each test is answered in writing and graded** by `gradeAnswer`, on the
+      checking model: a "why" when the quiz has one. The sheet shows the first gap and the
+      stretch of the text that shows it, says so when the grader is unsure and leaves the
+      call to the reader, and **I had it** or **I missed it** overrules any grade in one tap.
+      Recall questions are as they were: show the answer, then mark it.
+      *The graded view is the one Go deeper uses, moved to `components/study/Outcome.tsx`. The
+      two sheets stay two components: Go deeper is one thread with the tutor, hints and a
+      saved draft, a test is a queue of questions, and one component for both would have
+      been mostly branches. The answer is graded against the block the question cites and
+      the block either side, read from the book again, which is what it was checked against
+      when it was written. The rubric of the first grade is kept on the question, so later
+      answers are marked against the same points with one call. With no tutor, or when
+      grading fails, the reader sees the answer and marks it. **Just show me** does the same
+      without waiting. The graded turn is saved on the answer with the reader's overrule.*
+- [x] **A missed question is asked once more before the test ends.** The score is the first
+      answers; how the second go went is kept beside the first.
+- [x] **The misses come back the next day** as a retest of three or four questions, offered
+      by the same notice when the book is opened.
+      *Up to four misses, filled up to three with the questions the reader was least sure of.
+      Nothing is stored for it: `retestDue` reads the chapter's latest test, and a retest
+      taken or passed over is what ends it. A new test replaces an older one's retest. A
+      retest never passes a Course chapter.*
+- [x] **Each answer is kept with the quiz its question belongs to.** A test that asked two
+      questions from Chapter 1 adds an attempt of kind "review" to Chapter 1's quiz, with the
+      same time as the test, so a question's history is in one place and retention (Phase 18)
+      reads it with no change. Attempts have a `kind`, and a test's attempt has its score over
+      everything asked. Attempts saved before have no kind and read as the whole quiz taken
+      alone; they pass a chapter as before and never start a retest.
+- [x] **Only checked questions are asked.** Other chapters' questions are drawn only when they
+      carry `verifiedAt`. A quiz saved before Phase 27 has none checked: it still opens, each
+      question marked "written before questions were checked", and is never mixed into
+      another chapter's test.
+- [x] Retakes without limit, as before.
+- [ ] A way to open a chapter's quiz from the contents. Outside a Course the notice is the
+      only way in, so a quiz that finishes writing after the book is closed is not offered
+      until that chapter is finished again.
+- [ ] Check the old quizzes' questions, so they can be mixed in too.
+- [ ] The overlap between a Course chapter and a Course section nested in it (Phase 17).
+- [ ] Record test answers in the learner ledger.
+
+Tried **2026-11-26** in the app with Claude Code, on a copy of the real data. *Evals for AI
+Engineers* is in no Course. Moving from Chapter 2 into Chapter 3 after half a minute showed
+"Finished … A short quiz on it is being written", and "ready" about a minute later, with seven
+checked questions. A miss on the first came back as "Question 8 of 8 · once more". A vague
+written answer came back "Not sure about this one" with the gap and the span marked; **I had
+it** saved it as `partly`, `unsure`, `override: "right"`. The result read "6 of 7 right. The
+80 % mark is 6." Once Chapter 1 had a quiz, a retake asked eight: six of the chapter's and two
+marked "from 1. Introduction", saved as a test on Chapter 2 and a review on Chapter 1 at the
+same time. Closing the notice for Chapter 3 saved the skip, and leaving Chapter 3 again showed
+nothing. With the saved attempts moved back a day by hand, opening the book offered "A
+3-question retest", two misses and one fill. A hand-made quiz with no `verifiedAt` and an
+attempt with no kind opened from `?quiz=` and ran, each question marked as unchecked. *Inspired*
+in a two-chapter scratch Course: moving from Chapter 1 to Chapter 2 offered the quiz at once, 7
+of 8 read "Passed. The chapter is done.", and the Course page read "1 of 2 chapters passed" with
+Chapter 2 open. Not checked: a PDF, Codex, the API provider, a grade that fails (only **Just
+show me** and the unit test), a retest on a real next day, the "comes after" notice on a locked
+Course chapter, and the Mac app.
 
 ## Open: where the books come from
 
