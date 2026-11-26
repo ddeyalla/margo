@@ -13,6 +13,8 @@ export interface QuizQuestion {
   /** Where in the chapter the answer is: the start of the block the tutor cited, and that block's text. */
   anchor: Anchor;
   quote: string;
+  /** When the question was checked against the chapter's text and passed. Absent on quizzes saved before checking. */
+  verifiedAt?: string;
 }
 
 /** One answer in an attempt. The reader marks it right or wrong themselves after seeing the answer. */
@@ -39,9 +41,11 @@ export interface ChapterQuiz {
 }
 
 export const MIN_QUESTIONS = 5;
+/** The fewest questions a quiz is saved with, when some of what the tutor wrote didn't pass the check against the text. */
+export const MIN_CHECKED_QUESTIONS = 3;
 export const MAX_QUESTIONS = 8;
 
-/** Share of questions to get right to pass: 4 of 5, 5 of 6, 6 of 7, 7 of 8. */
+/** Share of questions to get right to pass: 4 of 5, 5 of 6, 6 of 7, 7 of 8. A quiz cut to 3 or 4 by the check needs them all. */
 export const PASS_SHARE = 0.8;
 
 export const passMark = (questions: number) => Math.ceil(questions * PASS_SHARE - 1e-9);
@@ -125,8 +129,12 @@ const field = (value: unknown): string | null => {
   return trimmed && trimmed.length <= MAX_FIELD ? trimmed : null;
 };
 
-/** Reads the quiz prompt's reply. Returns a message to send back for repair when it can't. */
-export const parseQuizReply = (text: string, blocks: number): QuizDraft | string => {
+/**
+ * Reads the quiz prompt's reply. Returns a message to send back for repair when it can't. A whole quiz needs
+ * `MIN_QUESTIONS` and a "why" among them; `replacing` reads a reply asked for that many replacement questions,
+ * and keeps every question in it, since the caller still has to take out the ones the quiz already asks.
+ */
+export const parseQuizReply = (text: string, blocks: number, replacing?: number): QuizDraft | string => {
   const json = firstObject(text);
   if (!json) return "The reply had no JSON object.";
   let value: unknown;
@@ -149,6 +157,7 @@ export const parseQuizReply = (text: string, blocks: number): QuizDraft | string
     if (draft.some((d) => d.question.toLowerCase() === question.toLowerCase())) continue;
     draft.push({ kind: q.kind, question, answer, block: block as number });
   }
+  if (replacing) return draft.length ? draft : `Write ${replacing} question${replacing === 1 ? "" : "s"}; the reply had none.`;
   if (draft.length < MIN_QUESTIONS) return `Write ${MIN_QUESTIONS} to ${MAX_QUESTIONS} questions; the reply had ${draft.length}.`;
   if (!draft.some((d) => d.kind === "why")) return 'Include at least one "why" question.';
   return draft.slice(0, MAX_QUESTIONS);

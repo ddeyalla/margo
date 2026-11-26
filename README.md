@@ -189,8 +189,9 @@ What an agent can do:
 | `list_library`, `get_book_text`, `search_library`, `list_annotations`, `list_threads`, `get_thread`, `review_queue`, `get_today`, `list_courses`, `list_boards`, `read_board`, `list_suggestions` | Read. Nothing changes. |
 | `park_question`, `log_activity` | Write directly: a question left on a passage for you to ask later, and learning time added to today. |
 | `propose_card` | Propose. The cards wait on the Today card with **Add** and **Reject**, and are only added when you accept. |
+| `verify_item`, `grade_answer` | Ask a model and change nothing: check a written question against its passage before you see it, and grade a free-text answer, saying so when it is unsure. |
 
-An agent can't change your highlights, notes, cards or boards any other way, and the server has no tool that reaches the web or asks a model. Every call is written to `data/tool-log.jsonl`.
+An agent can't change your highlights, notes, cards or boards any other way, and the server has no tool that reaches the web. Every call is written to `data/tool-log.jsonl`.
 
 ## What Phase 2 might add
 

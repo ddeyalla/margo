@@ -1,6 +1,7 @@
 import { SUGGESTION_STATUSES } from "@/lib/shared/suggestions";
 import { listSuggestions, proposeCard } from "../suggestions";
 import { BOOK_ID, defineTool, requireBook } from "./tool";
+import { PROVIDER_FIELD, requireChecker } from "./verify";
 import { ANCHOR_SHAPE } from "./write";
 
 /* How an agent changes the reader's content: by proposing. The reader accepts or rejects each one in the app. */
@@ -8,7 +9,7 @@ import { ANCHOR_SHAPE } from "./write";
 const proposeCardTool = defineTool({
   name: "propose_card",
   description:
-    "Proposes review cards for a passage: one fact the passage states, and one to three questions that each reach that fact a different way, answerable without the book open. The reader sees the proposal on their Today card and accepts or rejects it; nothing is added to their cards until they accept.",
+    "Proposes review cards for a passage: one fact the passage states, and one to three questions that each reach that fact a different way, answerable without the book open. Each card is first checked against the quote by a model that answers the question from the quote alone, so the call takes several seconds a card. Cards that pass wait on the reader's Today card, and nothing is added to their cards until they accept. Cards that fail are left out and come back in `failed` with why; when none pass, the status is \"failed\" and the reader is not asked. Fix the card or quote more of the passage, and propose again.",
   effect: "propose",
   input: {
     bookId: BOOK_ID,
@@ -22,16 +23,19 @@ const proposeCardTool = defineTool({
       description: "One to three cards.",
       item: { type: "object", properties: { question: { type: "string" }, answer: { type: "string" } }, required: ["question", "answer"] },
     },
+    provider: PROVIDER_FIELD,
   },
-  run: async ({ bookId, ...proposal }, { caller, now }) => {
-    const suggestion = await proposeCard((await requireBook(bookId)).book, proposal, caller, now);
-    return { suggestionId: suggestion.id, status: suggestion.status };
+  run: async ({ bookId, provider, ...proposal }, { caller, now }) => {
+    const { book } = await requireBook(bookId);
+    const suggestion = await proposeCard(book, proposal, caller, await requireChecker(provider), now);
+    const { cards, failed = [] } = suggestion.payload;
+    return { suggestionId: suggestion.id, status: suggestion.status, verified: cards.length, failed: failed.map(({ question, reason }) => ({ question, reason })) };
   },
 });
 
 const listSuggestionsTool = defineTool({
   name: "list_suggestions",
-  description: "The changes agents have proposed and where each stands: pending until the reader decides, then accepted or rejected. Check it before proposing, so the reader isn't asked the same thing twice.",
+  description: "The changes agents have proposed and where each stands: pending until the reader decides, then accepted or rejected, or failed when none of its cards passed the check against the passage. Check it before proposing, so the reader isn't asked the same thing twice.",
   effect: "read",
   input: { status: { type: "string", max: 20, oneOf: SUGGESTION_STATUSES, optional: true, description: "Only suggestions with this status." } },
   run: async ({ status }) => ({ suggestions: await listSuggestions(status) }),

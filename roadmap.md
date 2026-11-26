@@ -22,6 +22,11 @@ Effort: `S` hours · `M` a day or two · `L` a week or more.
   are read from reading position, card schedules and quiz results, so they can't be
   inflated and they fall when you stop reviewing.
 - **Quizzes are written ahead, not on the spot.** Taking a quiz never waits on a model.
+- **Nothing the tutor writes as a question is saved unchecked.** A quiz question or a card is
+  kept only after a second model call answered it from its passage without seeing the stored
+  answer, and the two agreed (Phase 27).
+- **A model's grade is advice.** The reader can overrule it in one tap, and a middling answer
+  is reported as unsure, not given a verdict. Flip-and-rate review never waits on one.
 
 ## Phase 1 — Tighter tutor answers · S
 
@@ -782,11 +787,86 @@ whiteboard edits do. This phase is the foundation; playbooks and scheduled runs 
       agent's server see it too.
 - [ ] Ship the server inside the Mac app, so it needs no checkout of this repo.
 
-No web search or fetch tool: the agents have their own. No tool that asks a model.
+No web search or fetch tool: the agents have their own. No tool that asks a model, until
+Phase 27 added two that check and grade and change nothing.
 
 Done when the type check and tests pass, a real `claude -p` and a real `codex exec` each list
 the tools and answer a question that needs search and the review queue with the app closed, and
 a card proposed through the server shows on Today and is created on accept.
+
+## Phase 27 — Checked questions and graded answers · M
+
+In 393 real complaints about learning tools, the largest trust problem was AI-written questions
+with wrong answers. So a question is checked against its passage before the reader can meet it,
+and free-text answers can be graded by a call that is not the tutor.
+
+- [x] **`verifyItem`** in `lib/server/check/verify.ts`: given a question, its stored answer and
+      the passage, a fresh call answers from the passage alone, without the stored answer; a
+      second call says whether the two answers match and whether the passage backs the stored
+      one. Returns answerable, matches, supported and a one-line reason.
+      *The first call must quote the stretch of the passage its answer rests on, and the quote
+      is looked up in the passage word for word, so an answer from general knowledge fails. A
+      question the passage can't answer stops after one call. Replies are validated and sent
+      back once with the reason, through `structured` in `lib/server/tutor/structured.ts`,
+      which the quiz and card generators now share.*
+- [x] **Quiz questions are checked before they are saved**, in the background job that writes
+      the quiz. A question that fails is dropped and asked for again once.
+      *Each is checked against the block it cites and the block either side. At most 12
+      questions are checked per quiz (8 written, 4 replacements), two calls each, four at a
+      time. Fewer than 3 passing saves nothing and the job reports "Only 2 of the 9 questions
+      … held up", with the first reason; 3 or 4 passing saves a short quiz. A check that
+      couldn't run counts as a fail. A quiz can now be shorter than 5 and can lack a "why",
+      and at 3 or 4 questions the 80 % pass mark rounds up to all of them.*
+- [x] **Cards are checked before they are stored.** A card that fails is dropped; if none
+      pass, nothing is added and the reader is told why.
+      *This runs on the Cards click, which already waited on the tutor. The one real run took
+      25 s for writing and checking one card; how much of that is the check wasn't measured
+      apart. No second try.*
+- [x] **`verifiedAt`** on each saved question and card. Older ones have none and load as
+      before. A card the reader rewrites loses it.
+- [x] **`gradeAnswer`** in `lib/server/check/grade.ts`: a score from 0 to 1, a verdict (right,
+      partly, wrong), a confidence, the first gap with the stretch of the passage that shows
+      it, and `unsure`.
+      *Two calls. The first writes the rubric, one to four points, from the passage and the
+      expected answer, and never sees the reader's answer, so the answer can't bend what
+      counts as right. The second marks each point yes, partly or no. A caller that kept the
+      rubric passes it back and only the second runs. The score and the verdict are computed
+      from the marks, not asked for: right at 0.85 or more, wrong only at 0, anything between
+      is "partly" and always `unsure`, as is any grade with confidence under 0.7. The gap's
+      note is about the answer, never the reader.*
+- [x] **Two tools**, `verify_item` and `grade_answer`, each in its own file in
+      `lib/server/tools/`, listed by the MCP server and written to the tool log like the rest.
+      *Both only read. They run on the tutor the reader chose in the app, or the first one
+      that is ready.*
+- [x] **A fixed evaluation set** in `tests/eval/`: 16 questions for checking, half of them
+      broken on purpose, and 24 answers for grading. `node scripts/check-eval/run.mjs <model>`
+      runs the real model over it; it is not part of `npm test`.
+- [x] **The cheapest model that passes.** Checks run on Haiku 5.5 through Claude Code and the
+      API, not on the tutor's model.
+      *Haiku 16/16 on checking and 21/24 then 23/24 on grading; Sonnet 16/16 and 22/24; no
+      confident right-for-wrong on either. About $0.0003 a check on Haiku against $0.004 on
+      Sonnet at list price, and 6 to 7 s. Every miss is in `scripts/check-eval/README.md`.*
+- [x] **Cards an agent proposes are checked when they are proposed**, against the quote the
+      agent gave. The agent waits on the model; the reader's Add stays instant.
+      *Cards that fail are left out and shown on the suggestion with why. When none pass,
+      the suggestion is stored as "failed", the agent is told, and the reader isn't asked. A
+      suggestion from before this has no checked cards and can only be rejected.*
+- [ ] A reader-facing use of the grade, with the one-tap overrule. Nothing in the app calls
+      `gradeAnswer` yet, and nothing stores a grade.
+- [ ] Score Codex once its account can run. It keeps its default model, unscored.
+- [ ] A larger evaluation set drawn from real chapters. Checking scored 16/16 on every run,
+      which says the set is too easy to tell models apart.
+
+Tried **2026-11-26** with Claude Code on a copy of the real data. Writing the quiz for "The Mom
+Test" chapter through the app took 51 s and saved eight questions, each with `verifiedAt`. For
+"Asking important questions" the server log read "kept 8, dropped 3": one answer added a claim
+the passage doesn't make, and one question's answer ran past the cited paragraphs, which is the
+check being stricter than a person would be. Cards on a 422-character passage saved one card,
+checked. With the app closed, a real `claude -p` called both tools through the MCP server:
+"about nine hours" verified, the same question with "about three hours" was rejected, and
+"Trains were quicker I think" came back `partly`, `unsure: true`. Not checked: Codex, the API
+provider with a key, a PDF chapter, and a quiz failing for too few questions outside the unit
+test.
 
 ## Open: where the books come from
 
@@ -811,4 +891,6 @@ folder. Not building any automated downloading from shadow libraries.
   in Phase 14; the dashboards around it are not.)
 - Other questioning modes (find the flaw, counter-examples, argument maps, chapter
   debriefs, cold opens). Revisit only if Phase 6 gets used.
-- Model-graded free-text review.
+- Model-graded card review. Flip and rate stays on the reader's machine. Grading a free-text
+  answer on request is Phase 27, approved 2026-11-26 on two conditions: one tap overrules any
+  grade, and plain review never waits on a model.
