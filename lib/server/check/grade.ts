@@ -158,6 +158,7 @@ export const gradeAnswer = async (provider: Provider, { question, passage, answe
       await structured(provider, { system: RUBRIC_SYSTEM, request: rubricRequest(question, expected, passage), parse: parseRubricReply, failure: "The rubric couldn't be read." }, model, signal)
     ).points;
   }
+  if (!points.length) throw new Error("Grading needs at least one rubric point.");
   const fixed = points;
   const marking = await structured(
     provider,

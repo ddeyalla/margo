@@ -815,7 +815,8 @@ and free-text answers can be graded by a call that is not the tutor.
       questions are checked per quiz (8 written, 4 replacements), two calls each, four at a
       time. Fewer than 3 passing saves nothing and the job reports "Only 2 of the 9 questions
       … held up", with the first reason; 3 or 4 passing saves a short quiz. A check that
-      couldn't run counts as a fail. A quiz can now be shorter than 5 and can lack a "why".*
+      couldn't run counts as a fail. A quiz can now be shorter than 5 and can lack a "why",
+      and at 3 or 4 questions the 80 % pass mark rounds up to all of them.*
 - [x] **Cards are checked before they are stored.** A card that fails is dropped; if none
       pass, nothing is added and the reader is told why.
       *This runs on the Cards click, which already waited on the tutor. The one real run took

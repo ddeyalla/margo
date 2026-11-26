@@ -20,11 +20,13 @@ export const textField = (value: unknown, max = 2_000): string | null => {
   return trimmed && trimmed.length <= max ? trimmed : null;
 };
 
-/* Letters and digits only, so a quote still matches when the model straightens a curly quote, joins a line break or drops the end marks. */
-const plain = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+/* Letters, digits and their marks only, so a quote still matches when the model straightens a curly quote, joins a
+   line break, drops the end marks or writes "1000" for "1,000". Spaces go too: scripts that don't use them need no
+   word edges, and a quote that starts inside a word is still the passage's own text. */
+const plain = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, "");
 
 /** Whether `quote` is a stretch of `passage`, word for word. A model that answers from what it knows can't produce one. */
 export const inPassage = (passage: string, quote: string): boolean => {
   const wanted = plain(quote);
-  return wanted.length > 0 && ` ${plain(passage)} `.includes(` ${wanted} `);
+  return wanted.length > 0 && plain(passage).includes(wanted);
 };

@@ -11,7 +11,6 @@ import { verifyItemTool } from "@/lib/server/tools/verify";
 import type { Provider, TutorEvent, TutorTurn } from "@/lib/server/tutor/types";
 import { addCards, changeCards } from "@/lib/shared/cards";
 import { parseQuizReply } from "@/lib/shared/quiz";
-import type { BookState } from "@/lib/shared/types";
 import gradeSet from "./eval/grade-answers.json";
 import verifySet from "./eval/verify-items.json";
 
@@ -39,10 +38,16 @@ describe("a quote from the passage", () => {
     expect(inPassage(PASSAGE, "the sun’s pull on the oceans  is a little under half as strong")).toBe(true);
     expect(inPassage(PASSAGE, "The tide is raised mostly by the Moon")).toBe(true);
   });
-  it("doesn't match a paraphrase, a part of a word, or nothing", () => {
+  it("doesn't match a paraphrase, a quote with its middle left out, or nothing", () => {
     expect(inPassage(PASSAGE, "The Sun pulls half as hard")).toBe(false);
-    expect(inPassage(PASSAGE, "he tide is raised")).toBe(false);
+    expect(inPassage(PASSAGE, "The tide is raised … because it is so much farther away")).toBe(false);
     expect(inPassage(PASSAGE, " … ")).toBe(false);
+  });
+  it("works in scripts with vowel marks or without spaces, and across ways of writing the same letters and numbers", () => {
+    expect(inPassage("वह दिन था", "वह दीन था")).toBe(false);
+    expect(inPassage("वह दिन था", "दिन था")).toBe(true);
+    expect(inPassage("潮汐主要由月球引起，太阳的引力较弱。", "主要由月球引起")).toBe(true);
+    expect(inPassage("A caf\u00e9 sold 1,000 cups.", "cafe\u0301 sold 1000 cups")).toBe(true);
   });
 });
 
@@ -195,6 +200,10 @@ describe("gradeAnswer", () => {
     expect(seen.map((turn) => turn.system)).toEqual([GRADE_SYSTEM]);
     expect(grade.rubric).toEqual(["a", "b"]);
   });
+
+  it("refuses an empty rubric before any model runs", async () => {
+    await expect(gradeAnswer(grader([]), { ...input, rubric: [] }, null, signal)).rejects.toThrow(/at least one rubric point/);
+  });
 });
 
 describe("a quiz is checked before it is saved", () => {
@@ -231,6 +240,22 @@ describe("a quiz is checked before it is saved", () => {
     expect(last(asks[1])).toContain("Write 2 more questions");
   });
 
+  it("takes the new question from a reply that sends the old ones again first", async () => {
+    const first = [question(1), question(2), question(3), question(4), question(5, " BAD")];
+    const kept = await checkedQuestions(tutor(first, [question(1), question(2), question(6)]), { book, chapter: "One", blocks }, { model: null, checkModel: null }, signal);
+    expect(kept.map((q) => q.block)).toEqual([1, 2, 3, 4, 6]);
+  });
+
+  it("stops, and saves nothing, when the work is called off during a check", async () => {
+    const stop = new AbortController();
+    const provider = scripted((turn) => {
+      if (turn.system === QUIZ_SYSTEM) return json({ questions: [1, 2, 3, 4, 5].map((n) => question(n)) });
+      stop.abort();
+      throw new Error("aborted");
+    });
+    await expect(checkedQuestions(provider, { book, chapter: "One", blocks }, { model: null, checkModel: null }, stop.signal)).rejects.toThrow("aborted");
+  });
+
   it("checks each question against the block it cites and its neighbours", () => {
     expect(questionPassage(blocks, 1)).toBe(`${blocks[0].text}\n\n${blocks[1].text}`);
     expect(questionPassage(blocks, 3)).toBe(`${blocks[1].text}\n\n${blocks[2].text}\n\n${blocks[3].text}`);
@@ -256,7 +281,7 @@ describe("a quiz is checked before it is saved", () => {
   it("reads a reply of replacement questions without the whole quiz's minimums", () => {
     const reply = json({ questions: [question(2), question(3), question(4)] });
     expect(parseQuizReply(reply, 6)).toMatch(/Write 5 to 8 questions/);
-    expect(parseQuizReply(reply, 6, 2)).toHaveLength(2);
+    expect(parseQuizReply(reply, 6, 2)).toHaveLength(3);
     expect(parseQuizReply(json({ questions: [] }), 6, 2)).toMatch(/Write 2 questions; the reply had none/);
   });
 });
@@ -293,14 +318,6 @@ describe("cards are checked before they are stored", () => {
     expect(same[0].cues[0].verifiedAt).toBe("2026-11-26T10:00:00.000Z");
     const edited = changeCards(sets, { op: "edit-cue", setId: sets[0].id, cueId, question: "q1", answer: "something else" }, now);
     expect("verifiedAt" in edited[0].cues[0]).toBe(false);
-  });
-
-  it("still loads cards and quizzes saved before anything was checked", () => {
-    const saved = JSON.parse(
-      '{"cardSets":[{"id":"s","cues":[{"id":"c","question":"q","answer":"a","createdAt":"2026-01-01T00:00:00.000Z","lastRating":null}]}],"quizzes":[{"chapter":"One","questions":[{"id":"x","kind":"recall","question":"q","answer":"a","anchor":{"kind":"epub","cfi":"epubcfi(/6/2)"},"quote":"t"}],"createdAt":"2026-01-01T00:00:00.000Z","attempts":[]}]}',
-    ) as Pick<BookState, "cardSets" | "quizzes">;
-    expect(saved.cardSets[0].cues[0].verifiedAt).toBeUndefined();
-    expect(saved.quizzes[0].questions[0].verifiedAt).toBeUndefined();
   });
 });
 

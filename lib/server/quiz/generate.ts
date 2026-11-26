@@ -147,7 +147,7 @@ export const checkedQuestions = async (
       return [] as Draft[];
     });
     const asked = new Set([...draft, ...kept].map((q) => q.question.toLowerCase()));
-    const second = await check(more.filter((q) => !asked.has(q.question.toLowerCase())));
+    const second = await check(more.filter((q) => !asked.has(q.question.toLowerCase())).slice(0, count));
     kept.push(...second.kept);
     dropped = [...dropped, ...second.dropped];
   }
