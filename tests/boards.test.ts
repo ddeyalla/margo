@@ -391,6 +391,8 @@ describe("many boards in a book", () => {
     expect(normalizeBoard(legacy)).toEqual(once);
     expect(normalizeBoard(once)).toEqual(once);
     expect(chapterBoardId("Habits")).not.toBe(chapterBoardId("Cues"));
+    expect(chapterBoardId("Habits", 0)).toBe(chapterBoardId("Habits"));
+    expect(chapterBoardId("Habits", 1)).not.toBe(chapterBoardId("Habits"));
   });
 
   it("asks for a chapter's board twice and gets one board", async () => {
@@ -489,7 +491,7 @@ describe("which chapter's board the reader means", () => {
 
   it("takes the sections from the chapter being read, even when another chapter has the same name", () => {
     expect(boardChapter(toc, 1, [])).toEqual({ chapter: "Introduction", labels: ["Introduction", "Why habits"] });
-    expect(boardChapter(toc, 5, [])).toEqual({ chapter: "Introduction", labels: ["Introduction", "The loop", "Cues"] });
+    expect(boardChapter(toc, 5, [])).toEqual({ chapter: "Introduction", labels: ["Introduction", "The loop", "Cues"], occurrence: 1 });
     expect(boardChapter(toc, 2, [])).toEqual({ chapter: "Part one", labels: ["Part one"] });
   });
 

@@ -51,8 +51,12 @@ export const shortHash = (text: string): string => {
   return (a >>> 0).toString(16).padStart(8, "0") + (b >>> 0).toString(16).padStart(8, "0");
 };
 
-/** A chapter board's id, worked out from the chapter, so the same chapter always names the same board. */
-export const chapterBoardId = (chapter: string): string => `chapter-${shortHash(chapter)}`;
+/**
+ * A chapter board's id, worked out from the chapter, so the same chapter always names the same board. A later chapter
+ * with the same title as an earlier one, such as a second "Introduction", is told apart by which of them it is.
+ */
+export const chapterBoardId = (chapter: string, occurrence = 0): string =>
+  `chapter-${shortHash(occurrence ? `${chapter}\n${occurrence}` : chapter)}`;
 
 /** Board ids as the app makes them: a chapter's, or a new board's random one. */
 export const isBoardId = (value: unknown): value is string => typeof value === "string" && /^[a-z0-9-]{8,64}$/.test(value);
@@ -569,7 +573,7 @@ export const boardChapter = (
   toc: readonly { label: string; depth: number }[],
   index: number,
   courseChapters: readonly string[],
-): { chapter: string; labels: string[] } | null => {
+): { chapter: string; labels: string[]; occurrence?: number } | null => {
   if (index < 0 || index >= toc.length) return null;
   const course = chapterOf(toc, index, courseChapters);
   if (course) return { chapter: course, labels: chapterSpan(toc, course)?.labels ?? [course] };
@@ -578,5 +582,9 @@ export const boardChapter = (
   while (start > 0 && toc[start].depth > 0) start--;
   let end = start + 1;
   while (end < toc.length && toc[end].depth > toc[start].depth) end++;
-  return { chapter: toc[start].label, labels: [...new Set(toc.slice(start, end).map((entry) => entry.label))] };
+  const chapter = toc[start].label;
+  /* An earlier chapter of the same title keeps the board; this one gets its own. */
+  const occurrence = toc.slice(0, start).filter((entry) => entry.depth === toc[start].depth && entry.label === chapter).length;
+  const labels = [...new Set(toc.slice(start, end).map((entry) => entry.label))];
+  return occurrence ? { chapter, labels, occurrence } : { chapter, labels };
 };

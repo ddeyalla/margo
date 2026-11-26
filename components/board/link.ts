@@ -107,6 +107,11 @@ const writePlaced = (bookId: string, placed: Record<string, Placed>) => {
 export function useCreateBoardLink(bookId: string, show: (id: string) => void): BoardLink {
   /* The book being read now: the link outlives a change of book in the same page. */
   const book = useRef(bookId);
+  /* The latest `show`: the link is made once, and an older one would leave the open board without saving it. */
+  const showNow = useRef(show);
+  useEffect(() => {
+    showNow.current = show;
+  }, [show]);
   const [link] = useState((): BoardLink => {
     const open = createStore<OpenBoard | null>(null);
     const placed = createStore<Record<string, Placed>>({});
@@ -122,7 +127,7 @@ export function useCreateBoardLink(bookId: string, show: (id: string) => void): 
       if (current?.id === id) run(current);
       else {
         waiting.push({ id, run, cancel });
-        show(id);
+        showNow.current(id);
       }
     };
     const put = (board: OpenBoard, key: string, mention: BoardMention, ops: readonly BoardOp[]) => {
@@ -144,7 +149,7 @@ export function useCreateBoardLink(bookId: string, show: (id: string) => void): 
             () => reject(new Error("The board didn't open, so the diagram isn't on it.")),
           ),
         ),
-      show,
+      show: (id) => showNow.current(id),
       cancel,
       held: new Map(),
       attach(board) {

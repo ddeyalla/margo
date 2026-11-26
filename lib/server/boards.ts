@@ -95,9 +95,9 @@ export const openBoard = async (notesDir: string, bookId: BookId, id: string): P
 };
 
 /** A chapter's board, added to the book's list the first time it's asked for. Its file is made on its first save. */
-export const chapterBoard = (bookId: BookId, chapter: string, labels: string[]): Promise<Board> =>
+export const chapterBoard = (bookId: BookId, chapter: string, labels: string[], occurrence = 0): Promise<Board> =>
   adding(bookId, async () => {
-    const id = chapterBoardId(chapter);
+    const id = chapterBoardId(chapter, occurrence);
     const state = await updateBookState(bookId, (current) => {
       const existing = findBoard(current.boards, id);
       if (existing) {

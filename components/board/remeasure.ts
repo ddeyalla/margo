@@ -1,7 +1,7 @@
 import { CaptureUpdateAction, FONT_FAMILY, newElementWith } from "@excalidraw/excalidraw";
-import type { ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/excalidraw/element/types";
+import type { ExcalidrawArrowElement, ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import { textRepairs } from "./geometry";
+import { followWidened, textRepairs } from "./geometry";
 
 const FAMILY_NAMES = new Map<number, string>(Object.entries(FONT_FAMILY).map(([name, id]) => [id as number, name]));
 
@@ -43,8 +43,12 @@ export async function remeasureText(board: ExcalidrawImperativeAPI): Promise<voi
     const measured = Math.max(...text.text.split("\n").map((line) => context.measureText(line).width));
     return [{ ...text, measured }];
   });
-  const repairs = textRepairs(texts, new Map(elements.map((element) => [element.id, element])));
+  const byId = new Map(elements.map((element) => [element.id, element]));
+  const repairs: Map<string, { x: number; width: number; points?: [number, number][] }> = textRepairs(texts, byId);
   if (!repairs.size) return;
+  /* updateScene takes the geometry as given, so arrows bound to a shape that widened are moved with it here. */
+  const arrows = elements.flatMap((element) => (element.type === "arrow" && !repairs.has(element.id) ? [element as ExcalidrawArrowElement] : []));
+  for (const [id, path] of followWidened(arrows, byId, repairs)) repairs.set(id, path);
   /* Kept out of undo: it repairs how the board was stored, not something the reader did. The change still saves. */
   board.updateScene({
     elements: elements.map((element) => {

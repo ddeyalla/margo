@@ -6,7 +6,7 @@ import type { BookId } from "@/lib/shared/types";
 import { chapterBoard, createBoard, listBoards, removeBoard, renameBoard } from "./api";
 
 /** The chapter the reader is in, as a board made now is about, or null outside the table of contents. */
-export type BoardContext = () => { chapter: string; labels: string[] } | null;
+export type BoardContext = () => { chapter: string; labels: string[]; occurrence?: number } | null;
 
 export interface BoardsApi {
   boards: BoardSummary[];
@@ -41,6 +41,8 @@ const summary = (board: Board): BoardSummary => ({ ...board, editedAt: null });
 export function useBoards(bookId: BookId, initial: readonly Board[], context: BoardContext, onError: (text: string) => void): BoardsApi {
   const [boards, setBoards] = useState<BoardSummary[]>(() => initial.map(summary));
   const [open, setOpen] = useState<BoardsApi["open"]>(null);
+  /* The pane as it is now, for a request made through an older render, such as the chat's link to the boards. */
+  const openNow = useRef<BoardsApi["open"]>(null);
   /* Only the latest request lands: a listing that answers after a change made here would put back the old list, and
      an opening that answers after a later one would replace the board the reader asked for since. */
   const listing = useRef(0);
@@ -64,8 +66,10 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
      * couldn't save and stayed open, "stale" when a later request took over meanwhile.
      */
     const go = async (next: BoardsApi["open"], ticket = ++opening.current): Promise<"done" | "kept" | "stale"> => {
-      if (open?.id && open.id !== next?.id && leaving.current && !(await leaving.current())) return "kept";
+      const now = openNow.current;
+      if (now?.id && now.id !== next?.id && leaving.current && !(await leaving.current())) return "kept";
       if (ticket !== opening.current) return "stale";
+      openNow.current = next;
       setOpen(next);
       return "done";
     };
@@ -79,7 +83,7 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
       }
       const ticket = ++opening.current;
       try {
-        const board = await chapterBoard(bookId, where.chapter, where.labels);
+        const board = await chapterBoard(bookId, where.chapter, where.labels, where.occurrence);
         if (!boards.some((b) => b.id === board.id)) added(board);
         await go({ id: board.id }, ticket);
       } catch (failure) {
@@ -126,9 +130,10 @@ export function useBoards(bookId: BookId, initial: readonly Board[], context: Bo
     const remove = async (id: string) => {
       try {
         /* The open board saves before it goes, so the file it leaves in the notes has the reader's last edits. */
-        if (open?.id === id && (await go({ id: null })) !== "done") return;
+        if (openNow.current?.id === id && (await go({ id: null })) !== "done") return;
         await removeBoard(bookId, id);
         changed((current) => current.filter((b) => b.id !== id));
+        if (openNow.current?.id === id) openNow.current = { id: null };
         setOpen((current) => (current?.id === id ? { id: null } : current));
       } catch (failure) {
         failed(failure, "Removing the board");

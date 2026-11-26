@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anchoredX, arrowBetween, besideOffset, boundsOf, boundTextMaxWidth, containerWidthFor, NODE, placeNodes, textRepairs, wrapWords } from "@/components/board/geometry";
+import { anchoredX, arrowBetween, besideOffset, boundsOf, boundTextMaxWidth, containerWidthFor, followWidened, NODE, placeNodes, textRepairs, wrapWords } from "@/components/board/geometry";
 import { boardChapter } from "@/lib/shared/boards";
 
 describe("board geometry", () => {
@@ -89,7 +89,26 @@ describe("fitting text", () => {
 
   it("wraps words to a width, keeping the lines already there", () => {
     expect(wrapWords("one two three\nfour", 80, measure)).toBe("one two\nthree\nfour");
-    expect(wrapWords("unbreakable", 30, measure)).toBe("unbreakable");
+  });
+
+  it("breaks a word wider than a whole line between its characters", () => {
+    const wide = (line: string) => line.length * 10;
+    expect(wrapWords("unbreakable", 30, wide)).toBe("unb\nrea\nkab\nle");
+    expect(wrapWords("go unbreakable", 30, wide)).toBe("go\nunb\nrea\nkab\nle");
+    expect(wrapWords("a", 5, wide)).toBe("a");
+  });
+
+  it("keeps an arrow's bound ends on a shape that widened around its center", () => {
+    const shapes = new Map([["box", { x: 0, width: 100 }]]);
+    const repairs = new Map([["box", { x: -20, width: 140 }]]);
+    const arrow = (start: string | null, end: string | null, x: number, points: [number, number][]) => ({
+      id: "a", isDeleted: false, x, points, startBinding: start ? { elementId: start } : null, endBinding: end ? { elementId: end } : null,
+    });
+    /* Leaving the right edge, at x 106: the edge moved out 20, so the start does too, and the far end stays. */
+    expect(followWidened([arrow("box", null, 106, [[0, 0], [100, 0]])], shapes, repairs).get("a")).toEqual({ x: 128.4, points: [[0, 0], [77.6, 0]], width: 77.6 });
+    /* Arriving at the left edge, at x -6. */
+    expect(followWidened([arrow(null, "box", -106, [[0, 0], [100, 0]])], shapes, repairs).get("a")).toEqual({ x: -106, points: [[0, 0], [77.6, 0]], width: 77.6 });
+    expect(followWidened([arrow("other", null, 0, [[0, 0], [10, 0]])], shapes, repairs).size).toBe(0);
   });
 
   const text = { id: "t", isDeleted: false, x: 0, width: 50, fontSize: 20, textAlign: "center", containerId: null as string | null, measured: 80 };
@@ -140,6 +159,18 @@ describe("boardChapter", () => {
   it("falls back to the top-level entry outside a course", () => {
     expect(boardChapter(toc, 2, [])).toEqual({ chapter: "Part I", labels: ["Part I", "1. Habits", "Cues", "2. Rewards"] });
     expect(boardChapter(toc, 4, [])).toEqual({ chapter: "Notes", labels: ["Notes"] });
+  });
+
+  it("tells a later chapter of the same title from the first", () => {
+    const twice = [
+      { label: "Introduction", depth: 0 },
+      { label: "Why", depth: 1 },
+      { label: "Part II", depth: 0 },
+      { label: "Introduction", depth: 0 },
+      { label: "How", depth: 1 },
+    ];
+    expect(boardChapter(twice, 1, [])).toEqual({ chapter: "Introduction", labels: ["Introduction", "Why"] });
+    expect(boardChapter(twice, 4, [])).toEqual({ chapter: "Introduction", labels: ["Introduction", "How"], occurrence: 1 });
   });
 
   it("has no chapter off the table of contents", () => {

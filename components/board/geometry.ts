@@ -120,20 +120,39 @@ export const boundTextX = (shape: { type: string; x: number; width: number }, te
 export const anchoredX = (x: number, width: number, nextWidth: number, align: TextAlign): number =>
   align === "left" ? x : align === "right" ? x + width - nextWidth : x + (width - nextWidth) / 2;
 
-/** Text broken into lines no wider than `maxWidth`, at spaces, keeping the lines it already has. */
+const graphemes = (word: string): string[] => [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(word)].map((part) => part.segment);
+
+/**
+ * Text broken into lines no wider than `maxWidth`, at spaces, keeping the lines it already has. A word wider than a
+ * whole line is broken between its characters.
+ */
 export const wrapWords = (text: string, maxWidth: number, measure: (line: string) => number): string =>
   text
     .split("\n")
     .map((paragraph) => {
       const lines: string[] = [];
       let line = "";
-      for (const word of paragraph.split(" ")) {
+      const add = (word: string) => {
         const tried = line ? `${line} ${word}` : word;
-        if (line && measure(tried) > maxWidth) {
-          lines.push(line);
+        if (measure(tried) <= maxWidth || (!line && graphemes(word).length < 2)) {
+          line = tried;
+          return;
+        }
+        if (line) lines.push(line);
+        line = "";
+        if (measure(word) <= maxWidth) {
           line = word;
-        } else line = tried;
-      }
+          return;
+        }
+        for (const part of graphemes(word)) {
+          if (line && measure(line + part) > maxWidth) {
+            lines.push(line);
+            line = "";
+          }
+          line += part;
+        }
+      };
+      for (const word of paragraph.split(" ")) add(word);
       lines.push(line);
       return lines.join("\n");
     })
@@ -190,6 +209,46 @@ export const textRepairs = (
     }
   }
   return repairs;
+};
+
+interface BoundArrow {
+  id: string;
+  isDeleted: boolean;
+  x: number;
+  points: readonly (readonly [number, number])[];
+  startBinding: { elementId: string } | null;
+  endBinding: { elementId: string } | null;
+}
+
+/**
+ * Arrows bound to shapes that `textRepairs` widened, moved to stay on them: each bound end keeps its place across the
+ * shape, scaled from the shape's center, as the shape's edge moves out. Arrows bound to nothing that moved are left out.
+ */
+export const followWidened = (
+  arrows: readonly BoundArrow[],
+  shapes: ReadonlyMap<string, { x: number; width: number }>,
+  repairs: ReadonlyMap<string, { x: number; width: number }>,
+): Map<string, { x: number; points: [number, number][]; width: number }> => {
+  const moved = new Map<string, { x: number; points: [number, number][]; width: number }>();
+  const shift = (id: string | undefined, at: number) => {
+    const before = id ? shapes.get(id) : undefined;
+    const after = id ? repairs.get(id) : undefined;
+    if (!before || !after || !before.width) return 0;
+    const center = before.x + before.width / 2;
+    return center + ((at - center) * after.width) / before.width - at;
+  };
+  for (const arrow of arrows) {
+    if (arrow.isDeleted || arrow.points.length < 2) continue;
+    const last = arrow.points.length - 1;
+    const start = shift(arrow.startBinding?.elementId, arrow.x + arrow.points[0][0]);
+    const end = shift(arrow.endBinding?.elementId, arrow.x + arrow.points[last][0]);
+    if (!start && !end) continue;
+    /* The first point stays at the arrow's origin, so a moved start moves the arrow and the rest of it back. */
+    const points = arrow.points.map(([px, py], i): [number, number] => [i === 0 ? 0 : px - start + (i === last ? end : 0), py]);
+    const xs = points.map(([px]) => px);
+    moved.set(arrow.id, { x: arrow.x + start, points, width: Math.max(...xs) - Math.min(...xs) });
+  }
+  return moved;
 };
 
 /** How far to move a drawing so it sits to the right of what is on the board, tops aligned. */

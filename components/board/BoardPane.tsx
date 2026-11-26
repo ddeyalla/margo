@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { MessageSquare, Pencil, Plus, Shapes, Trash2, X } from "lucide-react";
 import { Button, EmptyState, Field, IconButton, PaneHeader } from "@/components/ui";
-import type { BoardSummary } from "@/lib/shared/boards";
+import { chapterBoardId, type BoardSummary } from "@/lib/shared/boards";
 import type { BookId, ProviderId } from "@/lib/shared/types";
 import { useChapter, type PlaceStore } from "@/components/book/place";
 import type { BoardContext, BoardsApi } from "./useBoards";
@@ -162,8 +162,9 @@ export function BoardPane({
     );
   }
 
-  const chapter = entry ? (context()?.chapter ?? null) : null;
-  const chapterId = chapter ? boards.boards.find((board) => board.kind === "chapter" && board.chapter === chapter)?.id : undefined;
+  const where = entry ? context() : null;
+  const chapter = where?.chapter ?? null;
+  const chapterId = where ? boards.boards.find((board) => board.id === chapterBoardId(where.chapter, where.occurrence))?.id : undefined;
   const others = boards.boards.filter((board) => board.id !== chapterId);
   return (
     <div className="flex min-h-0 flex-1 flex-col">

@@ -79,7 +79,8 @@ export const PUT = withBook(async ({ book, request }) => {
 
 /**
  * Changes the book's list of boards, or asks the tutor about one:
- * - `{ op: "chapter", chapter, labels }`: the chapter's board, added the first time.
+ * - `{ op: "chapter", chapter, labels, occurrence? }`: the chapter's board, added the first time. `occurrence` tells a
+ *   later chapter of the same title from the first.
  * - `{ op: "create", title, chapter, labels, text?, source? }`: a new board of the reader's, empty or with `text`. With the
  *   chat diagram it was made from as `source`, the same diagram opens the same board.
  * - `{ op: "rename", id, title }` and `{ op: "remove", id }`. Removing keeps the file.
@@ -93,7 +94,9 @@ export const POST = withBook(async ({ book, request }) => {
   if (body.op === "chapter") {
     const chapter = shortText(body.chapter, 500);
     if (!chapter) return badRequest("Expected a chapter.");
-    return Response.json(await chapterBoard(book.id, chapter, parseLabels(body.labels, chapter)));
+    const occurrence = body.occurrence ?? 0;
+    if (!Number.isInteger(occurrence) || (occurrence as number) < 0 || (occurrence as number) > 999) return badRequest("Expected which chapter of that name.");
+    return Response.json(await chapterBoard(book.id, chapter, parseLabels(body.labels, chapter), occurrence as number));
   }
   if (body.op === "create") {
     const title = shortText(body.title, 200);

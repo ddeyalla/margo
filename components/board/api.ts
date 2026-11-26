@@ -47,8 +47,8 @@ export const putBoard = (bookId: BookId, body: { id: string; text: string; baseH
 export const listBoards = async (bookId: BookId): Promise<BoardSummary[]> =>
   (await answer<{ boards: BoardSummary[] }>(await fetch(url(bookId), { cache: "no-store" }), "Listing the boards")).boards;
 
-export const chapterBoard = async (bookId: BookId, chapter: string, labels: string[]): Promise<Board> =>
-  answer<Board>(await post(bookId, { op: "chapter", chapter, labels }), "Opening the chapter's board");
+export const chapterBoard = async (bookId: BookId, chapter: string, labels: string[], occurrence = 0): Promise<Board> =>
+  answer<Board>(await post(bookId, { op: "chapter", chapter, labels, occurrence }), "Opening the chapter's board");
 
 export const createBoard = async (
   bookId: BookId,

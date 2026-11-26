@@ -1,5 +1,5 @@
 import { convertToExcalidrawElements, getCommonBounds, newElementWith } from "@excalidraw/excalidraw";
-import type { ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/excalidraw/element/types";
+import type { ExcalidrawArrowElement, ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import type { BoardOp } from "@/lib/shared/boards";
 import { anchoredX, arrowBetween, boundsOf, NODE, placeNodes, wrapWords, type Box, type TextAlign } from "./geometry";
@@ -212,14 +212,22 @@ export const rejectSuggestion = (elements: readonly Element[], suggestion: strin
   return replace(elements, changed);
 };
 
-/** A label in the reader's colour for `target`, measured and placed as Excalidraw would for that shape. */
-const labelFor = (target: Element, text: string): ExcalidrawTextElement => {
+/**
+ * A label in the reader's colour for `target`, measured and placed as Excalidraw would for that shape, and the size the
+ * shape must grow to when the words wrap to more lines than fit it. A label that fits leaves the shape as it is.
+ */
+const labelFor = (target: Element, text: string): { label: ExcalidrawTextElement; size: { width: number; height: number } } => {
   const skeleton =
     target.type === "arrow"
       ? ({ type: "arrow", x: target.x, y: target.y, points: target.points as never, label: { text } } satisfies ExcalidrawElementSkeleton)
       : ({ type: target.type as "rectangle", x: target.x, y: target.y, width: target.width, height: target.height, label: { text } } satisfies ExcalidrawElementSkeleton);
-  const made = convertToExcalidrawElements([skeleton]).find((element) => element.type === "text") as ExcalidrawTextElement;
-  return newElementWith(made, { containerId: target.id, strokeColor: READER_COLOR });
+  const made = convertToExcalidrawElements([skeleton]);
+  const label = made.find((element) => element.type === "text") as ExcalidrawTextElement;
+  const shape = target.type === "arrow" ? undefined : made.find((element) => element.type !== "text");
+  return {
+    label: newElementWith(label, { containerId: target.id, strokeColor: READER_COLOR }),
+    size: { width: Math.max(target.width, shape?.width ?? 0), height: Math.max(target.height, shape?.height ?? 0) },
+  };
 };
 
 /** How wide `text` draws in `like`'s font, and how tall. */
@@ -268,11 +276,27 @@ export const acceptSuggestion = (elements: readonly Element[], suggestion: strin
     const updates = new Map<string, Element>();
     for (const element of groupOf(next, suggestion)) updates.set(element.id, own(element));
     if (data.kind === "add_link") {
-      const arrow = group.find((element) => element.type === "arrow")!;
+      const arrow = group.find((element): element is ExcalidrawArrowElement => element.type === "arrow")!;
+      /* Drawn again between the ends where they are now: the reader may have moved either since it was proposed. Its
+         label moves with its middle. */
+      const path = arrowBetween(fresh(data.from!)!, fresh(data.to!)!);
+      const [dx, dy] = path.points[1];
+      const [ox, oy] = arrow.points[arrow.points.length - 1] ?? [0, 0];
+      const shift = { x: path.x + dx / 2 - (arrow.x + ox / 2), y: path.y + dy / 2 - (arrow.y + oy / 2) };
       updates.set(
         arrow.id,
-        newElementWith(updates.get(arrow.id)!, { startBinding: { elementId: data.from!, focus: 0, gap: 6 }, endBinding: { elementId: data.to!, focus: 0, gap: 6 } } as Partial<Element>),
+        newElementWith(updates.get(arrow.id)!, {
+          ...path,
+          width: Math.abs(dx),
+          height: Math.abs(dy),
+          startBinding: { elementId: data.from!, focus: 0, gap: 6 },
+          endBinding: { elementId: data.to!, focus: 0, gap: 6 },
+        } as Partial<Element>),
       );
+      for (const label of group.filter((element) => element.type === "text" && element.containerId === arrow.id)) {
+        const owned = updates.get(label.id) ?? label;
+        updates.set(label.id, newElementWith(owned, { x: owned.x + shift.x, y: owned.y + shift.y }));
+      }
       for (const end of [data.from!, data.to!]) {
         const element = fresh(end)!;
         updates.set(end, newElementWith(element, { boundElements: [...(element.boundElements ?? []), { id: arrow.id, type: "arrow" }] }));
@@ -291,10 +315,10 @@ export const acceptSuggestion = (elements: readonly Element[], suggestion: strin
       /* Reworded in place, so its id, the arrows bound to it and the rest of its style stay as they are. */
       changed.set(target.id, reworded(target, data.text!));
     } else {
-      const label = labelFor(target, data.text!);
+      const { label, size } = labelFor(target, data.text!);
       if (bound) changed.set(bound.id, newElementWith(bound, { isDeleted: true }));
       const others = (target.boundElements ?? []).filter((b) => b.id !== bound?.id);
-      changed.set(target.id, newElementWith(target, { boundElements: [...others, { id: label.id, type: "text" }] }));
+      changed.set(target.id, newElementWith(target, { ...size, boundElements: [...others, { id: label.id, type: "text" }] }));
       extra.push(label);
     }
     return replace(elements, changed, extra);

@@ -60,6 +60,8 @@ const initialData = (board: OpenedBoard | null): ExcalidrawInitialDataState => {
       appState: {
         viewBackgroundColor: saved.appState?.viewBackgroundColor,
         gridSize: saved.appState?.gridSize,
+        gridStep: saved.appState?.gridStep,
+        gridModeEnabled: saved.appState?.gridModeEnabled,
       },
       files: saved.files,
       scrollToContent: true,
@@ -105,7 +107,14 @@ const picture = async (api: ExcalidrawImperativeAPI): Promise<string | null> => 
  * pictures are stored. A change to any of them is an edit to save.
  */
 const drawingVersion = (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) =>
-  `${hashElementsVersion(elements)}:${appState.viewBackgroundColor}:${appState.gridSize ?? ""}:${Object.keys(files).sort().join(",")}`;
+  [
+    hashElementsVersion(elements),
+    appState.viewBackgroundColor,
+    appState.gridSize ?? "",
+    appState.gridStep ?? "",
+    appState.gridModeEnabled ? "grid" : "",
+    Object.keys(files).sort().join(","),
+  ].join(":");
 
 const pendingKey = (list: readonly Suggestion[]) => list.map((s) => s.id).join(",");
 
