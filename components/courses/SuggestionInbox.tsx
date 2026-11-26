@@ -43,6 +43,20 @@ function SuggestionRow({ suggestion }: { suggestion: PendingSuggestion }) {
           </li>
         ))}
       </ul>
+      {payload.failed?.length ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-label text-dim">
+            Left out: {payload.failed.length === 1 ? "1 card" : `${payload.failed.length} cards`} didn’t hold up when checked against the passage.
+          </p>
+          <ul className="flex flex-col gap-1">
+            {payload.failed.map((card) => (
+              <li key={card.question} className="text-label text-dim [overflow-wrap:anywhere]">
+                <s>{card.question}</s> {card.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" disabled={busy !== null} onClick={() => void decide("accept")}>
           <Check aria-hidden />

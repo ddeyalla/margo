@@ -7,7 +7,7 @@ import { readActivity } from "@/lib/server/activity";
 import { readLibrary } from "@/lib/server/library";
 import { serve } from "@/lib/server/mcp/server";
 import { readBookState, updateBookState } from "@/lib/server/store";
-import { decideSuggestion, listSuggestions, pendingSuggestions, SuggestionError } from "@/lib/server/suggestions";
+import { decideSuggestion, listSuggestions, pendingSuggestions, SuggestionError, suggestionsFile } from "@/lib/server/suggestions";
 import { callTool, TOOLS } from "@/lib/server/tools";
 import { readToolLog, summarizeArgs } from "@/lib/server/tools/log";
 import { jsonSchema, parseInput, ToolError } from "@/lib/server/tools/schema";
@@ -16,6 +16,27 @@ import { isParked } from "@/lib/shared/parked";
 import { emptySuggestions, MAX_DECIDED, MAX_PENDING, withDecision, withProposed, type CardSuggestion } from "@/lib/shared/suggestions";
 import type { Anchor, BookId } from "@/lib/shared/types";
 import { makeEpub } from "./fixtures/books";
+
+/* propose_card checks each card with a model. Here the model is scripted: a question holding "BAD" can't be answered from its passage. */
+vi.mock("@/lib/server/check/provider", async (original) => {
+  const { ANSWER_SYSTEM } = await import("@/lib/server/check/verify");
+  const provider = {
+    id: "api",
+    label: "Scripted",
+    probe: async () => ({ status: "ready", detail: null, version: null }),
+    async *run(turn: { system: string; messages: { content: string }[] }) {
+      const request = turn.messages.at(-1)!.content;
+      const reply =
+        turn.system !== ANSWER_SYSTEM
+          ? { matches: true, supported: true, reason: "Same." }
+          : request.includes("BAD")
+            ? { answerable: false, reason: "The passage doesn't say." }
+            : { answerable: true, answer: "Its craters.", evidence: "Impacts leave craters" };
+      yield { type: "text", delta: JSON.stringify(reply) };
+    },
+  };
+  return { ...(await original<typeof import("@/lib/server/check/provider")>()), defaultChecker: async () => ({ provider, model: "scripted" }) };
+});
 
 let dataDir: string;
 let bookId: BookId;
@@ -224,8 +245,56 @@ describe("suggestions", () => {
     expect(sets).toHaveLength(before + 1);
     expect(sets.at(-1)).toMatchObject({ fact: "Craters outlast weather.", chapterTitle: "Craters", schedule: { state: "new" } });
     expect(sets.at(-1)!.cues.map((cue) => cue.question)).toEqual(["What outlasts any weather on a moon?", "Why do old surfaces show the most craters?"]);
+    expect(sets.at(-1)!.cues.every((cue) => typeof cue.verifiedAt === "string")).toBe(true);
     expect(await pendingSuggestions()).toEqual([]);
     await expect(decideSuggestion(suggestionId, "reject")).rejects.toThrow(SuggestionError);
+  });
+
+  it("leave out a card that fails the check against the passage, say why, and add only the ones that passed", async () => {
+    const cards = [
+      { question: "What do impacts leave behind?", answer: "Craters." },
+      { question: "How wide is the BAD crater?", answer: "Ten miles." },
+    ];
+    const proposed = await call<{ suggestionId: string; status: string; verified: number; failed: unknown[] }>("propose_card", { ...proposal(await craterAnchor()), fact: "Impacts leave craters.", cards });
+    expect(proposed).toMatchObject({ status: "pending", verified: 1, failed: [{ question: "How wide is the BAD crater?", reason: "The passage doesn't say." }] });
+    const [waiting] = await pendingSuggestions();
+    expect(waiting.payload.cards).toEqual([{ ...cards[0], verifiedAt: expect.any(String) }]);
+    expect(waiting.payload.failed).toEqual([{ ...cards[1], reason: "The passage doesn't say." }]);
+
+    const before = (await readBookState(bookId)).cardSets.flatMap((set) => set.cues).length;
+    await decideSuggestion(proposed.suggestionId, "accept");
+    const cues = (await readBookState(bookId)).cardSets.flatMap((set) => set.cues);
+    expect(cues).toHaveLength(before + 1);
+    expect(cues.some((cue) => cue.question.includes("BAD"))).toBe(false);
+  });
+
+  it("never reach the reader when no card passes, and stay on record as failed with why", async () => {
+    const before = (await readBookState(bookId)).cardSets;
+    const proposed = await call<{ suggestionId: string; status: string; verified: number }>("propose_card", { ...proposal(await craterAnchor()), fact: "A made-up fact.", cards: [{ question: "Who named the BAD crater?", answer: "Nobody knows." }] });
+    expect(proposed).toMatchObject({ status: "failed", verified: 0, failed: [{ question: "Who named the BAD crater?", reason: "The passage doesn't say." }] });
+    expect(await pendingSuggestions()).toEqual([]);
+    expect(await call("list_suggestions", { status: "failed" })).toMatchObject({ suggestions: [{ id: proposed.suggestionId, payload: { cards: [], failed: [{ reason: "The passage doesn't say." }] } }] });
+    await expect(decideSuggestion(proposed.suggestionId, "accept")).rejects.toThrow(/already failed/);
+    expect((await readBookState(bookId)).cardSets).toEqual(before);
+  });
+
+  it("can't be accepted when they were proposed before cards were checked", async () => {
+    const old: CardSuggestion = {
+      id: "from-before",
+      kind: "card",
+      target: { bookId, anchor: await craterAnchor() },
+      payload: { quote: "Impacts leave craters that outlast any weather.", chapterTitle: "Craters", fact: "An unchecked fact.", cards: [{ question: "An unchecked question?", answer: "Maybe." }] },
+      proposer: "old-agent",
+      createdAt: "2026-11-01T00:00:00.000Z",
+      status: "pending",
+      decidedAt: null,
+    };
+    const file = JSON.parse(await readFile(suggestionsFile(), "utf8")) as { suggestions: CardSuggestion[] };
+    await writeFile(suggestionsFile(), JSON.stringify(withProposed(file, old)));
+    const before = (await readBookState(bookId)).cardSets;
+    await expect(decideSuggestion("from-before", "accept")).rejects.toThrow(/before cards were checked/);
+    expect((await readBookState(bookId)).cardSets).toEqual(before);
+    expect(await decideSuggestion("from-before", "reject")).toMatchObject({ status: "rejected" });
   });
 
   it("leave the book alone when rejected", async () => {
@@ -233,7 +302,7 @@ describe("suggestions", () => {
     const { suggestionId } = await call<{ suggestionId: string }>("propose_card", { ...proposal(await craterAnchor()), fact: "Another fact.", cards: [{ question: "A new question?", answer: "Yes." }] });
     expect(await decideSuggestion(suggestionId, "reject")).toMatchObject({ status: "rejected" });
     expect((await readBookState(bookId)).cardSets).toEqual(before);
-    expect((await listSuggestions("rejected")).map((entry) => entry.id)).toEqual([suggestionId]);
+    expect((await listSuggestions("rejected")).map((entry) => entry.id)).toContain(suggestionId);
   });
 
   it("take one decision when accept and reject arrive together", async () => {

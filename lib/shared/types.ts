@@ -265,7 +265,7 @@ export interface Cue {
   answer: string;
   createdAt: string;
   lastRating: Rating | null;
-  /** When the card was checked against its passage and passed. Absent on cards saved before checking, proposed by an agent, or edited since. */
+  /** When the card was checked against its passage and passed. Absent on cards saved before checking or edited since. */
   verifiedAt?: string;
 }
 
