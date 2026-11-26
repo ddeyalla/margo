@@ -17,6 +17,9 @@ import type { PassagePlace } from "@/components/annotations/useAnnotations";
 import { diagramMarkdown } from "@/lib/shared/diagrams";
 import { SaveDiagram } from "./Diagram";
 import { Markdown, StreamingMarkdown } from "./Markdown";
+import { AnswerBoard } from "./BoardChanges";
+import { SentBoard } from "./BoardChip";
+import { answerChanges } from "@/components/board/link";
 import { AnswerSources, CitationsContext, MessageQuotes, type Citations, type QuoteDraft } from "./Quotes";
 import { useImageDraft } from "./useImageDraft";
 import { awaitsAnswer, useCompacting, useStreaming, type FailedTurn, type LiveAnswer, type MessageDraft, type QueuedMessage, type Tutor } from "./useTutor";
@@ -453,13 +456,16 @@ function ThreadView({
               <div key={index} className={clsx("flex flex-col items-end gap-1.5 pl-8", index >= firstSent && "animate-rise")}>
                 {message.quotes?.length ? <MessageQuotes quotes={message.quotes} first={firstQuoteNumber(thread.messages, index)} /> : null}
                 {message.attachments?.length ? <MessageImages bookId={bookId} images={message.attachments} onOpen={setViewing} /> : null}
+                {message.board ? <SentBoard title={message.board.title} /> : null}
                 <p className="min-w-0 whitespace-pre-wrap break-words rounded-lg rounded-br-xs bg-panel-raised px-3.5 shadow-chip py-2.5 text-body text-paper">
                   {message.content}
                 </p>
               </div>
             ) : (
               <div key={index}>
-                <Markdown text={message.content} />
+                <AnswerBoard value={answerChanges(thread.id, thread.messages, index)}>
+                  <Markdown text={message.content} />
+                </AnswerBoard>
                 <AnswerSources text={message.content} />
                 {message.partial ? <p className="mt-1.5 text-caption text-dim">Stopped before the answer finished.</p> : null}
               </div>

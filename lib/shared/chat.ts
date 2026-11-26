@@ -1,3 +1,4 @@
+import type { BoardMention } from "./boards";
 import type { Anchor, BookId, ProviderId, QuotedPassage, SelectionContext, TutorAction } from "./types";
 
 /** Where the reader is, sent with a question that has no passage. */
@@ -10,7 +11,8 @@ export interface QuestionPlace {
  * POST /api/chat: start a thread from a selection or with no passage, reply in
  * one, or get an answer to its unanswered message. `attachments` are ids of
  * images already uploaded for this book, and `quotes` passages of it the reader
- * quoted; a message may be images or quotes alone.
+ * quoted; a message may be images or quotes alone. `board` is the whiteboard
+ * open beside the book, when the message is about it.
  */
 export type ChatRequest =
   | {
@@ -22,6 +24,6 @@ export type ChatRequest =
       question: string | null;
       selection: Omit<SelectionContext, "rect">;
     }
-  | { kind: "general"; bookId: BookId; provider: ProviderId; text: string; attachments: string[]; quotes: QuotedPassage[]; place: QuestionPlace | null }
-  | { kind: "reply"; bookId: BookId; provider: ProviderId; threadId: string; text: string; attachments: string[]; quotes: QuotedPassage[] }
+  | { kind: "general"; bookId: BookId; provider: ProviderId; text: string; attachments: string[]; quotes: QuotedPassage[]; board?: BoardMention; place: QuestionPlace | null }
+  | { kind: "reply"; bookId: BookId; provider: ProviderId; threadId: string; text: string; attachments: string[]; quotes: QuotedPassage[]; board?: BoardMention }
   | { kind: "retry"; bookId: BookId; provider: ProviderId; threadId: string };

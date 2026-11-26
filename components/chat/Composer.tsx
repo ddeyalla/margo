@@ -1,12 +1,15 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
-import { useStore } from "@/components/ui/store";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createStore, useStore } from "@/components/ui/store";
+import { useBoardLink, type OpenBoard } from "@/components/board/link";
 import clsx from "clsx";
 import { ArrowUp, ImagePlus, Square } from "lucide-react";
 import { IMAGE_TYPES } from "@/lib/shared/attachments";
 import { useUnsentText } from "@/lib/client/unsent";
 import { insertAtCaret } from "@/lib/shared/dictation";
+import { parseCompactScene } from "@/lib/shared/boards";
+import { DraftBoard } from "./BoardChip";
 import { DraftImages } from "./Images";
 import { DraftQuotes, type QuoteDraft } from "./Quotes";
 import { DictationNote, MicButton } from "./MicButton";
@@ -15,6 +18,8 @@ import type { ImageDraft } from "./useImageDraft";
 import type { MessageDraft } from "./useTutor";
 
 const MAX_TEXT = 8000;
+const noBoard = createStore<OpenBoard | null>(null);
+const noDraft = createStore<{ text: string } | null>(null);
 /** The box grows from one line to this many, then scrolls. */
 const MAX_LINES = 8;
 
@@ -25,7 +30,8 @@ const MAX_LINES = 8;
  * Images come in by paste, by the attach button, or by a drop the panel
  * forwards to `images`; a message may be images alone.
  * Passages quoted from the book wait above the words as chips, each removed
- * whole, and go with the message.
+ * whole, and go with the message. So does the whiteboard open beside the book:
+ * the chat is where the board is talked about, and its changes land on it.
  */
 export function Composer({
   placeholder,
@@ -63,11 +69,35 @@ export function Composer({
     setText(next.value);
   });
   const quoted = useStore(quotes, (list) => list);
+  const link = useBoardLink();
+  const board = useStore(link?.open ?? noBoard, (open) => open);
+  /* The board the reader took off this message; a board opened after it is attached again. */
+  const [detached, setDetached] = useState<string | null>(null);
+  const attached = board && board.id !== detached ? board : null;
+  /* Words handed over from the board, such as an answer to the tutor's question about it, go in the box with the
+     board attached, the caret after them. Taken once each: the box is set as it renders, the hand-over cleared after. */
+  const handed = useStore(link?.draft ?? noDraft, (draft) => draft);
+  const [taken, setTaken] = useState<{ text: string } | null>(null);
+  if (handed && handed !== taken) {
+    setTaken(handed);
+    setDetached(null);
+    /* Words already typed stay, after the handed-over ones. */
+    setText((text.trim() ? `${handed.text}${text}` : handed.text).slice(0, MAX_TEXT));
+  }
+  useEffect(() => {
+    if (!handed || !link) return;
+    link.draft.set(null);
+    const input = inputRef.current;
+    input?.focus();
+    input?.setSelectionRange(handed.text.length, handed.text.length);
+  }, [handed, link]);
   useUnsentText(text.trim().length > 0 || quoted.length > 0);
   const hasContent = text.trim().length > 0 || images.ready.length > 0 || quoted.length > 0;
   const unquote = (index: number) => quotes.set(quotes.get().filter((_, i) => i !== index));
   const canSend = !disabledReason && !waiting && !images.uploading && !images.failed && hasContent;
-  const problem = images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;
+  /* A board too big to read can't go with a message; the message can go without it. */
+  const [boardProblem, setBoardProblem] = useState<string | null>(null);
+  const problem = (attached ? boardProblem : null) ?? images.notice ?? images.images.flatMap((image) => (image.state.status === "failed" ? [image.state.error] : []))[0] ?? null;
 
   useLayoutEffect(() => {
     const input = inputRef.current;
@@ -89,7 +119,15 @@ export function Composer({
 
   const send = () => {
     if (!canSend) return;
-    onSend({ text: text.trim(), attachments: images.ready, quotes: quoted });
+    const mention = attached?.mention();
+    if (mention && !parseCompactScene(mention.scene)) {
+      setBoardProblem("This board is too big to send with a message. Take it off the message to send the words alone.");
+      return;
+    }
+    setBoardProblem(null);
+    onSend({ text: text.trim(), attachments: images.ready, quotes: quoted, ...(mention ? { board: mention } : {}) });
+    /* Taken off this message only: the next one goes with the open board again. */
+    setDetached(null);
     setText("");
     images.clear();
     quotes.set([]);
@@ -98,6 +136,7 @@ export function Composer({
   return (
     <div className="shrink-0 px-3 pb-3 pt-1">
       <div className="rounded-xl bg-panel-raised shadow-raised ring-1 ring-inset ring-line transition-shadow duration-[var(--duration-base)] focus-within:ring-line-strong">
+        {attached ? <DraftBoard title={attached.title} onRemove={() => setDetached(attached.id)} /> : null}
         {quoted.length ? <DraftQuotes quotes={quoted} onRemove={unquote} /> : null}
         {images.images.length ? <DraftImages images={images.images} onRemove={images.remove} /> : null}
         {problem ? (
@@ -112,7 +151,7 @@ export function Composer({
           maxLength={MAX_TEXT}
           disabled={disabledReason !== null}
           aria-label="Message the tutor"
-          placeholder={disabledReason ?? placeholder}
+          placeholder={disabledReason ?? (attached ? `Ask about “${attached.title}”, or ask for a change…` : placeholder)}
           onChange={(event) => setText(event.currentTarget.value)}
           onPaste={(event) => {
             const files = [...event.clipboardData.files];

@@ -8,7 +8,8 @@
   /* Dark is a neutral grey, not a black: #1e1e1e to #313131 with no hue, so long
      reading doesn't sit on a hole. Every step between ink and panel-hover is
      small on purpose; the surfaces are told apart by the hairline, not by a
-     jump in brightness. Contrast against every surface, in order ink / panel /
+     jump in brightness, so the hairline has to be seen: line is a step above
+     panel-hover, and every elevation carries a ring of its own. Contrast against every surface, in order ink / panel /
      raised / hover: paper 14.9 14.0 13.0 11.6 · fog 8.5 8.0 7.4 6.6 ·
      dim 6.2 5.9 5.4 4.9. Nothing here drops under 4.5:1 for text. */
   --color-ink: #1e1e1e;
@@ -16,8 +17,8 @@
   --color-panel: #232323;
   --color-panel-raised: #292929;
   --color-panel-hover: #313131;
-  --color-line: #2f2f2f;
-  --color-line-strong: #3e3e3e;
+  --color-line: #343434;
+  --color-line-strong: #444444;
   --color-paper: #f2f2f2;
   --color-fog: #b9b9b9;
   --color-dim: #9e9e9e;
@@ -131,10 +132,10 @@
   /* Read by the EPUB reader too, which plays the glow in foliate's shadow DOM where these classes can't reach. */
   --glow-duration: 1200ms;
   --glow-delay: 400ms;
-  --elevation-float: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 32px -12px rgba(0, 0, 0, 0.7);
+  --elevation-float: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 32px -12px rgba(0, 0, 0, 0.7);
   --elevation-dialog: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 32px 96px -24px rgba(0, 0, 0, 0.8);
-  --elevation-canvas: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --elevation-chip: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --elevation-canvas: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --elevation-chip: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.25);
   /* For a control docked in a panel, like the composer: its blur stays inside a 12px gutter, so an overflow-hidden parent never cuts it off. No ring, the control draws its own. */
   --elevation-raised: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px -1px rgba(0, 0, 0, 0.25);
   /* Code in chat: muted hues that stay above 4.5:1 on the code block. */
@@ -628,4 +629,61 @@
   .rounded-full {
     corner-shape: round;
   }
+}
+
+/* The whiteboard has no shape library: Excalidraw's library browses a website, and boards stay local. */
+/* Excalidraw's own stylesheet loads after this one, so these carry its `.excalidraw` class to win. Its hints line repeats
+   what the toolbar already shows. */
+.board-canvas .excalidraw .default-sidebar-trigger,
+.board-canvas .excalidraw .HintViewer {
+  display: none;
+}
+
+/* Excalidraw in the app's own materials: its toolbar and menus are panels with a hairline edge and the app's float
+   shadow, in neutral greys rather than its violet, and the selected tool is the app's tint. The canvas meets the
+   pane's colour: Excalidraw draws dark mode by inverting a white canvas, and 86.3% turns white into the page's #232323. */
+/* `div.` outranks Excalidraw's `.excalidraw.theme--dark` without a selector list for the CSS minifier to fold away. */
+div.board-canvas .excalidraw {
+  --island-bg-color: var(--color-panel-raised);
+  --shadow-island: var(--elevation-float);
+  --default-border-color: var(--color-line);
+  --color-surface-low: var(--color-panel);
+  --color-surface-mid: var(--color-panel);
+  --color-surface-high: var(--color-panel-hover);
+  --color-surface-lowest: var(--color-ink);
+  --color-on-surface: var(--color-paper);
+  --color-border-outline-variant: var(--color-line-strong);
+  --color-primary: var(--color-paper);
+  --color-primary-darker: var(--color-paper);
+  --color-primary-darkest: var(--color-paper);
+  --color-primary-hover: var(--color-fog);
+  --color-primary-light: var(--color-tint-strong);
+  --color-primary-light-darker: var(--color-tint-strong);
+  --color-surface-primary-container: var(--color-tint-strong);
+  --color-on-primary-container: var(--color-paper);
+  --button-hover-bg: var(--color-tint);
+  --button-active-bg: var(--color-tint-strong);
+  --popup-bg-color: var(--color-panel-raised);
+  --input-bg-color: var(--color-panel);
+  --input-border-color: var(--color-line);
+}
+div.board-canvas .excalidraw.theme--dark {
+  --theme-filter: invert(86.3%) hue-rotate(180deg);
+}
+.board-canvas .excalidraw .Island {
+  box-shadow: var(--elevation-float);
+}
+
+/* In a narrow pane the tool bar is wider than the room it has: its tools wrap onto a second row instead of hanging off
+   both edges. Wrapping, not scrolling, so the extra tools' menu, which opens inside the bar, isn't clipped. */
+.board-canvas .excalidraw .App-top-bar :is(div:has(.App-toolbar), .App-toolbar) {
+  max-width: 100%;
+  min-width: 0;
+}
+.board-canvas .excalidraw .App-top-bar .App-toolbar-container {
+  display: flex;
+}
+.board-canvas .excalidraw .App-toolbar-content {
+  flex-wrap: wrap;
+  justify-content: center;
 }

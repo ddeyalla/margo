@@ -1,3 +1,4 @@
+import { boardRecall, type Board } from "./boards";
 import { recordSignal, signalOf, type Signal } from "./confidence";
 import { courseSteps, type Course } from "./courses";
 import { isPassed, type ChapterQuiz } from "./quiz";
@@ -42,25 +43,29 @@ export const quizRecall = (quiz: ChapterQuiz, now: Date): RecallItem[] =>
 export const retention = (items: readonly RecallItem[]): number | null =>
   items.length ? items.reduce((sum, item) => sum + item.recall * item.weight, 0) / items.length : null;
 
-/** What a Course needs from each of its books: the cards and quizzes in its state. */
+/** What a Course needs from each of its books: the cards, quizzes and whiteboards in its state. */
 export interface BookEvidence {
   cardSets: CardSet[];
   quizzes: ChapterQuiz[];
+  /** Absent in evidence gathered before whiteboards existed. */
+  boards?: Board[];
 }
 
 export interface Mastery {
   /** Chapters of the Course passed, out of the chapters it reads that the library has. */
   passed: number;
   chapters: number;
-  /** Predicted recall over the Course's cards and quiz questions, 0 to 1, or null before any review. */
+  /** Predicted recall over the Course's cards, quiz questions and chapter boards redrawn from memory, 0 to 1, or null before any of them. */
   retained: number | null;
-  /** How many cards and questions retention is read from. */
+  /** How many cards, questions and redrawn boards retention is read from. */
   items: number;
 }
 
 /**
  * Coverage and retention of a Course, read from evidence at the moment asked. Cards count when made in a chapter
- * the Course reads, or in a section of one whose quiz recorded its sections. Nothing here is stored.
+ * the Course reads, or in a section of one whose quiz recorded its sections; quiz questions count by their chapter;
+ * a chapter's board counts once, from its draw-it-back attempts, when it is about one of those chapters or sections.
+ * Nothing here is stored.
  */
 export const courseMastery = (course: Pick<Course, "books" | "units">, books: ReadonlyMap<BookId, BookEvidence>, now: Date): Mastery => {
   const steps = courseSteps(course);
@@ -79,6 +84,12 @@ export const courseMastery = (course: Pick<Course, "books" | "units">, books: Re
       for (const label of quiz.labels ?? []) labels.add(label);
       if (isPassed(quiz)) passed++;
       items.push(...quizRecall(quiz, now));
+    }
+    /* A chapter's draw-it-back attempts count once, as one thing to remember. */
+    for (const board of evidence.boards ?? []) {
+      if (board.kind !== "chapter" || !board.chapter || !board.labels.concat(board.chapter).some((label) => labels.has(label))) continue;
+      const item = boardRecall(board, now);
+      if (item) items.push(item);
     }
     for (const set of evidence.cardSets) {
       if (set.chapterTitle === null || !labels.has(set.chapterTitle)) continue;

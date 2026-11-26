@@ -1,3 +1,4 @@
+import { BOARD_FENCE, BOARD_OPS_GUIDE, type BoardMention } from "@/lib/shared/boards";
 import { placeLabel } from "@/lib/shared/place";
 import { firstQuoteNumber } from "@/lib/shared/quotes";
 import { isSixthReply } from "@/lib/shared/work";
@@ -15,7 +16,14 @@ export const TUTOR_SYSTEM = `You are a patient tutor sitting beside someone who 
 - When you go beyond what the book says, say so plainly, for example "Beyond the book: ...".
 - If the passage or image is ambiguous or the question is unclear, say what you are assuming.
 - Write in Markdown. Use a list or a small table only when it makes the answer clearer.
-- When a structure is easier to see than to read, such as a process, a cycle, a hierarchy, how parts connect or events in order, draw it as a Mermaid diagram in a \`\`\`mermaid fence: a flowchart, sequenceDiagram, stateDiagram-v2, mindmap or timeline. The chat is narrow, so lay a flowchart top to bottom (flowchart TD) and keep labels to a few words. Keep it small, about a dozen nodes at most, and still explain it in words. Put double quotes around any label that holds brackets, parentheses or other punctuation. Most answers need no diagram: never draw one for a single idea or something a short list says as well. Never write SVG or HTML.
+- When a structure is easier to see than to read, such as a process, a cycle, a hierarchy, how parts connect or events in order, draw it as a Mermaid diagram in a \`\`\`mermaid fence: a flowchart, sequenceDiagram, stateDiagram-v2, mindmap or timeline. The chat is narrow, so lay a flowchart top to bottom (flowchart TD) and keep labels to a few words. Keep it small, about a dozen nodes at most, and still explain it in words. Put double quotes around any label that holds brackets, parentheses or other punctuation. Never group a flowchart's nodes in a subgraph: a diagram with one opens on a whiteboard as a single picture instead of shapes the reader can move. Most answers need no diagram: never draw one for a single idea or something a short list says as well. Never write SVG or HTML.
+- When the reader asks you to draw, sketch or map something, or to make a whiteboard of it, the app opens your diagram as a whiteboard they keep and change, so draw it and never say you can't make one. Always start its \`\`\`mermaid fence with a comment line that names the drawing, then a flowchart with no subgraph, whose boxes and arrows open as shapes they can move; it may run to about twenty nodes. The one exception is a message that comes with their whiteboard as JSON and says how to change it: there, put the drawing on that board as the message says, and draw no separate diagram. For example:
+  \`\`\`mermaid
+  %% How attention works
+  flowchart TD
+    Q["Query"] --> S["Scores"]
+  \`\`\`
+  Then say in a sentence what it shows.
 - Write math as LaTeX between double dollar signs: $$E = mc^2$$ within a sentence, or on lines of its own for a displayed equation. A single $ is a dollar sign.
 - Put code in a fenced block that names its language.
 - The reader may quote passages of the book into a message. Each comes numbered, as <passage n="2">. Whenever something you say rests on a quoted passage, link the few words that say it to that passage, as a Markdown link to #cite- and its number: "the author [treats memory as rebuilt, not stored](#cite-2)". Cite every such claim, with plain words and no brackets inside the link, and only numbers you were given. Never cite the selected passage this way, and never write "as you can see above": the link takes the reader there.`;
@@ -115,6 +123,31 @@ export const quotedPassages = (quotes: readonly QuotedPassage[], first: number):
       ].join("\n")
     : "";
 
+/**
+ * The whiteboard a message is about. The latest one goes as the board JSON, with how to change it; an earlier
+ * message's board is only named, since the board has moved on since and its ops would no longer fit.
+ */
+export const boardNote = (board: BoardMention, latest: boolean): string =>
+  latest
+    ? [
+        `My whiteboard “${board.title}” is open beside the book. Here it is as JSON: each node's text and position, each link's ends and label.`,
+        `<board>\n${JSON.stringify(board.scene)}\n</board>`,
+        `Answer about the board in words. When I ask you to draw, change, add to, expand or fix it, or when your answer corrects something drawn on it, put the change on this board: end your answer with a \`\`\`${BOARD_FENCE} fence holding a JSON list of ops, and say in a sentence what you changed. Don't draw a separate Mermaid diagram for it, and don't redraw what is already there: reuse its nodes by id. Place new nodes near the ones they link to, in the board's own layout. Never mention the ops or their ids in your words.`,
+        BOARD_OPS_GUIDE,
+      ].join("\n\n")
+    : `(This message was about my whiteboard “${board.title}”, as it was then.)`;
+
+/**
+ * The newest whiteboard, when the message that carried it was folded into a summary: its scene, so the tutor can
+ * still talk about it, but no way to change it. Changes only land on an answer to a message that carries its board.
+ */
+export const foldedBoardNote = (board: BoardMention): string =>
+  [
+    `The last whiteboard I shared, “${board.title}”, in the summarized turns. Here it is as it was then, as JSON: each node's text and position, each link's ends and label.`,
+    `<board>\n${JSON.stringify(board.scene)}\n</board>`,
+    "Talk about it in words. To change it, I'll share it again.",
+  ].join("\n\n");
+
 /** How a summary of folded turns reads to the tutor, after the passage and the reader's first message. */
 export const summaryNote = (summary: string) =>
   `Our conversation has gone on for a while. Here is a summary of it up to the messages that follow, written for you:\n<summary>\n${summary}\n</summary>`;
@@ -133,20 +166,26 @@ export const buildTurn = (book: BookLabel, thread: Thread, model: string | null,
   const quoted = (message: ChatMessage) => quotedPassages(message.quotes ?? [], firstQuoteNumber(thread.messages, thread.messages.indexOf(message)));
   /* The summary keeps the passages quoted in the turns it folds, so the tutor can still read and cite them. */
   const folded = compaction ? thread.messages.slice(1, compaction.keepFrom) : [];
+  /* Only the newest board goes whole: the reader changes the board between messages. Folded, it still goes, as context. */
+  const newestBoard = thread.messages.findLast((message) => message.board);
+  const foldedBoard = newestBoard && folded.includes(newestBoard) ? newestBoard.board : undefined;
+  const drawn = (message: ChatMessage) => (message.board ? boardNote(message.board, message === newestBoard) : "");
   const foldedQuotes = folded.map(quoted).filter(Boolean).join("\n\n");
   const opening = () =>
     [
       contextMessage(book, thread),
       quoted(thread.messages[0]),
+      drawn(thread.messages[0]),
       compaction ? summaryNote(compaction.summary) : "",
       foldedQuotes ? `Passages quoted in the summarized turns:\n${foldedQuotes}` : "",
+      foldedBoard ? foldedBoardNote(foldedBoard) : "",
     ]
       .filter(Boolean)
       .join("\n\n");
   return {
   system: TUTOR_SYSTEM,
   messages: sent.reduce<TutorMessage[]>((merged, message, index) => {
-    const base = index === 0 ? opening() : [quoted(message), message.content].filter(Boolean).join("\n\n");
+    const base = index === 0 ? opening() : [quoted(message), drawn(message), message.content].filter(Boolean).join("\n\n");
     const content = index === sent.length - 1 && isSixthReply(thread) ? `${base}\n\n${SIXTH_REPLY_NOTE}` : base;
     const attached = (message.attachments ?? []).flatMap((attachment): TutorImage[] => {
       const bytes = images.get(attachment.id);

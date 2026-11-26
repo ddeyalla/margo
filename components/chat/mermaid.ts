@@ -37,6 +37,8 @@ const configure = (mermaid: Mermaid) =>
       textColor: token("paper"),
       edgeLabelBackground: token("panel"),
       fontSize: "13px",
+      /* The base theme's grey drop shadow reads as a glow on a dark panel: shapes sit flat, set apart by their border. */
+      dropShadow: "none",
     },
   });
 

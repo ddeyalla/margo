@@ -23,8 +23,8 @@ const GENERATED_CALLOUT = [
   "> This file is rewritten from the book's highlights, notes and cards after every change, so edits made here are lost. Write your own notes in a separate file, and embed a highlight in it with `![[file name#^block id]]`.",
 ];
 
-/** The book's note file name, without characters that file systems or Obsidian links reject. */
-export const vaultFileName = (title: string): string => {
+/** A title as a file name, without its extension: no characters that file systems or Obsidian links reject. */
+export const safeFileName = (title: string, fallback: string): string => {
   const name = title
     .normalize("NFC")
     .replace(/[\u0000-\u001f\u007f]/g, "")
@@ -34,8 +34,11 @@ export const vaultFileName = (title: string): string => {
     .replace(/^[\s.]+|[\s.]+$/g, "")
     .slice(0, 120)
     .trim();
-  return `${name || "Untitled book"}.md`;
+  return name || fallback;
 };
+
+/** The book's note file name. */
+export const vaultFileName = (title: string): string => `${safeFileName(title, "Untitled book")}.md`;
 
 /** An Obsidian block id, so [[Book#^h-1a2b3c4d]] links to the passage. */
 const blockId = (prefix: "h" | "n" | "c", id: string) => `${prefix}-${id.replace(/-/g, "").slice(0, 8).toLowerCase()}`;

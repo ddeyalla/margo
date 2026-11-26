@@ -3,10 +3,10 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { ArrowLeft, AudioLines, BookOpen, Focus, Moon, PanelRight, Search, Sun, SunMoon, TableOfContents } from "lucide-react";
+import { ArrowLeft, AudioLines, BookOpen, Focus, Moon, PanelRight, Search, Shapes, Sun, SunMoon, TableOfContents } from "lucide-react";
 import { ProviderPicker } from "@/components/chat/ProviderPicker";
 import { SEARCH_SHORTCUT } from "@/components/search/SearchDialog";
-import { IconButton, Segmented } from "@/components/ui";
+import { Divider, IconButton, Segmented } from "@/components/ui";
 import type { AppSettings, BookFormat, ProviderId, ProviderInfo, ReadingFont, ReadingMode, ReadingTheme } from "@/lib/shared/types";
 import { useChapter, type PlaceStore } from "./place";
 import { FocusButton } from "./FocusSession";
@@ -51,6 +51,8 @@ export function BookHeader({
   onReadAloud,
   focusing,
   onFocus,
+  boardOpen,
+  onBoard,
   panelId,
   panelOpen,
   onTogglePanel,
@@ -79,6 +81,10 @@ export function BookHeader({
   /** A focus session is on: the header clears away, as for the spotlight. */
   focusing: boolean;
   onFocus(minutes: number): void;
+  /** The whiteboards are open beside the book. */
+  boardOpen: boolean;
+  /** Opens or closes the whiteboards. */
+  onBoard(): void;
   panelId: string;
   panelOpen: boolean;
   onTogglePanel(): void;
@@ -117,6 +123,7 @@ export function BookHeader({
       <div className="shrink-0">
         <ProviderPicker providers={providers} current={provider} onSelect={onProvider} models={models} onModel={onModel} />
       </div>
+      <Divider />
       <Segmented label="Reading mode" options={MODES} value={settings.readingMode} onChange={(mode) => choose("readingMode", mode)} />
       {format === "epub" ? (
         <ReadingSettings
@@ -131,6 +138,7 @@ export function BookHeader({
       ) : (
         <Segmented label="Page colours" options={PDF_THEMES} value={settings.pdfPage} onChange={(theme) => choose("pdfPage", theme)} />
       )}
+      <Divider />
       <FocusButton disabled={failed} onStart={onFocus} />
       {/* A disabled button takes no pointer, so the reason it is off sits on this wrapper. */}
       <span title={format === "epub" ? undefined : "Spotlight works in EPUB books for now"} className="inline-flex">
@@ -153,6 +161,11 @@ export function BookHeader({
           <AudioLines />
         </IconButton>
       </span>
+      <Divider />
+      {/* The panes beside the book, in the order they open: the whiteboards, then the tutor. */}
+      <IconButton label={boardOpen ? "Close the whiteboards" : "Whiteboards: draw ideas and how they connect"} active={boardOpen} disabled={failed} onClick={onBoard}>
+        <Shapes />
+      </IconButton>
       <IconButton
         label={panelOpen ? "Hide the tutor panel (⌘\\)" : "Show the tutor panel (⌘\\)"}
         active={panelOpen}
@@ -165,6 +178,7 @@ export function BookHeader({
   );
 }
 
+/** A thin rule between groups of header controls. */
 /** The chapter being read, beside the title. Subscribes on its own, so only a new chapter re-renders it. */
 function ChapterLabel({ spot }: { spot: PlaceStore }) {
   const chapter = useChapter(spot);

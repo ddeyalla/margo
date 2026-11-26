@@ -7,6 +7,8 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { citedNumber } from "@/lib/shared/quotes";
+import { BOARD_FENCE } from "@/lib/shared/boards";
+import { AnswerBoard, BoardChanges, BoardChangesWriting } from "./BoardChanges";
 import { Diagram } from "./Diagram";
 import { CitationLink } from "./Quotes";
 import { settledStarts } from "./settled";
@@ -30,19 +32,27 @@ const preClass =
   "my-2 overflow-x-auto rounded-md bg-ink/70 px-3 py-2.5 font-mono text-code text-fog [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-fog";
 const StyledPre = styled("pre", preClass);
 
-/** The source of a ```mermaid block, which the highlighter leaves as one plain text node; null for any other block. */
-const mermaidSource = (node: Element | undefined): string | null => {
+/** The source of a fenced block in `language`, which the highlighter leaves as one plain text node; null for any other block. */
+const fenceSource = (node: Element | undefined, language: string): string | null => {
   const code = node?.children[0];
   if (code?.type !== "element" || code.tagName !== "code") return null;
   const classes = code.properties.className;
-  if (!Array.isArray(classes) || !classes.includes("language-mermaid")) return null;
+  if (!Array.isArray(classes) || !classes.includes(`language-${language}`)) return null;
   return code.children.map((child) => (child.type === "text" ? child.value : "")).join("").replace(/\n$/, "");
 };
 
-/* A code block, or a diagram once its fence has closed: while the part being written is still arriving it stays code. */
+/* A code block, or a diagram once its fence has closed: while the part being written is still arriving it stays
+   code. The tutor's board changes are never shown as their JSON: they are a card, writing while they arrive. */
 function Pre(props: JSX.IntrinsicElements["pre"] & ExtraProps) {
   const live = useContext(Live);
-  const source = live ? null : mermaidSource(props.node);
+  const changes = useContext(AnswerBoard);
+  if (fenceSource(props.node, BOARD_FENCE) !== null) {
+    if (live) return <BoardChangesWriting />;
+    /* Only the last fence is the answer's changes; an earlier one, superseded, shows as nothing rather than a second card. */
+    const at = props.node?.position?.start.offset;
+    return changes && at !== undefined && at !== changes.fenceAt ? null : <BoardChanges />;
+  }
+  const source = live ? null : fenceSource(props.node, "mermaid");
   return source === null ? <StyledPre {...props} /> : <Diagram source={source} codeClass={preClass} />;
 }
 
@@ -81,7 +91,7 @@ const components: Components = {
 /* Math only between double dollars, so prices in a reply ("$5 and $10") stay text. Code is highlighted only when its
    fence names a language; Mermaid is left for the diagram. */
 const remarkPlugins: Options["remarkPlugins"] = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
-const rehypePlugins: Options["rehypePlugins"] = [rehypeKatex, [rehypeHighlight, { detect: false, plainText: ["mermaid"] }]];
+const rehypePlugins: Options["rehypePlugins"] = [rehypeKatex, [rehypeHighlight, { detect: false, plainText: ["mermaid", BOARD_FENCE] }]];
 
 /* The blocks alone, with no wrapper, so a streaming answer's two parts sit in one box and keep its spacing rules. */
 const Blocks = memo(function Blocks({ text }: { text: string }) {

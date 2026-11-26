@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { normalizeBoard } from "@/lib/shared/boards";
 import { emptyBookState, tidyTitle, type BookId, type BookState, type PassageThread, type Position, type Thread } from "@/lib/shared/types";
 import { getConfig } from "./config";
 import { BOOK_ID_PATTERN } from "./library-index";
@@ -131,7 +132,11 @@ const normalize = (raw: Partial<StoredState> | null): BookState => {
   const state = { ...emptyBookState(), ...raw };
   delete state.cards;
   if (state.meta?.title) state.meta = { ...state.meta, title: tidyTitle(state.meta.title) };
-  return { ...state, threads: state.threads.map((thread) => ("kind" in thread ? thread : { ...thread, kind: "passage" })) };
+  return {
+    ...state,
+    threads: state.threads.map((thread) => ("kind" in thread ? thread : { ...thread, kind: "passage" })),
+    boards: state.boards.map(normalizeBoard),
+  };
 };
 
 /* Books read before the position had its own file keep it in the state file; that copy counts until the first position save. */

@@ -1,9 +1,13 @@
 "use client";
 
-import { useCallback, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type CSSProperties } from "react";
 import clsx from "clsx";
 import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { HighlightMenu } from "@/components/annotations/HighlightMenu";
+import { BoardPane } from "@/components/board/BoardPane";
+import { OpenAsBoard } from "@/components/board/WhiteboardSheet";
+import { answerChanges, BoardLinkContext, useCreateBoardLink } from "@/components/board/link";
+import { useBoards } from "@/components/board/useBoards";
 import type { NoteDraft } from "@/components/annotations/NotesTab";
 import { useAnnotations } from "@/components/annotations/useAnnotations";
 import { ReviewSheet } from "@/components/cards/ReviewSheet";
@@ -26,8 +30,9 @@ import { useResolvedTheme } from "@/components/ui/theme";
 import { patchBookState } from "@/lib/client/api";
 import { hasUnsentText } from "@/lib/client/unsent";
 import type { CourseContext } from "@/lib/shared/courses";
+import { boardChapter } from "@/lib/shared/boards";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
-import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext } from "@/lib/shared/types";
+import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext, type Thread } from "@/lib/shared/types";
 import { BookHeader, READ_ALOUD_SHORTCUT, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
 import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
@@ -47,9 +52,13 @@ import { useShortcuts, type Shortcut } from "./useShortcuts";
 import { useSpotlight } from "./useSpotlight";
 import { useFocusSession } from "./useFocusSession";
 import { useTutorActions } from "./useTutorActions";
-import { PANEL_ID, useTutorPanel } from "./useTutorPanel";
+import { BOARD_PANE_IDS, BOOK_PANE_ID, PANEL_ID, useTutorPanel, type BoardSide } from "./useTutorPanel";
 
 /** A sheet opened from a link leaves the link once closed, so a reload opens the book. */
+/* The bar between two panes, drawn only while it's hovered, focused or dragged. */
+const HANDLE =
+  "group relative z-10 w-2 shrink-0 outline-none before:absolute before:left-1/2 before:top-1/2 before:h-10 before:w-[3px] before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors before:duration-[var(--duration-fast)] before:content-[''] focus-visible:before:bg-fog data-[dragging]:before:bg-fog data-[hovering]:before:bg-line-strong";
+
 const dropParam = (name: string) => {
   const url = new URL(window.location.href);
   if (!url.searchParams.has(name)) return;
@@ -111,20 +120,37 @@ export function BookWorkspace({
     const response = await fetch(`/api/books/${book.id}/revision`, { cache: "no-store" });
     return response.ok ? ((await response.json()) as { revision: string }).revision : null;
   }, [book.id]);
-  const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId);
+
   const { providers, current: provider, choose: chooseProvider, models, chooseModel, unavailable } = useProviders(saved.provider, saved.models);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
   const cards = useCards(book.id, initialState.cardSets);
   const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, courses, spot, toc, provider });
+  /* The chapter being read, as a board made now is about: the Course's chapter when a Course reads this book. */
+  const boardContext = useStableCallback(() => {
+    const entry = spot.get()?.place?.chapter ?? null;
+    return toc && entry ? boardChapter(toc, toc.indexOf(entry), quizzes.chapters) : null;
+  });
+  const [toast, setToast] = useToast();
+  const boardError = useStableCallback((text: string) => setToast({ text, action: false }));
+  const boards = useBoards(book.id, initialState.boards, boardContext, boardError);
+  /* The chat and the open board reach each other here; an answer's changes to a board go on it as it finishes. */
+  const boardLink = useCreateBoardLink(book.id, boards.show);
+  const placeAnswer = useStableCallback((thread: Thread) => {
+    const changes = answerChanges(thread.id, thread.messages, thread.messages.length - 1);
+    if (changes && typeof changes.ops !== "string") boardLink.place(changes.key, changes.board, changes.ops);
+  });
+  const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId, placeAnswer);
   const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
+  /* What Draw it back folded away, the book and the tutor panel, to open again after. */
+  const beforeRecall = useRef({ panel: false, book: false });
   useActivity(book.id, quizChapter ? "quiz" : reviewing ? "review" : "reading", spot);
   /* The highlight the reader clicked, with the menu that offers its note and removal. */
   const [menu, setMenu] = useState<{ id: string; rect: SelectionRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
-  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note, mid-dictation or holding words typed but not sent. */
-  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText());
+  /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note, mid-dictation, holding words typed but not sent, or has a whiteboard open (its saves and checks change the revision too). */
+  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText() || boards.open !== null);
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
   const { notice, dismiss: dismissNotice, placeMoved, navigate } = useOpeningNotice({
     initialState,
@@ -147,7 +173,6 @@ export function BookWorkspace({
     setReadAloud((current) => (current ? null : { playing: true }));
   }, [book.format, error, dismissNotice]);
   const pauseReadAloud = useCallback(() => setReadAloud((current) => current && { playing: false }), []);
-  const [toast, setToast] = useToast();
   /* Passages quoted into the chat's composer, waiting for the reader's next message. */
   const [quoteDraft] = useState(createQuoteDraft);
 
@@ -259,6 +284,7 @@ export function BookWorkspace({
   useShortcuts({
     shortcuts,
     /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
+    /* A board keeps the page keys for the book beside it: keys pressed on the board itself never reach them. */
     plainKeysOff: reviewing || !!quizChapter,
     /* The highlight menu goes first and alone, so the same press doesn't also dismiss the greeting or the spotlight. */
     closeFirst: menu ? closeMenu : null,
@@ -310,6 +336,51 @@ export function BookWorkspace({
   const reply = useStableCallback((draft: MessageDraft) => provider && tutor.reply(draft, provider));
   const retry = useStableCallback(() => provider && tutor.retry(provider));
   /* The recall from a focus session goes to the tutor as the reader's own message, to be checked against the book. */
+  /* The board pane is open exactly while a board, or the list of them, is. */
+  const boardPaneShown = boards.open !== null;
+  /* Work waiting for a board to open is given up once another board, or none, is open instead. */
+  const openBoardId = boards.open?.id ?? null;
+  useEffect(() => boardLink.cancel(openBoardId), [boardLink, openBoardId]);
+  const placeBoardPane = useEffectEvent((shown: boolean) => (shown ? panel.showBoard() : panel.hideBoard()));
+  /* Again once the layout attaches: one saved with a board open has none in it now. */
+  useEffect(() => placeBoardPane(boardPaneShown), [boardPaneShown, panel.attached]);
+  /* Dragged shut, the pane closes its board, which saves it; the book is never folded away with nothing in its place. */
+  const layoutChanged = () => {
+    /* A board that couldn't save stays open: its pane comes back with it. */
+    if (boards.open && panel.isBoardClosed()) void boards.close().then((closed) => closed || panel.showBoard());
+    if (panel.layout.isCollapsed(BOOK_PANE_ID) && panel.isBoardClosed()) panel.showBook();
+    panel.sync();
+  };
+  const toggleBook = () => (panel.isBookOpen() ? panel.hideBook() : panel.showBook());
+
+  /* Draw it back closes the book, the chat included, and opens them again after. */
+  const recallBoard = (active: boolean) => {
+    if (active) {
+      beforeRecall.current = { panel: panel.isOpen(), book: panel.isBookOpen() };
+      panel.collapse();
+      panel.hideBook();
+    } else {
+      if (beforeRecall.current.panel) panel.expand();
+      if (beforeRecall.current.book) panel.showBook();
+    }
+  };
+
+  /* A chat diagram goes on the board it's for, as suggestions, or on a board of its own. */
+  const addDiagram = useStableCallback(async (source: string, boardId: string | null) => {
+    if (!boardId) {
+      await boards.fromDiagram(source);
+      return null;
+    }
+    return boardLink.addDiagram(boardId, source);
+  });
+  const diagramBoards = useMemo(() => ({ boards: boards.boards, add: addDiagram }), [boards.boards, addDiagram]);
+  /* Words from the board go into the chat's composer, with the board attached, for the reader to finish. */
+  const answerFromBoard = useStableCallback((text: string) => {
+    showTab("chat");
+    panel.expand();
+    boardLink.draft.set({ text });
+  });
+
   const askRecall = (text: string, minutes: number) => {
     showTab("chat");
     reply({
@@ -318,6 +389,49 @@ export function BookWorkspace({
       quotes: [],
     });
     focus.dismiss(true);
+  };
+
+  /* The board's slot on one side of the book, with the bar between it and the book. Only the board's side draws it. */
+  const boardSlot = (side: BoardSide) => {
+    const here = panel.boardSide === side && panel.boardOpen;
+    const handle = <ResizableHandle aria-label="Resize the whiteboard" disabled={!here} className={here ? HANDLE : HANDLE.replace("w-2", "w-0")} />;
+    const pane = (
+      <ResizablePanel id={BOARD_PANE_IDS[side]} defaultSize="0px" minSize="340px" collapsible className="min-w-0 overflow-hidden">
+        {/* Drawn only while open: a canvas in a closed pane has no size. */}
+        {boardPaneShown && here ? (
+          <div data-board-pane className={clsx("flex h-full min-w-0 flex-col overflow-hidden bg-page", !bare && "rounded-xl shadow-canvas")}>
+            <BoardLinkContext value={boardLink}>
+            <BoardPane
+              boards={boards}
+              bookId={book.id}
+              spot={spot}
+              context={boardContext}
+              provider={provider}
+              unavailable={unavailable}
+              theme={appTheme}
+              bookShown={panel.bookOpen}
+              side={side}
+              onToggleBook={toggleBook}
+              onSwap={panel.swapBoard}
+              onRecall={recallBoard}
+              onAnswer={answerFromBoard}
+            />
+            </BoardLinkContext>
+          </div>
+        ) : null}
+      </ResizablePanel>
+    );
+    return side === "left" ? (
+      <>
+        {pane}
+        {handle}
+      </>
+    ) : (
+      <>
+        {handle}
+        {pane}
+      </>
+    );
   };
 
   const readerProps: ReaderProps = {
@@ -369,6 +483,8 @@ export function BookWorkspace({
         onReadAloud={toggleReadAloud}
         focusing={focus.active}
         onFocus={focus.start}
+        boardOpen={boardPaneShown}
+        onBoard={() => (boards.open ? void boards.close() : boards.list())}
         panelId={PANEL_ID}
         panelOpen={panel.open}
         onTogglePanel={panel.toggle}
@@ -376,11 +492,12 @@ export function BookWorkspace({
       />
       <Resizable
         controller={panel.layout}
-        autoSaveId="rigg-learn.book-layout"
-        onLayoutChange={panel.sync}
+        autoSaveId="rigg-learn.book-layout.v3"
+        onLayoutChange={layoutChanged}
         className={clsx("min-h-0 flex-1", !bare && "px-2 pb-2")}
       >
-        <ResizablePanel id="reader-panel" minSize="360px" className="min-w-0">
+        {boardSlot("left")}
+        <ResizablePanel id={BOOK_PANE_ID} minSize="360px" collapsible className="min-w-0">
           <div ref={readerPaneRef} style={{ "--toc-width": `${TOC_WIDTH}px` } as CSSProperties} className="flex h-full min-w-0">
             {tocDocked && !error ? (
               <div
@@ -493,10 +610,8 @@ export function BookWorkspace({
             </main>
           </div>
         </ResizablePanel>
-        <ResizableHandle
-          aria-label="Resize the tutor panel"
-          className="group relative z-10 w-2 shrink-0 outline-none before:absolute before:left-1/2 before:top-1/2 before:h-10 before:w-[3px] before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors before:duration-[var(--duration-fast)] before:content-[''] focus-visible:before:bg-fog data-[dragging]:before:bg-fog data-[hovering]:before:bg-line-strong"
-        />
+        {boardSlot("right")}
+        <ResizableHandle aria-label="Resize the tutor panel" className={HANDLE} />
         <ResizablePanel
           id={PANEL_ID}
           defaultSize="380px"
@@ -505,29 +620,33 @@ export function BookWorkspace({
           collapsible
           className="min-w-0 overflow-hidden"
         >
-          <SidePanel
-            tab={tab}
-            onTabChange={chooseTab}
-            tutor={tutor}
-            unavailable={unavailable}
-            onJump={jumpTo}
-            onAsk={askAnywhere}
-            onSendParked={sendParked}
-            onReply={reply}
-            onRetry={retry}
-            annotations={annotations}
-            noteDraft={noteDraft}
-            noteFocus={noteFocus}
-            onNoteDraft={setNoteDraft}
-            onOpenNote={openNote}
-            quotes={quoteDraft}
-            onFindQuote={findQuote}
-            onQuote={quoteHighlight}
-            cards={cards}
-            onReview={startReview}
-            onRemakeCards={provider ? remakeCards : null}
-            panelOpen={panel.open}
-          />
+          <BoardLinkContext value={boardLink}>
+          <OpenAsBoard value={diagramBoards}>
+            <SidePanel
+              tab={tab}
+              onTabChange={chooseTab}
+              tutor={tutor}
+              unavailable={unavailable}
+              onJump={jumpTo}
+              onAsk={askAnywhere}
+              onSendParked={sendParked}
+              onReply={reply}
+              onRetry={retry}
+              annotations={annotations}
+              noteDraft={noteDraft}
+              noteFocus={noteFocus}
+              onNoteDraft={setNoteDraft}
+              onOpenNote={openNote}
+              quotes={quoteDraft}
+              onFindQuote={findQuote}
+              onQuote={quoteHighlight}
+              cards={cards}
+              onReview={startReview}
+              onRemakeCards={provider ? remakeCards : null}
+              panelOpen={panel.open}
+            />
+          </OpenAsBoard>
+          </BoardLinkContext>
         </ResizablePanel>
       </Resizable>
       <SelectionToolbar

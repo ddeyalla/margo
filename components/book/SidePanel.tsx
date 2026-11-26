@@ -24,7 +24,7 @@ const TABS: { value: PanelTab; label: string }[] = [
   { value: "cards", label: "Cards" },
 ];
 
-/** The right panel: the tutor chat, and the book's notes, highlights and cards. Memoised, so it skips the workspace's renders that change nothing here. */
+/** The right panel: the tutor chat, and the book's notes, highlights, and cards. Memoised, so it skips the workspace's renders that change nothing here. */
 export const SidePanel = memo(function SidePanel({
   tab,
   onTabChange,
