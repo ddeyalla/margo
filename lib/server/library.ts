@@ -15,7 +15,7 @@ import {
   type LibraryIndex,
   type StoredIndex,
 } from "./library-index";
-import { holdSaved, prettyJson, savedBookIds, serialized, writeFileAtomic } from "./store";
+import { holdSaved, prettyJson, savedBookIds, serializedFile, writeFileAtomic } from "./store";
 
 export { bookIdOf, isBookId } from "./library-index";
 
@@ -192,7 +192,7 @@ const updateIndex = <T>(
 ): Promise<T> => {
   const file = indexFile(dataDir);
   const key = scanKey(root, dataDir);
-  return serialized(file, async () => {
+  return serializedFile(file, async () => {
     const { index, changed, value, rescan, settle } = await change(await readIndex(file));
     let committed = false;
     try {
@@ -302,7 +302,7 @@ export const backfillHashes = (
   };
   /* The run ends inside the queue, so a scan that adds an unhashed book after this look starts a new run. */
   const look = () =>
-    serialized(file, async () => {
+    serializedFile(file, async () => {
       const work = hashWork(await readIndex(file), failed);
       if (work.length === 0) finish();
       return work;
@@ -351,7 +351,7 @@ export const backfillHashes = (
           }
         }
         if (batch.length > 0) await save(batch);
-        if (stale) return await serialized(file, async () => finish());
+        if (stale) return await serializedFile(file, async () => finish());
       }
     } catch (error) {
       console.warn("Stopped hashing library books:", error);

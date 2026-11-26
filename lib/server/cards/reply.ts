@@ -25,7 +25,11 @@ export const parseCardReply = (text: string): CardReply | string => {
     return `The JSON did not parse: ${error instanceof Error ? error.message : "unknown error"}.`;
   }
   if (!value || typeof value !== "object") return "The reply was not a JSON object.";
-  const { fact, reason, cards } = value as Record<string, unknown>;
+  return parseCardFields(value as Record<string, unknown>);
+};
+
+/** Checks a fact and its cards, whoever wrote them: the tutor's reply, or an agent's proposal. */
+export const parseCardFields = ({ fact, reason, cards }: Record<string, unknown>): CardReply | string => {
   if (fact === null) return { fact: null, reason: field(reason) ?? "The passage holds no fact worth a card." };
   const statement = field(fact);
   if (!statement) return '"fact" must be a sentence, or null.';

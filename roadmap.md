@@ -748,6 +748,46 @@ Moved out of Phase 12: the audit's done-when needed none of it, and it's a featu
       components. Their `docs/themes.md` is the reference; the code is AGPL, so this is a
       format to copy, not source.
 
+## Phase 26 — Tools for outside agents · L
+
+The app is the reader, the tools and the record. Claude Code and Codex are the agent: the app
+builds no agent loop of its own. Every capability becomes a typed tool an outside agent calls,
+and anything that would change the reader's content arrives as a suggestion they accept, the way
+whiteboard edits do. This phase is the foundation; playbooks and scheduled runs build on it.
+
+- [x] **One tool registry** in `lib/server/tools/`: a name, a description, input fields and a
+      typed function per tool. The fields are checked at this boundary, and they are also the
+      schema an agent reads, so the two can't drift.
+      *Read: library, book text by chapter or place, search, highlights and notes, tutor
+      threads, review queue, Today, Courses, boards. Write: park a question, log learning time.
+      The activity and parked-question routes call the same functions.*
+- [x] **Writes are safe across processes.** An agent's server is a second process, and the
+      store's queue only ordered writes inside one.
+      *A lock file beside each data file, held from read to write, with the queue kept in front
+      of it. A lock whose owner died is taken over. `tests/file-lock.test.ts` runs three
+      writers in separate processes and loses none of 120 updates; without the lock it kept 41.*
+- [x] **A log of every tool call**, append-only, in `data/tool-log.jsonl`: time, tool, caller,
+      a short form of the arguments, outcome.
+- [x] **An MCP server on stdio** (`npm run mcp`) that runs with the app closed, and
+      `npm run mcp:setup` to register it with Claude Code and Codex.
+      *Hand-written, about a hundred lines: the server needs four methods, and the protocol's
+      SDK would bring a schema library and an HTTP stack with it.*
+- [x] **Suggestions inbox.** A proposed change has a kind, a target, a payload, a proposer, a
+      time and a status. One kind is wired end to end: a review card for a passage, shown on
+      Today with Add and Reject, stored on accept through the code the Cards button uses.
+      *Whiteboard suggestions stay on the board; the model has room for them as a second kind.*
+- [ ] Move whiteboard suggestions into the inbox, so one place shows everything waiting.
+- [ ] More kinds: a note, a highlight, a quiz question, a Course change.
+- [ ] A relinked or forgotten book refuses a waiting write only inside one process. Make the
+      agent's server see it too.
+- [ ] Ship the server inside the Mac app, so it needs no checkout of this repo.
+
+No web search or fetch tool: the agents have their own. No tool that asks a model.
+
+Done when the type check and tests pass, a real `claude -p` and a real `codex exec` each list
+the tools and answer a question that needs search and the review queue with the app closed, and
+a card proposed through the server shows on Today and is created on accept.
+
 ## Open: where the books come from
 
 To discuss before building. The roadmap names the books; getting them is a separate

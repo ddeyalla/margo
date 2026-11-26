@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { cardRequest, generateCards } from "@/lib/server/cards/generate";
+import { storeCards } from "@/lib/server/cards/store";
 import { getConfig } from "@/lib/server/config";
 import { readSettings } from "@/lib/server/settings";
 import { readBookState, updateBookState } from "@/lib/server/store";
@@ -7,7 +7,7 @@ import { PROVIDERS, isProviderId, modelFor } from "@/lib/server/tutor/providers"
 import { isObject, MAX_QUOTE, parseAnchor, shortText } from "@/lib/server/validate";
 import { mirrorVault } from "@/lib/server/vault";
 import { readBody, withBook } from "@/lib/server/with-book";
-import { addCards, changeCards, type CardChange } from "@/lib/shared/cards";
+import { changeCards, type CardChange } from "@/lib/shared/cards";
 import { sameAnchor } from "@/lib/shared/annotations";
 import { trimAfter, trimBefore } from "@/lib/shared/context";
 import { cleanStance, isConfidence } from "@/lib/shared/confidence";
@@ -56,15 +56,10 @@ export const POST = withBook(async ({ book, request }) => {
   }
 
   if (reply.fact === null) return Response.json({ cardSets: state.cardSets, added: 0, reason: reply.reason });
-  let added = 0;
-  const saved = await updateBookState(book.id, (current) => {
-    const result = addCards(current.cardSets, { anchor, ...source, fact: reply.fact, cards: reply.cards }, new Date(), randomUUID);
-    added = result.count;
-    return { ...current, cardSets: result.sets };
-  });
-  if (added) await mirrorVault(book, ...dirs());
+  const [dataDir, notesDir] = dirs();
+  const { cardSets, added } = await storeCards(book, { anchor, ...source, fact: reply.fact, cards: reply.cards }, { dataDir, notesDir });
   return Response.json({
-    cardSets: saved.cardSets,
+    cardSets,
     added,
     reason: added ? null : "The tutor found nothing new to ask beyond the cards you already have.",
   });
