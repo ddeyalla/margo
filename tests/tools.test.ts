@@ -167,6 +167,8 @@ describe("the two direct writes", () => {
     const days = Object.values((await readActivity()).days);
     expect(days).toEqual([{ [bookId]: { review: 120 } }]);
     expect(await refusal("log_activity", { bookId, kind: "napping", seconds: 5 })).toContain("one of: reading, review, quiz");
+    expect(await refusal("log_activity", { bookId: "f".repeat(40), kind: "quiz", seconds: 5 })).toContain("Call list_library");
+    expect(Object.values((await readActivity()).days)).toEqual(days);
   });
 });
 
@@ -231,6 +233,15 @@ describe("suggestions", () => {
     expect(await decideSuggestion(suggestionId, "reject")).toMatchObject({ status: "rejected" });
     expect((await readBookState(bookId)).cardSets).toEqual(before);
     expect((await listSuggestions("rejected")).map((entry) => entry.id)).toEqual([suggestionId]);
+  });
+
+  it("take one decision when accept and reject arrive together", async () => {
+    const before = (await readBookState(bookId)).cardSets.flatMap((set) => set.cues).length;
+    const { suggestionId } = await call<{ suggestionId: string }>("propose_card", { ...proposal(await craterAnchor()), fact: "A raced fact.", cards: [{ question: "Which decision wins a race?", answer: "The first." }] });
+    const outcomes = await Promise.allSettled([decideSuggestion(suggestionId, "accept"), decideSuggestion(suggestionId, "reject")]);
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(["fulfilled", "rejected"]);
+    expect((await listSuggestions()).find((entry) => entry.id === suggestionId)).toMatchObject({ status: "accepted" });
+    expect((await readBookState(bookId)).cardSets.flatMap((set) => set.cues)).toHaveLength(before + 1);
   });
 
   it("are refused when they aren't a card for a passage of that book", async () => {

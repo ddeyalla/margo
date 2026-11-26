@@ -11,6 +11,10 @@ import path from "node:path";
  * A process that dies holding a lock leaves the file behind. It is taken over when its owner is no longer
  * running, or when nothing has touched it for STALE_MS: a live owner touches its lock every BEAT_MS, so one
  * that stays untouched means a dead owner whose process id went to something else.
+ *
+ * What is not covered: a process that dies in the few file calls of a takeover leaves its guard behind, and two
+ * waiters clearing that guard at the same instant could both take the lock. It takes a crash and a three-way
+ * race inside milliseconds; Node has no lock the system itself releases, which is what would close it.
  */
 
 const BEAT_MS = 2_000;
@@ -124,8 +128,13 @@ const acquire = async (lock: string): Promise<() => Promise<void>> => {
   beat.unref();
   return async () => {
     clearInterval(beat);
-    /* Only our own lock is removed: one that was taken over as stale now belongs to someone else. */
-    if ((await look(lock))?.token === token) await rm(lock, { force: true });
+    /* Only our own lock is removed: one that was taken over as stale now belongs to someone else. A lock that
+       can't be looked at is left for the takeover, so a failed release never hides what the task returned. */
+    const ours = await look(lock).then(
+      (held) => held?.token === token,
+      () => false,
+    );
+    if (ours) await rm(lock, { force: true }).catch(() => undefined);
   };
 };
 

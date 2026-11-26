@@ -122,4 +122,6 @@ export const serve = async (input: Readable, output: Writable): Promise<void> =>
     if (method === "initialize") await task;
   }
   await Promise.all(running);
+  /* Writes to a pipe can still be on their way; a caller that exits next would cut the last answers off. */
+  await new Promise<void>((flushed) => output.write("", () => flushed()));
 };

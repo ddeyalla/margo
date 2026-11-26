@@ -38,8 +38,9 @@ export const serializedFile = <T>(file: string, task: () => Promise<T>): Promise
 const holding =
   (run: typeof serialized) =>
   (key: string): Promise<() => void> =>
-    new Promise((acquired) => {
-      void run(key, () => new Promise<void>((release) => acquired(release)));
+    new Promise((acquired, failed) => {
+      /* A hold that can't be taken, such as a lock file that can't be made, fails here; once taken, it ends only by its release. */
+      run(key, () => new Promise<void>((release) => acquired(release))).catch(failed);
     });
 
 /** Waits until no one else in this process holds `key`, then holds it until the returned release is called. */

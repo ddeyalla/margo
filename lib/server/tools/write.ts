@@ -1,7 +1,6 @@
 import { ACTIVITY_KINDS, MAX_REPORT_SECONDS, reportSeconds } from "@/lib/shared/mastery";
 import type { LibraryBook, PassageThread } from "@/lib/shared/types";
 import { recordActivity } from "../activity";
-import { isBookId } from "../library";
 import { parkThread, saveParked } from "../parked";
 import { ToolError } from "./schema";
 import { BOOK_ID, defineTool, requireBook } from "./tool";
@@ -63,12 +62,13 @@ export const logActivity = defineTool({
   input: {
     bookId: BOOK_ID,
     kind: { type: "string", max: 20, oneOf: ACTIVITY_KINDS, description: "What the time was spent on." },
-    seconds: { type: "number", min: 0, max: 86_400, description: "How long, in seconds." },
+    seconds: { type: "number", min: 0, max: 1_000_000_000, description: "How long, in seconds." },
   },
   run: async ({ bookId, kind, seconds }, { now }) => {
     const counted = reportSeconds(seconds);
-    if (!isBookId(bookId) || counted === null) throw new ToolError("Expected { bookId, kind, seconds }.");
-    await recordActivity(bookId, kind, counted, now);
+    if (counted === null) throw new ToolError('"seconds" must be more than zero.');
+    /* Only a book in the library gathers time, so an agent can't add minutes under an id that names nothing. */
+    await recordActivity((await requireBook(bookId)).book.id, kind, counted, now);
     return { recorded: counted };
   },
 });

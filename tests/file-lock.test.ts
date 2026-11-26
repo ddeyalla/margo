@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { withFileLock } from "@/lib/server/file-lock";
-import { readBookState, updateBookState, updateJson } from "@/lib/server/store";
+import { holdSaved, readBookState, updateBookState, updateJson } from "@/lib/server/store";
 import type { BookId } from "@/lib/shared/types";
 
 const id = "e".repeat(40) as BookId;
@@ -53,6 +53,17 @@ describe("writes from separate processes", () => {
     expect(JSON.parse(await readFile(counter, "utf8"))).toEqual({ n: each * 3 });
     expect((await readdir(dir)).filter((name) => name.endsWith(".lock") || name.endsWith(".tmp") || name.endsWith(".takeover"))).toEqual([]);
   }, 30_000);
+});
+
+describe("a lock that can't be taken", () => {
+  it("fails the write and the hold, and leaves nothing waiting", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-lock-"));
+    /* A file where the folder should be: no lock file can be made inside it. */
+    const blocked = path.join(dir, "not-a-folder");
+    await writeFile(blocked, "");
+    await expect(updateJson(path.join(blocked, "data.json"), () => ({}), (current) => current)).rejects.toThrow();
+    await expect(holdSaved([id], blocked)).rejects.toThrow();
+  });
 });
 
 describe("a lock left behind", () => {
