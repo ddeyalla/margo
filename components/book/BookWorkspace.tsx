@@ -34,6 +34,7 @@ import { hasUnsentText } from "@/lib/client/unsent";
 import type { CourseContext } from "@/lib/shared/courses";
 import { boardChapter } from "@/lib/shared/boards";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
+import type { Retest } from "@/lib/shared/sitting";
 import { isStudy } from "@/lib/shared/study";
 import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type PassageThread, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext, type Thread } from "@/lib/shared/types";
 import { BookHeader, READ_ALOUD_SHORTCUT, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
@@ -127,7 +128,7 @@ export function BookWorkspace({
   const { providers, current: provider, choose: chooseProvider, models, chooseModel, unavailable } = useProviders(saved.provider, saved.models);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
   const cards = useCards(book.id, initialState.cardSets);
-  const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, courses, spot, toc, provider });
+  const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, initialSkips: initialState.quizSkips, courses, spot, toc, provider });
   /* The chapter being read, as a board made now is about: the Course's chapter when a Course reads this book. */
   const boardContext = useStableCallback(() => {
     const entry = spot.get()?.place?.chapter ?? null;
@@ -147,6 +148,8 @@ export function BookWorkspace({
   const study = useStudy(book.id, tutor, provider);
   const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
+  /* Set when the quiz sheet is open on a retest of a test's misses, not on the chapter's test. */
+  const [quizRetest, setQuizRetest] = useState<Retest | null>(null);
   /* What Draw it back folded away, the book and the tutor panel, to open again after. */
   const beforeRecall = useRef({ panel: false, book: false });
   useActivity(book.id, quizChapter ? "quiz" : reviewing ? "review" : "reading", spot);
@@ -338,6 +341,7 @@ export function BookWorkspace({
   const jumpTo = useCallback((anchor: Anchor) => navigate((reader) => reader.goTo(anchor)), [navigate]);
   const closeQuiz = useCallback(() => {
     setQuizChapter(null);
+    setQuizRetest(null);
     dropParam("quiz");
   }, []);
   const closeReview = useCallback(() => {
@@ -620,16 +624,19 @@ export function BookWorkspace({
                 />
               ) : null}
               {reviewing ? <ReviewSheet cards={cards} onClose={closeReview} onJump={jumpTo} /> : null}
-              {quizzes.active && !reviewing && !quizChapter && !spotlight && !noticeExit.shown ? (
+              {!reviewing && !quizChapter && !study.shown && !spotlight && !noticeExit.shown ? (
                 <QuizNotice
                   quizzes={quizzes}
-                  onTake={(chapter) => {
+                  onTake={(chapter, retest) => {
                     quizzes.dismissFinished();
+                    setQuizRetest(retest ?? null);
                     setQuizChapter(chapter);
                   }}
                 />
               ) : null}
-              {quizChapter && !reviewing ? <QuizSheet quizzes={quizzes} chapter={quizChapter} onClose={closeQuiz} onJump={jumpTo} /> : null}
+              {quizChapter && !reviewing ? (
+                <QuizSheet quizzes={quizzes} chapter={quizChapter} retest={quizRetest} toc={toc} provider={provider} unavailable={unavailable} onClose={closeQuiz} onJump={jumpTo} />
+              ) : null}
               {study.shown ? <GoDeeperSheet bookId={book.id} study={study} tutor={tutor} provider={provider} unavailable={unavailable} onJump={jumpTo} /> : null}
               {!tocDocked && !error ? (
                 <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter && !study.shown} docked={false} onSelect={openEntry} onClose={closeToc} />

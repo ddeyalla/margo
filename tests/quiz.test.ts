@@ -3,57 +3,20 @@ import { chapterBlocks, fitBlocks, quizRequest } from "@/lib/server/quiz/generat
 import {
   chapterOf,
   chapterSpan,
-  isPassed,
   leftChapter,
   parseQuizReply,
   passMark,
-  scoreAttempt,
   stepKey,
   stepStates,
-  type ChapterQuiz,
-  type QuizAnswer,
 } from "@/lib/shared/quiz";
 import type { Anchor, BookId } from "@/lib/shared/types";
 
 const anchor = { kind: "epub", cfi: "epubcfi(/6/2!/4/2)" } as unknown as Anchor;
 
-const quiz = (count: number): ChapterQuiz => ({
-  chapter: "One",
-  questions: Array.from({ length: count }, (_, i) => ({ id: `q${i}`, kind: i ? "recall" : "why", question: `Q${i}?`, answer: `A${i}`, anchor, quote: "…" })),
-  createdAt: "2026-11-25T00:00:00.000Z",
-  attempts: [],
-});
-
-const answers = (count: number, right: number): QuizAnswer[] =>
-  Array.from({ length: count }, (_, i) => ({ questionId: `q${i}`, correct: i < right, confidence: null, thinking: null }));
-
 describe("passMark", () => {
   it("asks for 80 % rounded up", () => {
     expect([5, 6, 7, 8].map(passMark)).toEqual([4, 5, 6, 7]);
     expect(passMark(10)).toBe(8);
-  });
-});
-
-describe("scoreAttempt", () => {
-  const at = new Date("2026-11-25T10:00:00Z");
-  it("passes at the mark and not below", () => {
-    expect(scoreAttempt(quiz(5), answers(5, 4), at).passed).toBe(true);
-    expect(scoreAttempt(quiz(5), answers(5, 3), at).passed).toBe(false);
-  });
-  it("needs every question answered", () => {
-    expect(scoreAttempt(quiz(5), answers(4, 4), at).passed).toBe(false);
-  });
-  it("drops unknown and repeated answers", () => {
-    const given = [...answers(5, 5), { questionId: "q0", correct: true, confidence: null, thinking: null }, { questionId: "nope", correct: true, confidence: null, thinking: null }];
-    const attempt = scoreAttempt(quiz(5), given, at);
-    expect(attempt.answers).toHaveLength(5);
-    expect(attempt.at).toBe(at.toISOString());
-  });
-  it("counts one passed attempt as passed for good", () => {
-    const q = quiz(5);
-    q.attempts = [scoreAttempt(q, answers(5, 5), at), scoreAttempt(q, answers(5, 0), at)];
-    expect(isPassed(q)).toBe(true);
-    expect(isPassed(undefined)).toBe(false);
   });
 });
 

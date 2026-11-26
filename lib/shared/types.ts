@@ -1,5 +1,5 @@
 import type { Board, BoardMention } from "./boards";
-import type { ChapterQuiz } from "./quiz";
+import type { ChapterQuiz, QuizSkip } from "./quiz";
 import type { Study } from "./study";
 
 export type BookFormat = "epub" | "pdf";
@@ -312,8 +312,10 @@ export interface BookState {
   highlights: Highlight[];
   notes: Note[];
   cardSets: CardSet[];
-  /** Chapter quizzes of the book's chapters in a Course, each with every attempt. */
+  /** The quizzes written for the book's chapters, each with every attempt. */
   quizzes: ChapterQuiz[];
+  /** Test and retest notices the reader passed over, so they are not shown again. */
+  quizSkips: QuizSkip[];
   /** The book's whiteboards: each one's title, where its file is, and a chapter board's draw-it-back attempts. */
   boards: Board[];
   /** When the reader last moved through the book, an ISO time, or null if never or saved before this was kept. */
@@ -329,6 +331,7 @@ export const emptyBookState = (): BookState => ({
   notes: [],
   cardSets: [],
   quizzes: [],
+  quizSkips: [],
   boards: [],
   lastReadAt: null,
 });
