@@ -11,8 +11,10 @@ import {
   type SuggestionsFile,
 } from "@/lib/shared/suggestions";
 import type { LibraryBook } from "@/lib/shared/types";
+import { verifyCards } from "./cards/generate";
 import { parseCardFields } from "./cards/reply";
 import { storeCards } from "./cards/store";
+import type { Checker } from "./check/provider";
 import { getConfig } from "./config";
 import { findBook, recentLibrary } from "./library";
 import { readBookState, readJson, serializedFile, updateJson } from "./store";
@@ -36,25 +38,40 @@ export const listSuggestions = async (status?: SuggestionStatus, dataDir = getCo
 
 /**
  * Adds a proposed review card for a passage of `book` to the inbox. `body` is
- * `{ anchor, quote, chapterTitle?, fact, cards: [{ question, answer }] }`. Nothing reaches the book until the
- * reader accepts it. Throws `ToolError` for a proposal that can't be kept as sent.
+ * `{ anchor, quote, chapterTitle?, fact, cards: [{ question, answer }] }`. Throws `ToolError` for a proposal that
+ * can't be kept as sent.
+ *
+ * Every card is checked against the quote here, when it is proposed, so the agent waits on the model and the
+ * reader never does: what they see is already checked, and Add stays instant. Cards that fail are kept on the
+ * suggestion as left out, with why. When none pass, the suggestion is stored as "failed" and never waits in the
+ * inbox. Nothing reaches the book until the reader accepts.
  */
-export const proposeCard = async (book: LibraryBook, body: Record<string, unknown>, proposer: string, now = new Date(), dataDir = getConfig().dataDir): Promise<CardSuggestion> => {
+export const proposeCard = async (
+  book: LibraryBook,
+  body: Record<string, unknown>,
+  proposer: string,
+  checker: Checker,
+  now = new Date(),
+  dataDir = getConfig().dataDir,
+): Promise<CardSuggestion> => {
   const anchor = parseAnchor(body.anchor, book.format);
   const quote = shortText(body.quote, MAX_QUOTE);
   if (!anchor || !quote) throw new ToolError(`The passage needs its "quote" and an "anchor" of the kind "${book.format}", copied from search_library or get_book_text.`);
   const checked = parseCardFields({ fact: body.fact, cards: body.cards });
   if (typeof checked === "string") throw new ToolError(checked);
   if (checked.fact === null) throw new ToolError('A card needs its "fact" and one to three "cards".');
+  const chapterTitle = shortText(body.chapterTitle, 500);
+  const { kept, dropped } = await verifyCards(checker, { quote, before: "", after: "", chapterTitle }, checked.cards, new AbortController().signal, now);
+  const failed = dropped.map(({ question, reason }) => ({ question, answer: checked.cards.find((card) => card.question === question)?.answer ?? "", reason }));
   const suggestion: CardSuggestion = {
     id: randomUUID(),
     kind: "card",
     target: { bookId: book.id, anchor },
-    payload: { quote, chapterTitle: shortText(body.chapterTitle, 500), fact: checked.fact, cards: checked.cards },
+    payload: { quote, chapterTitle, fact: checked.fact, cards: kept, ...(failed.length ? { failed } : {}) },
     proposer,
     createdAt: now.toISOString(),
-    status: "pending",
-    decidedAt: null,
+    status: kept.length ? "pending" : "failed",
+    decidedAt: kept.length ? null : now.toISOString(),
   };
   let full = false;
   await updateSuggestions((current) => {
@@ -77,7 +94,11 @@ const apply = async (suggestion: Suggestion, now: Date, dataDir: string, notesDi
     case "card": {
       const found = await findBook(suggestion.target.bookId, undefined, dataDir);
       if (!found) throw new SuggestionError("That book is no longer in the library, so the card has nowhere to go. Reject it instead.");
-      await storeCards(found.book, { anchor: suggestion.target.anchor, ...suggestion.payload }, { dataDir, notesDir }, now);
+      /* Only checked cards are stored. A suggestion from before proposals were checked has none. */
+      const { quote, chapterTitle, fact } = suggestion.payload;
+      const cards = suggestion.payload.cards.filter((card) => card.verifiedAt);
+      if (!cards.length) throw new SuggestionError("These cards were proposed before cards were checked against the book, so they can't be added. Reject it, and have the agent propose it again.");
+      await storeCards(found.book, { anchor: suggestion.target.anchor, quote, chapterTitle, fact, cards }, { dataDir, notesDir }, now);
     }
   }
 };

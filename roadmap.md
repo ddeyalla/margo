@@ -846,9 +846,11 @@ and free-text answers can be graded by a call that is not the tutor.
       *Haiku 16/16 on checking and 21/24 then 23/24 on grading; Sonnet 16/16 and 22/24; no
       confident right-for-wrong on either. About $0.0003 a check on Haiku against $0.004 on
       Sonnet at list price, and 6 to 7 s. Every miss is in `scripts/check-eval/README.md`.*
-- [ ] Check cards an agent proposes. `propose_card` stores what it is given, so those cards
-      have no `verifiedAt`; the server's instructions tell the agent to call `verify_item`
-      first, and nothing enforces it.
+- [x] **Cards an agent proposes are checked when they are proposed**, against the quote the
+      agent gave. The agent waits on the model; the reader's Add stays instant.
+      *Cards that fail are left out and shown on the suggestion with why. When none pass,
+      the suggestion is stored as "failed", the agent is told, and the reader isn't asked. A
+      suggestion from before this has no checked cards and can only be rejected.*
 - [ ] A reader-facing use of the grade, with the one-tap overrule. Nothing in the app calls
       `gradeAnswer` yet, and nothing stores a grade.
 - [ ] Score Codex once its account can run. It keeps its default model, unscored.
