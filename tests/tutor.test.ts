@@ -232,7 +232,8 @@ describe("tutor turns", () => {
     expect(first).toContain("<before>\nWords before.\n</before>");
     expect(first).toContain("<selection>\nThe selected words.\n</selection>");
     expect(first).toContain("<after>\nWords after.\n</after>");
-    expect(first.endsWith("My question: What does this mean?")).toBe(true);
+    expect(first).toContain("My question: What does this mean?");
+    expect(first.indexOf("</after>")).toBeLessThan(first.indexOf("My question:"));
   });
 
   it("asks the reader to try first on Go deeper, with a way out", () => {

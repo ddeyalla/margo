@@ -23,6 +23,8 @@ import { EpubReader } from "@/components/reader/EpubReader";
 import { PdfReader } from "@/components/reader/PdfReader";
 import { SelectionToolbar, type SelectionToolbarHandle } from "@/components/reader/SelectionToolbar";
 import { useBookSearch } from "@/components/search/useBookSearch";
+import { GoDeeperSheet } from "@/components/study/GoDeeperSheet";
+import { useStudy } from "@/components/study/useStudy";
 import type { OpenFailure } from "@/components/reader/errors";
 import type { ReaderHandle, ReaderMeta, ReaderProps, SelectionRect, TocEntry } from "@/components/reader/types";
 import { createStore, useStableCallback } from "@/components/ui/store";
@@ -32,7 +34,8 @@ import { hasUnsentText } from "@/lib/client/unsent";
 import type { CourseContext } from "@/lib/shared/courses";
 import { boardChapter } from "@/lib/shared/boards";
 import { MAX_QUOTES_PER_MESSAGE } from "@/lib/shared/quotes";
-import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext, type Thread } from "@/lib/shared/types";
+import { isStudy } from "@/lib/shared/study";
+import { tidyTitle, type Anchor, type BookFormat, type BookId, type BookState, type CardSet, type Highlight, type PanelTab, type PassageThread, type QuotedPassage, type ReadingFont, type ReadingTheme, type SelectionContext, type Thread } from "@/lib/shared/types";
 import { BookHeader, READ_ALOUD_SHORTCUT, SPOTLIGHT_SHORTCUT, TOC_SHORTCUT } from "./BookHeader";
 import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
@@ -140,6 +143,8 @@ export function BookWorkspace({
     if (changes && typeof changes.ops !== "string") boardLink.place(changes.key, changes.board, changes.ops);
   });
   const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId, placeAnswer);
+  /* The reader's turn on a passage, in a sheet over the book. */
+  const study = useStudy(book.id, tutor, provider);
   const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
   /* What Draw it back folded away, the book and the tutor panel, to open again after. */
@@ -150,7 +155,7 @@ export function BookWorkspace({
   const closeMenu = useCallback(() => setMenu(null), []);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
   /* The same book open in another window: show its changes when this one comes back, unless this one is mid-answer, mid-note, mid-dictation, holding words typed but not sent, or has a whiteboard open (its saves and checks change the revision too). */
-  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText() || boards.open !== null);
+  useRefreshOnReturn(readRevision, flushPosition, () => tutor.sending || cards.jobs.length > 0 || noteDraft !== null || dictationBusy() || hasUnsentText() || boards.open !== null || study.shown);
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
   const { notice, dismiss: dismissNotice, placeMoved, navigate } = useOpeningNotice({
     initialState,
@@ -161,7 +166,7 @@ export function BookWorkspace({
   });
   const search = useBookSearch(book, navigate);
   const { on: spotlight, end: endSpotlight, toggle: toggleSpotlight } = useSpotlight(panel, book.format === "epub" && !error, dismissNotice);
-  const focus = useFocusSession(book.id, title, panel);
+  const focus = useFocusSession(book.id, panel);
   /* The spotlight and a focus session both clear the chrome away; only the spotlight dims the page. */
   const bare = spotlight || focus.active;
   const noticeExit = useNoticeExit(notice, bare || reviewing);
@@ -223,6 +228,33 @@ export function BookWorkspace({
     setReviewing(true);
   }, [dismissNotice]);
 
+  /* Go deeper hides the passage, so the chat beside it, which may show that passage and the tutor's answer, folds
+     away while the sheet is open and comes back after, as it does for Draw it back. */
+  const beforeStudy = useRef(false);
+  const foldForStudy = useEffectEvent((shown: boolean) => {
+    if (shown) {
+      beforeStudy.current = panel.isOpen();
+      panel.collapse();
+    } else if (beforeStudy.current) {
+      beforeStudy.current = false;
+      panel.expand();
+    }
+  });
+  useEffect(() => foldForStudy(study.shown), [study.shown]);
+
+  const goDeeper = (selection: SelectionContext) => {
+    if (!provider || tutor.sending) return;
+    readerRef.current?.clearSelection();
+    dismissNotice();
+    study.open(selection);
+  };
+
+  /* From the chat: a Go deeper thread opens where it was left; an Ask thread opens the turn its answer offered. */
+  const deeperFromChat = useStableCallback((thread: PassageThread) => {
+    if (isStudy(thread)) study.resume(thread.id);
+    else study.openFrom(thread.id);
+  });
+
   const highlight = (selection: SelectionContext) => {
     readerRef.current?.clearSelection();
     annotations.highlight(selection);
@@ -283,9 +315,9 @@ export function BookWorkspace({
   ];
   useShortcuts({
     shortcuts,
-    /* The review sheet has its own keys: Space, 1 to 4 and Esc. */
+    /* The review sheet has its own keys: Space, 1 to 4 and Esc. So does Go deeper: Enter and Esc. */
     /* A board keeps the page keys for the book beside it: keys pressed on the board itself never reach them. */
-    plainKeysOff: reviewing || !!quizChapter,
+    plainKeysOff: reviewing || !!quizChapter || study.shown,
     /* The highlight menu goes first and alone, so the same press doesn't also dismiss the greeting or the spotlight. */
     closeFirst: menu ? closeMenu : null,
     /* Esc takes one thing away at a time: the selection, then the greeting, then the spotlight. */
@@ -335,7 +367,6 @@ export function BookWorkspace({
   const seek = useCallback((fraction: number) => navigate((reader) => reader.seek(fraction)), [navigate]);
   const reply = useStableCallback((draft: MessageDraft) => provider && tutor.reply(draft, provider));
   const retry = useStableCallback(() => provider && tutor.retry(provider));
-  /* The recall from a focus session goes to the tutor as the reader's own message, to be checked against the book. */
   /* The board pane is open exactly while a board, or the list of them, is. */
   const boardPaneShown = boards.open !== null;
   /* Work waiting for a board to open is given up once another board, or none, is open instead. */
@@ -381,9 +412,11 @@ export function BookWorkspace({
     boardLink.draft.set({ text });
   });
 
+  /* The recall from a focus session is a question of its own, placed where the reader stopped. It never joins the
+     thread that happens to be open, and it is sent when none is. */
   const askRecall = (text: string, minutes: number) => {
     showTab("chat");
-    reply({
+    askAnywhere({
       text: `I just finished a ${minutes}-minute reading session. From memory, the ideas worth keeping:\n\n${text}\n\nDid I get them right? Correct anything I misremembered and tell me what I missed.`,
       attachments: [],
       quotes: [],
@@ -556,14 +589,7 @@ export function BookWorkspace({
                 </>
               )}
               {spotlight ? <SpotlightExit shortcut={SPOTLIGHT_SHORTCUT} onExit={toggleSpotlight} /> : null}
-              {focus.session.phase === "running" || focus.session.phase === "starting" ? (
-                <FocusClock
-                  remaining={focus.remaining}
-                  blocking={focus.session.phase === "running" ? focus.session.blocking : null}
-                  starting={focus.session.phase === "starting"}
-                  onEnd={focus.end}
-                />
-              ) : null}
+              {focus.session.phase === "running" ? <FocusClock remaining={focus.remaining} onEnd={focus.end} /> : null}
               {focus.session.phase === "done" ? (
                 <FocusRecap
                   minutes={focus.session.minutes}
@@ -604,8 +630,9 @@ export function BookWorkspace({
                 />
               ) : null}
               {quizChapter && !reviewing ? <QuizSheet quizzes={quizzes} chapter={quizChapter} onClose={closeQuiz} onJump={jumpTo} /> : null}
+              {study.shown ? <GoDeeperSheet bookId={book.id} study={study} tutor={tutor} provider={provider} unavailable={unavailable} onJump={jumpTo} /> : null}
               {!tocDocked && !error ? (
-                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter} docked={false} onSelect={openEntry} onClose={closeToc} />
+                <TocDrawer toc={toc} spot={spot} format={book.format} shortcut={TOC_SHORTCUT} open={tocOpen && !bare && !reviewing && !quizChapter && !study.shown} docked={false} onSelect={openEntry} onClose={closeToc} />
               ) : null}
             </main>
           </div>
@@ -632,6 +659,7 @@ export function BookWorkspace({
               onSendParked={sendParked}
               onReply={reply}
               onRetry={retry}
+              onDeeper={deeperFromChat}
               annotations={annotations}
               noteDraft={noteDraft}
               noteFocus={noteFocus}
@@ -655,8 +683,8 @@ export function BookWorkspace({
         readSelection={readSelection}
         disabledReason={unavailable}
         tutorBusy={tutor.sending}
-        onAction={(action, selection) => startThread(action, selection, null)}
-        onAsk={(text, selection, kind) => startThread(kind, selection, text)}
+        onAsk={(question, selection) => startThread(question ? "ask" : "explain", selection, question)}
+        onDeeper={goDeeper}
         onPark={(text, selection) => void park(selection, text)}
         onHighlight={highlight}
         onNote={writeNote}

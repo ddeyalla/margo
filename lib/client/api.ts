@@ -1,6 +1,6 @@
-import type { FocusBlocking, FocusStart } from "@/lib/shared/focus";
 import type { Decision } from "@/lib/shared/suggestions";
-import type { BookId, Position, SettingsChange } from "@/lib/shared/types";
+import type { Overrule, StudyThread } from "@/lib/shared/study";
+import type { BookId, Position, ProviderId, SelectionContext, SettingsChange } from "@/lib/shared/types";
 
 interface StatePatch {
   position?: Position;
@@ -60,28 +60,22 @@ export const forgetBook = (id: BookId) => send(`/api/library/missing/${id}`, "DE
 /** Accepts or rejects a suggestion an agent proposed. Returns the server's message when it can't, otherwise null. */
 export const decideSuggestion = (id: string, decision: Decision) => send("/api/suggestions", "POST", { id, decision }, decision === "accept" ? "Accepting" : "Rejecting");
 
-/** What a focus session would block right now; a server that can't be reached blocks nothing. */
-export const fetchFocusPreview = async (): Promise<FocusBlocking> => {
+/** One step of the reader's turn in Go deeper; see the study route for what each does. */
+export type StudyRequest =
+  | { op: "start"; provider: ProviderId; selection: Omit<SelectionContext, "rect"> }
+  | { op: "start"; provider: ProviderId; from: string }
+  | { op: "answer"; provider: ProviderId; threadId: string; answer: string }
+  | { op: "draft"; threadId: string; draft: string }
+  | { op: "overrule"; threadId: string; at: string; override: Overrule | null };
+
+/** Sends a step of the reader's turn. Resolves to the saved thread, to the server's reason when it failed, or to null when `signal` stopped it. */
+export const studyStep = async (bookId: BookId, step: StudyRequest, signal?: AbortSignal): Promise<{ thread: StudyThread } | { error: string } | null> => {
   try {
-    const response = await fetch("/api/focus");
-    if (!response.ok) throw new Error(String(response.status));
-    return ((await response.json()) as { blocking: FocusBlocking }).blocking;
+    const response = await fetch(`/api/books/${bookId}/study`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(step), signal });
+    const body = (await response.json().catch(() => null)) as { thread?: StudyThread; error?: string } | null;
+    if (response.ok && body?.thread) return { thread: body.thread };
+    return { error: body?.error ?? `That failed with ${response.status}.` };
   } catch {
-    return { state: "off", reason: "The app couldn’t check Three, so nothing is blocked." };
+    return signal?.aborted ? null : { error: "Could not reach the app. Try again." };
   }
 };
-
-/** Starts a focus session. It always starts: when Three can't block, the answer says so and the timer runs on. */
-export const startFocusSession = async (title: string, minutes: number): Promise<FocusStart> => {
-  try {
-    const response = await fetch("/api/focus", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, minutes }) });
-    if (!response.ok) throw new Error(String(response.status));
-    return (await response.json()) as FocusStart;
-  } catch {
-    return { sessionId: null, endsAt: null, blocking: { state: "off", reason: "The app couldn’t reach Three, so nothing is blocked." } };
-  }
-};
-
-/** Ends this app's Three session early. Three leaves any other session alone. */
-export const stopFocusSession = (sessionId: string) =>
-  fetch("/api/focus", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) }).catch(() => undefined);

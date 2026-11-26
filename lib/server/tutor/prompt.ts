@@ -2,6 +2,7 @@ import { BOARD_FENCE, BOARD_OPS_GUIDE, type BoardMention } from "@/lib/shared/bo
 import { placeLabel } from "@/lib/shared/place";
 import { firstQuoteNumber } from "@/lib/shared/quotes";
 import { isSixthReply } from "@/lib/shared/work";
+import type { Study } from "@/lib/shared/study";
 import type { ChatMessage, QuotedPassage, Thread, TutorAction, TypedAction } from "@/lib/shared/types";
 import type { TutorImage, TutorMessage, TutorTurn } from "./types";
 
@@ -43,6 +44,7 @@ export const imageMessage = (count: number) => (count === 1 ? "Explain this imag
 export const recapRequest =
   "I'm picking this chapter up again. Give me a short recap of what came before my place, in this chapter: the main points and how they connect, in a few sentences. My place is the end of the selected text. Use only what comes before it, and say nothing about what happens after it, even if you know the book. If the text before it is too thin to recap, say so in one line.";
 
+/* "deeper", "work" and "explainBack" are what threads saved before Go deeper had its sheet were started with; they still run on them. */
 const ACTION_REQUESTS: Record<Exclude<TutorAction, "ask">, string> = {
   recap: recapRequest,
   explain: "Explain this passage.",
@@ -64,6 +66,26 @@ const ACTION_REQUESTS: Record<Exclude<TutorAction, "ask">, string> = {
     "After that, answer my follow-ups as a normal tutor.",
   ].join("\n\n"),
 };
+
+/**
+ * How Ask answers, for a typed question and for Ask with nothing typed: short first, then at most one thing for the
+ * reader to try. The app lifts the "Your turn" line out of the answer and shows it as a prompt they can pass over.
+ */
+export const ASK_REQUEST = [
+  "Answer first and briefly: a few sentences, about 120 words at most, unless I ask for more.",
+  'Then, in this first answer only, and only when there is something worth my trying, end with one last line in exactly this form: "Your turn: " followed by one short question with a definite answer, which I could give in a sentence from the passage and what you just said. It is optional for me, so never refer to it, and leave the line out when nothing fits. Never add it to a later reply.',
+].join("\n\n");
+
+/** The rules of a Go deeper thread, where the reader answers in a sheet over the book and a separate grader marks them. */
+export const studyRequest = (study: Study): string =>
+  [
+    study.mode === "guess"
+      ? `I'm going deeper on this passage by answering before I'm told. Your first reply is the question I'm answering, from memory, with the passage hidden.${study.expected ? ` The answer it is after, which you never state until I ask: ${study.expected}` : ""}`
+      : "I'm going deeper on this passage by explaining it back in my own words, from memory, with the passage hidden. Your first reply is what I was asked to do.",
+    'My answers are marked by a separate grader, not by you. A reply that starts with "Graded:" is that grader\'s note on the answer before it, kept here so you know where I stand. Never write one yourself, and never grade or score me.',
+    'When I send "Hint 1" to "Hint 4", give exactly that step and no more, in a line or two, and ask nothing. Hint 1: name only where in the passage to think back to, by its first few words, without quoting the part that holds the answer. Hint 2: say what kind of idea it is, such as a cause, a definition or a trade-off. Hint 3: name the idea. Hint 4: show the worked step. Never give the whole answer in a hint.',
+    'When I say "Just tell me", give the answer plainly in a few sentences, then go one step deeper: the idea underneath it and how it connects to the wider subject. Keep the whole reply to about 120 words. After that, answer my follow-ups as a normal tutor.',
+  ].join("\n\n");
 
 /** Added to the reader's sixth reply in a Work it out thread, in the provider's copy only. */
 const SIXTH_REPLY_NOTE = "(This is my sixth reply. Explain it fully now.)";
@@ -87,12 +109,15 @@ export const contextMessage = (book: BookLabel, thread: Thread): string => {
       .filter((line) => line !== null)
       .join("\n");
   }
-  const request =
-    thread.action === "ask"
-      ? `My question: ${first}`
-      : thread.action === "explainBack"
-        ? `My explanation, in my own words: ${first}\n\n${ACTION_REQUESTS.explainBack}`
-        : ACTION_REQUESTS[thread.action];
+  const request = thread.study
+    ? studyRequest(thread.study)
+    : thread.action === "ask"
+      ? `My question: ${first}\n\n${ASK_REQUEST}`
+      : thread.action === "explain"
+        ? `${ACTION_REQUESTS.explain}\n\n${ASK_REQUEST}`
+        : thread.action === "explainBack"
+          ? `My explanation, in my own words: ${first}\n\n${ACTION_REQUESTS.explainBack}`
+          : ACTION_REQUESTS[thread.action];
   const recap = thread.action === "recap";
   return [
     heading,

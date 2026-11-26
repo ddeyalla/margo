@@ -7,6 +7,8 @@ import { streamChat } from "@/lib/client/chat";
 import { useUnsentText } from "@/lib/client/unsent";
 import type { ChatRequest, QuestionPlace } from "@/lib/shared/chat";
 import { isParked, parkedFirst } from "@/lib/shared/parked";
+import { offersYourTurn, splitYourTurn } from "@/lib/shared/study";
+import { offerYourTurn, passYourTurn } from "@/lib/client/your-turn";
 import { repairDiagrams } from "./mermaid";
 import type { BoardMention } from "@/lib/shared/boards";
 import type { BookId, ImageAttachment, ProviderId, QuotedPassage, SelectionContext, Thread, TutorAction } from "@/lib/shared/types";
@@ -119,9 +121,13 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     }
   };
 
-  /* One request at a time, whichever thread it is for: starting another would cut the first one's answer off. */
-  const run = async (request: ChatRequest) => {
+  /* One request at a time, whichever thread it is for: starting another would cut the first one's answer off.
+     A `quiet` one answers in a thread without opening it in the chat: the Go deeper sheet shows it instead. */
+  const run = async (request: ChatRequest, quiet = false, waited = false) => {
     if (abortRef.current) return;
+    /* The reader moved on to something of their own, past any "Your turn" prompt still on offer. A message that
+       waited in the queue was written before the answer ahead of it could offer one. */
+    if (!quiet && !waited && request.kind !== "retry") passYourTurn();
     const controller = new AbortController();
     abortRef.current = controller;
     /* A message already waiting when nothing was running is one held after a failure; only Send now sends it. */
@@ -144,7 +150,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
         if (event.type === "thread") {
           thread = event.thread;
           upsert(thread);
-          setActiveId(thread.id);
+          if (!quiet) setActiveId(thread.id);
           cancelAnimationFrame(frame.current);
           publish();
         } else if (event.type === "compacting") {
@@ -159,6 +165,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
           finished = true;
           thread = event.thread;
           upsert(thread);
+          if (request.kind === "new" && offersYourTurn(thread) && splitYourTurn(thread.messages.at(-1)?.content ?? "").prompt) offerYourTurn(thread.id);
           answered.current?.(thread);
           void fixDiagrams(thread);
         }
@@ -194,7 +201,7 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
     const next = queue.current;
     if (next && next !== held && (!error || aborted)) {
       setQueued(null);
-      void run(next);
+      void run(next, false, true);
     }
   };
 
@@ -240,6 +247,18 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
   });
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
+
+  /** Takes in a thread another route saved, such as a Go deeper turn or its grade. */
+  const adopt = useStableCallback((thread: Thread) => upsert(thread));
+
+  /**
+   * Says `text` to the tutor in a thread without opening it in the chat, for the Go deeper sheet's hints and
+   * "Just tell me". With no text it asks again for the thread's unanswered message. Does nothing while an answer is coming.
+   */
+  const say = useStableCallback((threadId: string, text: string | null, provider: ProviderId) => {
+    if (abortRef.current) return;
+    void run(text === null ? { kind: "retry", bookId, provider, threadId } : { kind: "reply", bookId, provider, threadId, text, attachments: [], quotes: [] }, true);
+  });
 
   /** Saves a question on a passage without asking it. Resolves to whether it was saved; the tutor is not called. */
   const park = useStableCallback(async (selection: SelectionContext, question: string, provider: ProviderId | null): Promise<boolean> => {
@@ -303,6 +322,8 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       live,
       sending,
       failure: shownFailure,
+      /** The last turn that failed, whichever thread it was for; the Go deeper sheet reads its own thread's. */
+      lastFailure: failure,
       /** A message waiting for the current answer to settle. */
       queued,
       sendQueued,
@@ -316,8 +337,10 @@ export function useTutor(bookId: BookId, initialThreads: Thread[], initialActive
       retry,
       stop,
       open,
+      adopt,
+      say,
     }),
-    [bookId, listed, parked, active, live, sending, shownFailure, queued, sendQueued, cancelQueued, start, park, unpark, discard, ask, reply, retry, stop, open],
+    [bookId, listed, parked, active, live, sending, shownFailure, failure, queued, sendQueued, cancelQueued, start, park, unpark, discard, ask, reply, retry, stop, open, adopt, say],
   );
 }
 
