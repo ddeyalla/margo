@@ -53,6 +53,19 @@ describe("bookChapters", () => {
     ];
     expect(bookChapters(toc)).toEqual(["Chapter 1", "Chapter 2", "Part of the problem", "Epilogue"]);
   });
+  it("reads a top-level entry over numbered chapters as a part, and numbered sections as sections", () => {
+    const toc = [
+      { label: "Preface", depth: 0 },
+      { label: "Who Should Read This Book", depth: 1 },
+      { label: "I. Foundations", depth: 0 },
+      { label: "1. Introduction", depth: 1 },
+      { label: "What Is Evaluation?", depth: 2 },
+      { label: "2. Basics", depth: 1 },
+      { label: "7 Closing", depth: 0 },
+      { label: "7.1 Summary", depth: 1 },
+    ];
+    expect(bookChapters(toc)).toEqual(["Preface", "1. Introduction", "2. Basics", "7 Closing"]);
+  });
   it("leaves alone anything that overlaps a Course's chapter, above or below it", () => {
     const toc = [
       { label: "One", depth: 0 },

@@ -6,8 +6,10 @@ import { studyDay } from "./schedule";
 
 type Entry = { label: string; depth: number };
 
-/** A top-level entry that only groups chapters: "Part One", "Book II". Its chapters are the entries one level down. */
+/** A top-level entry that only groups chapters, by its own label: "Part One", "Book II". */
 const PART = /^(part|book|volume)\b/i;
+/** An entry numbered as a chapter: "3. Error Analysis", "Chapter 3". Not a numbered section such as "3.1 Terms". */
+const NUMBERED_CHAPTER = /^(chapter\s+\w+|\d+[.:]?\s)/i;
 
 /** Entries that are not chapters to be tested on, when the label is exactly one of these. */
 const NOT_A_CHAPTER =
@@ -15,8 +17,9 @@ const NOT_A_CHAPTER =
 
 /**
  * The chapters of a book that get a test of their own, by contents label, in reading order. A chapter is a top-level
- * entry of the contents, or an entry directly under a top-level "Part …". Sections nested in a chapter are covered by
- * its test and get none. A Course names its own chapters, at whatever level, so an entry that overlaps one of those
+ * entry of the contents, or an entry directly under a top-level entry that only groups chapters: one named as a part,
+ * or one whose entries are numbered as chapters ("I. Foundations" over "1. Introduction"). Sections nested in a
+ * chapter are covered by its test and get none. A Course names its own chapters, at whatever level, so an entry that overlaps one of those
  * is left to the Course and is not in the result. A label used twice names its first entry only, as a quiz does.
  */
 export const bookChapters = (toc: readonly Entry[], courseChapters: readonly string[] = []): string[] => {
@@ -24,7 +27,12 @@ export const bookChapters = (toc: readonly Entry[], courseChapters: readonly str
   const chapters: string[] = [];
   let inPart = false;
   toc.forEach((entry, index) => {
-    if (entry.depth === 0) inPart = PART.test(entry.label) && toc[index + 1]?.depth === 1;
+    if (entry.depth === 0) {
+      let end = index + 1;
+      while (end < toc.length && toc[end].depth > 0) end++;
+      const under = toc.slice(index + 1, end).filter((child) => child.depth === 1);
+      inPart = under.length > 0 && (PART.test(entry.label) || under.some((child) => NUMBERED_CHAPTER.test(child.label.trim())));
+    }
     if (entry.depth > 1 || (entry.depth === 1) !== inPart || NOT_A_CHAPTER.test(entry.label.trim())) return;
     const span = chapterSpan(toc, entry.label);
     if (!span || span.start !== index || taken.some((other) => other.start < span.end && span.start < other.end)) return;
