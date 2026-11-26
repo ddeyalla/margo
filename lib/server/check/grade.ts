@@ -1,3 +1,4 @@
+import type { Verdict } from "@/lib/shared/study";
 import { structured } from "../tutor/structured";
 import type { Provider } from "../tutor/types";
 import { inPassage, replyObject, textField } from "./reply";
@@ -7,7 +8,7 @@ export type Mark = "yes" | "partly" | "no";
 const MARKS: readonly Mark[] = ["yes", "partly", "no"];
 const CREDIT: Record<Mark, number> = { yes: 1, partly: 0.5, no: 0 };
 
-export type Verdict = "right" | "partly" | "wrong";
+export type { Verdict };
 
 export interface Grade {
   /** From 0 to 1: the share of the rubric's points the answer makes, a half for one it partly makes. */

@@ -1,30 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Hand, Timer } from "lucide-react";
+import { Timer } from "lucide-react";
 import { Button, IconButton, Segmented } from "@/components/ui";
-import { fetchFocusPreview } from "@/lib/client/api";
-import { blockingLine, DEFAULT_FOCUS_MINUTES, FOCUS_CHOICES, type FocusBlocking } from "@/lib/shared/focus";
+import { DEFAULT_FOCUS_MINUTES, FOCUS_CHOICES } from "@/lib/shared/focus";
 import { formatRemaining } from "./useFocusSession";
 
 const minutesText = (minutes: number) => `${minutes} minute${minutes === 1 ? "" : "s"}`;
 
 const CHOICES = FOCUS_CHOICES.map((minutes) => ({ value: String(minutes), label: `${minutes}` }));
 
-/**
- * The header's way into a focus session: pick a length and start. It says up front what Three will block, so
- * nobody finds out mid-session that their distractions were never covered.
- */
+/** The header's way into a focus session: pick a length and start. */
 export function FocusButton({ disabled, onStart }: { disabled: boolean; onStart(minutes: number): void }) {
   const [open, setOpen] = useState(false);
   const [minutes, setMinutes] = useState(String(DEFAULT_FOCUS_MINUTES));
-  const [preview, setPreview] = useState<FocusBlocking | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    let live = true;
-    void fetchFocusPreview().then((blocking) => live && setPreview(blocking));
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -34,7 +27,6 @@ export function FocusButton({ disabled, onStart }: { disabled: boolean; onStart(
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      live = false;
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
@@ -42,7 +34,7 @@ export function FocusButton({ disabled, onStart }: { disabled: boolean; onStart(
 
   return (
     <div ref={rootRef} className="relative">
-      <IconButton label="Focus session: read on a timer, distractions blocked" active={open} disabled={disabled} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <IconButton label="Focus session: read on a timer" active={open} disabled={disabled} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <Timer />
       </IconButton>
       {open ? (
@@ -59,7 +51,6 @@ export function FocusButton({ disabled, onStart }: { disabled: boolean; onStart(
             <span className="text-label text-fog">Minutes</span>
             <Segmented label="Session length in minutes" options={CHOICES} value={minutes} onChange={setMinutes} />
           </div>
-          <p className="text-caption text-dim">{preview ? blockingLine(preview) : "Checking what Three can block…"}</p>
           <Button
             variant="primary"
             size="md"
@@ -77,22 +68,19 @@ export function FocusButton({ disabled, onStart }: { disabled: boolean; onStart(
 }
 
 /** The time left, small and steady at the top of the page, with the way out. No animation: it changes every second. */
-export function FocusClock({ remaining, blocking, starting, onEnd }: { remaining: number; blocking: FocusBlocking | null; starting: boolean; onEnd(): void }) {
-  const blocked = blocking?.state === "on";
+export function FocusClock({ remaining, onEnd }: { remaining: number; onEnd(): void }) {
   return (
     <div
       role="timer"
-      aria-label={starting ? "Starting the focus session" : `${formatRemaining(remaining)} left in this focus session`}
-      title={blocking ? blockingLine(blocking) : undefined}
+      aria-label={`${formatRemaining(remaining)} left in this focus session`}
       className="animate-rise absolute left-1/2 top-3 z-30 flex h-7 -translate-x-1/2 items-center gap-2 rounded-full pl-3 pr-1 text-label text-page-dim"
     >
-      {blocked ? <Hand aria-hidden className="size-3.5" /> : <Timer aria-hidden className="size-3.5" />}
-      <span className="min-w-[4ch] font-medium tabular-nums text-prose/80">{starting ? "–:––" : formatRemaining(remaining)}</span>
+      <Timer aria-hidden className="size-3.5" />
+      <span className="min-w-[4ch] font-medium tabular-nums text-prose/80">{formatRemaining(remaining)}</span>
       <button
         type="button"
         onClick={onEnd}
-        disabled={starting}
-        className="press h-6 rounded-full px-2 text-label text-page-dim transition-colors duration-[var(--duration-fast)] hover:bg-prose/[0.06] hover:text-prose disabled:opacity-40"
+        className="press h-6 rounded-full px-2 text-label text-page-dim transition-colors duration-[var(--duration-fast)] hover:bg-prose/[0.06] hover:text-prose"
       >
         End
       </button>

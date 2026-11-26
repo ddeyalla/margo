@@ -1,5 +1,6 @@
 import type { Board, BoardMention } from "./boards";
 import type { ChapterQuiz } from "./quiz";
+import type { Study } from "./study";
 
 export type BookFormat = "epub" | "pdf";
 
@@ -75,6 +76,11 @@ export interface BookMeta {
 
 export type ProviderId = "claude" | "codex" | "api";
 
+/**
+ * What a passage thread was started as. The toolbar now starts three: "ask" for a typed question, "explain" for Ask
+ * with nothing typed, and "deeper" for Go deeper. "work" and "explainBack" are on threads saved before they were
+ * folded into those, and still load and carry on as they were.
+ */
 export type TutorAction = "explain" | "deeper" | "work" | "ask" | "explainBack" | "recap";
 
 /** Actions whose first message is what the reader typed, not a fixed line. */
@@ -178,6 +184,8 @@ export interface PassageThread extends ThreadBase {
    * message and no answer. Sending it clears this. Absent on threads saved before parking existed.
    */
   parkedAt?: string | null;
+  /** The reader's turn in the Go deeper sheet, with each answer and its grade. Absent on every other thread, and on "deeper" threads saved before the sheet. */
+  study?: Study;
 }
 
 /** A question asked with no passage selected, such as one about an image. */

@@ -11,7 +11,7 @@ import { ChatTab } from "@/components/chat/ChatTab";
 import type { QuoteDraft } from "@/components/chat/Quotes";
 import { usePill } from "@/components/ui/pill";
 import type { MessageDraft, Tutor } from "@/components/chat/useTutor";
-import type { Anchor, CardSet, Highlight, PanelTab, QuotedPassage } from "@/lib/shared/types";
+import type { Anchor, CardSet, Highlight, PanelTab, PassageThread, QuotedPassage } from "@/lib/shared/types";
 
 /* New content fades in after a pointer choice only; a keyboard switch, used far more often, is instant. */
 const panelClass =
@@ -35,6 +35,7 @@ export const SidePanel = memo(function SidePanel({
   onSendParked,
   onReply,
   onRetry,
+  onDeeper,
   annotations,
   noteDraft,
   noteFocus,
@@ -57,6 +58,7 @@ export const SidePanel = memo(function SidePanel({
   onSendParked(id: string): void;
   onReply(draft: MessageDraft): void;
   onRetry(): void;
+  onDeeper(thread: PassageThread): void;
   annotations: AnnotationsApi;
   noteDraft: NoteDraft | null;
   noteFocus: { id: string; at: number } | null;
@@ -104,7 +106,7 @@ export const SidePanel = memo(function SidePanel({
         </TabsList>
       </div>
       <TabsPanel value="chat" className={panelClass}>
-        <ChatTab shown={panelOpen && tab === "chat"} keyed={keyed} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} onSaveNote={annotations.addNote} quotes={quotes} onFindQuote={onFindQuote} />
+        <ChatTab shown={panelOpen && tab === "chat"} keyed={keyed} tutor={tutor} unavailable={unavailable} onJump={onJump} onAsk={onAsk} onSendParked={onSendParked} onReply={onReply} onRetry={onRetry} onDeeper={onDeeper} onSaveNote={annotations.addNote} quotes={quotes} onFindQuote={onFindQuote} />
       </TabsPanel>
       <TabsPanel value="notes" className={panelClass}>
         <NotesTab

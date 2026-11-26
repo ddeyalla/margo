@@ -6,10 +6,10 @@ export const JUST_TELL_ME = "Just tell me.";
 export const WORK_REPLY_LIMIT = 6;
 export const MAX_HINTS = 4;
 
-const isJustTellMe = (content: string) => /^just tell me\b/i.test(content.trim());
+export const isJustTellMe = (content: string) => /^just tell me\b/i.test(content.trim());
 
 /** The reader's messages after the first, which only opened the thread. */
-const replies = (thread: Thread) => thread.messages.slice(1).filter((message) => message.role === "user");
+export const replies = (thread: Thread) => thread.messages.slice(1).filter((message) => message.role === "user");
 
 /**
  * Where a Work it out thread stands: whether the tutor is still leading, and

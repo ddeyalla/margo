@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, CircleAlert, CornerDownRight, ImageIcon, MessageSquareText, Send, Trash2 } from "lucide-react";
+import { ChevronLeft, CircleAlert, CornerDownRight, ImageIcon, Layers, MessageSquareText, Send, Trash2, X } from "lucide-react";
 import clsx from "clsx";
 import { Button, EmptyState, IconButton, Spinner } from "@/components/ui";
 import { JUST_TELL_ME, MAX_HINTS, workState } from "@/lib/shared/work";
@@ -9,7 +9,9 @@ import { placeLabel } from "@/lib/shared/place";
 import { threadLabel } from "@/lib/shared/threads";
 import type { ParkedThread } from "@/lib/shared/parked";
 import { firstQuoteNumber, threadQuotes } from "@/lib/shared/quotes";
-import type { Anchor, BookId, GeneralThread, ImageAttachment, QuotedPassage, Thread } from "@/lib/shared/types";
+import { isStudy, offersYourTurn, splitYourTurn, studyState } from "@/lib/shared/study";
+import { dismissYourTurn, takeYourTurn, useYourTurnShown } from "@/lib/client/your-turn";
+import type { Anchor, BookId, GeneralThread, ImageAttachment, PassageThread, QuotedPassage, Thread } from "@/lib/shared/types";
 import { Composer } from "./Composer";
 import { UsageRow } from "./UsageRow";
 import { DropArea, Lightbox, MessageImages } from "./Images";
@@ -58,6 +60,7 @@ export function ChatTab({
   onSendParked,
   onReply,
   onRetry,
+  onDeeper,
   onSaveNote,
   quotes,
   onFindQuote,
@@ -76,6 +79,8 @@ export function ChatTab({
   onSendParked(id: string): void;
   onReply(draft: MessageDraft): void;
   onRetry(): void;
+  /** Opens the reader's turn over the book: a Go deeper thread where it was left, or the "Your turn" an answer closed with. */
+  onDeeper(thread: PassageThread): void;
   /** Adds a note on a passage. */
   onSaveNote(passage: PassagePlace, body: string): void;
   /** Passages quoted into the composer, waiting to be sent. */
@@ -126,6 +131,7 @@ export function ChatTab({
             onJump={() => active.anchor && onJump(active.anchor)}
             onReply={onReply}
             onRetry={onRetry}
+            onDeeper={onDeeper}
             onStop={tutor.stop}
             quotes={quotes}
           />
@@ -197,7 +203,7 @@ function Threads({
         <EmptyState
           icon={<MessageSquareText />}
           title="Ask about a passage"
-          body="Select text in the book, then choose Explain, Go deeper, Work it out, Explain it back or Ask… Or ask below, and paste or drop an image to show the tutor."
+          body="Select text in the book, then choose Ask or Go deeper. Or ask below, and paste or drop an image to show the tutor."
         />
       )}
       {tutor.queued ? (
@@ -364,6 +370,7 @@ function ThreadView({
   onJump,
   onReply,
   onRetry,
+  onDeeper,
   onStop,
   quotes,
 }: {
@@ -382,6 +389,7 @@ function ThreadView({
   onJump(): void;
   onReply(draft: MessageDraft): void;
   onRetry(): void;
+  onDeeper(thread: PassageThread): void;
   onStop(): void;
   quotes: QuoteDraft;
 }) {
@@ -405,6 +413,13 @@ function ThreadView({
   const unanswered = !sending && awaitsAnswer(thread);
   const { leading, hintsUsed } = workState(thread);
   const busy = sending || !!unavailable || queued !== null;
+  /* An Ask answer may close with a "Your turn" line. It is never shown as text: the last answer's becomes a prompt. */
+  const asked = offersYourTurn(thread) ? thread : null;
+  const shown = (content: string) => (asked ? splitYourTurn(content).body : content);
+  const lastMessage = thread.messages.at(-1);
+  const yourTurn = asked && lastMessage?.role === "assistant" && !lastMessage.partial ? splitYourTurn(lastMessage.content).prompt : null;
+  /* A Go deeper thread the reader hasn't been told the answer to carries on in its sheet. */
+  const study = isStudy(thread) && !studyState(thread).told ? thread : null;
 
   return (
     <DropArea onFiles={images.add} enabled={!unavailable} className="flex min-h-0 flex-1 flex-col">
@@ -464,14 +479,15 @@ function ThreadView({
             ) : (
               <div key={index}>
                 <AnswerBoard value={answerChanges(thread.id, thread.messages, index)}>
-                  <Markdown text={message.content} />
+                  <Markdown text={shown(message.content)} />
                 </AnswerBoard>
                 <AnswerSources text={message.content} />
                 {message.partial ? <p className="mt-1.5 text-caption text-dim">Stopped before the answer finished.</p> : null}
               </div>
             ),
           ])}
-          <StreamingAnswer live={live} threadId={thread.id} onGrow={follow} />
+          {asked && yourTurn && !sending ? <YourTurn threadId={asked.id} prompt={yourTurn} disabled={!!unavailable} onTake={() => onDeeper(asked)} /> : null}
+          <StreamingAnswer live={live} threadId={thread.id} trim={!!asked} onGrow={follow} />
           {failure ? (
             <FailureNote failure={failure} onRetry={unanswered ? onRetry : null} />
           ) : unanswered ? (
@@ -502,6 +518,14 @@ function ThreadView({
           </Button>
         </div>
       ) : null}
+      {study ? (
+        <div className="flex shrink-0 items-center gap-1.5 px-3 pb-1.5">
+          <Button size="sm" disabled={!!unavailable} title={unavailable ?? "Carry on over the book, with the passage hidden"} onClick={() => onDeeper(study)}>
+            <Layers />
+            {study.study.turns.length ? "Open Go deeper" : "Carry on in Go deeper"}
+          </Button>
+        </div>
+      ) : null}
       {queued ? (
         <QueuedNote
           queued={queued}
@@ -528,7 +552,7 @@ function ThreadView({
 }
 
 /** The answer arriving in this thread. The only part of the chat that renders per streamed token. */
-function StreamingAnswer({ live, threadId, onGrow }: { live: LiveAnswer; threadId: string; onGrow(): void }) {
+function StreamingAnswer({ live, threadId, trim, onGrow }: { live: LiveAnswer; threadId: string; /** Leave out a closing "Your turn" line. */ trim: boolean; onGrow(): void }) {
   const streaming = useStreaming(live, threadId);
   const compacting = useCompacting(live, threadId);
   useLayoutEffect(() => onGrow(), [onGrow, streaming]);
@@ -543,7 +567,38 @@ function StreamingAnswer({ live, threadId, onGrow }: { live: LiveAnswer; threadI
   }
   return (
     <div aria-live="polite" aria-busy="true">
-      <StreamingMarkdown text={streaming} />
+      <StreamingMarkdown text={trim ? splitYourTurn(streaming).body : streaming} />
+    </div>
+  );
+}
+
+/**
+ * The one thing an Ask answer offers the reader to try, as a prompt they can take or leave. Taking it opens Go
+ * deeper on the question. It goes for good once dismissed, and stops showing for the session after two are passed over.
+ */
+function YourTurn({ threadId, prompt, disabled, onTake }: { threadId: string; prompt: string; disabled: boolean; onTake(): void }) {
+  if (!useYourTurnShown(threadId)) return null;
+  return (
+    <div className="animate-rise flex items-start gap-1">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          takeYourTurn(threadId);
+          onTake();
+        }}
+        title="Answer this over the book. Optional."
+        className="press flex min-w-0 flex-1 items-start gap-2 rounded-lg bg-panel-raised px-3 py-2 text-left shadow-chip transition-colors duration-[var(--duration-fast)] hover:bg-panel-hover disabled:opacity-40"
+      >
+        <Layers aria-hidden className="mt-0.5 size-3.5 shrink-0 text-dim" />
+        <span className="min-w-0 text-label leading-snug text-fog">
+          <span className="text-dim">Your turn · </span>
+          {prompt}
+        </span>
+      </button>
+      <IconButton label="Skip this question" size="sm" onClick={() => dismissYourTurn(threadId)}>
+        <X />
+      </IconButton>
     </div>
   );
 }

@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { startFocusSession, stopFocusSession } from "@/lib/client/api";
-import type { FocusBlocking } from "@/lib/shared/focus";
 import type { BookId } from "@/lib/shared/types";
 import type { TutorPanel } from "./useTutorPanel";
 
 export type FocusSession =
   | { phase: "idle" }
-  | { phase: "starting"; minutes: number }
-  | { phase: "running"; minutes: number; endsAt: number; sessionId: string | null; blocking: FocusBlocking; panelWasOpen: boolean }
+  | { phase: "running"; minutes: number; endsAt: number; panelWasOpen: boolean }
   | { phase: "done"; minutes: number; early: boolean };
 
 type Running = Extract<FocusSession, { phase: "running" }>;
@@ -17,7 +14,7 @@ type Running = Extract<FocusSession, { phase: "running" }>;
 const storageKey = (bookId: BookId) => `rigg-learn:focus:${bookId}`;
 const CHANGED = "rigg-learn:focus-changed";
 
-/* The running session is kept in storage, so a refresh mid-session doesn't hand the reader back their distractions. */
+/* The running session is kept in storage, so a refresh mid-session doesn't end it. */
 const save = (bookId: BookId, session: Running | null) => {
   try {
     if (session) localStorage.setItem(storageKey(bookId), JSON.stringify(session));
@@ -48,19 +45,22 @@ const subscribe = (onChange: () => void) => {
 const parseSaved = (raw: string | null): Running | null => {
   try {
     const value = JSON.parse(raw ?? "null") as Running | null;
-    return value?.phase === "running" && typeof value.endsAt === "number" ? { ...value, panelWasOpen: value.panelWasOpen === true } : null;
+    return value?.phase === "running" && typeof value.endsAt === "number" && typeof value.minutes === "number"
+      ? { phase: "running", minutes: value.minutes, endsAt: value.endsAt, panelWasOpen: value.panelWasOpen === true }
+      : null;
   } catch {
     return null;
   }
 };
 
 /**
- * A timed reading session: the chrome and the tutor fold away, Three blocks distractions if it can, and when time
- * is up the reader is asked to recall what they read. The tutor panel comes back afterwards if it was open.
+ * A timed reading session: the chrome and the tutor fold away, and when time is up the reader is asked to recall
+ * what they read. The timer is this app's own and nothing outside it is blocked. The tutor panel comes back
+ * afterwards if it was open.
  */
-export function useFocusSession(bookId: BookId, title: string, panel: TutorPanel) {
-  /* Starting and the recap are this page's own; a running session is whatever storage holds. */
-  const [local, setLocal] = useState<Extract<FocusSession, { phase: "starting" | "done" }> | null>(null);
+export function useFocusSession(bookId: BookId, panel: TutorPanel) {
+  /* The recap is this page's own; a running session is whatever storage holds. */
+  const [local, setLocal] = useState<Extract<FocusSession, { phase: "done" }> | null>(null);
   const raw = useSyncExternalStore(subscribe, () => readSaved(bookId), () => null);
   const saved = useMemo(() => parseSaved(raw), [raw]);
   const [now, setNow] = useState(() => Date.now());
@@ -94,15 +94,12 @@ export function useFocusSession(bookId: BookId, title: string, panel: TutorPanel
     return () => clearInterval(timer);
   }, [running, bookId]);
 
-  const start = async (minutes: number) => {
-    if (session.phase === "starting" || session.phase === "running") return;
+  const start = (minutes: number) => {
+    if (session.phase === "running") return;
     folded.current = true;
     panelWasOpen.current = panel.isOpen();
     panel.collapse();
-    setLocal({ phase: "starting", minutes });
-    const started = await startFocusSession(title, minutes);
-    const endsAt = (started.endsAt ? Date.parse(started.endsAt) : NaN) || Date.now() + minutes * 60_000;
-    save(bookId, { phase: "running", minutes, endsAt, sessionId: started.sessionId, blocking: started.blocking, panelWasOpen: panelWasOpen.current });
+    save(bookId, { phase: "running", minutes, endsAt: Date.now() + minutes * 60_000, panelWasOpen: panelWasOpen.current });
     setNow(Date.now());
     setLocal(null);
   };
@@ -110,7 +107,6 @@ export function useFocusSession(bookId: BookId, title: string, panel: TutorPanel
   /** Ends early, counting the whole minutes actually read. */
   const end = () => {
     if (!running) return;
-    if (running.sessionId) void stopFocusSession(running.sessionId);
     const read = Math.max(0, Math.round((running.minutes * 60_000 - (running.endsAt - Date.now())) / 60_000));
     setLocal({ phase: "done", minutes: read, early: true });
     save(bookId, null);
