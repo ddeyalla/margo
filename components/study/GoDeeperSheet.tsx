@@ -99,6 +99,7 @@ function Turn({
   const [again, setAgain] = useState(study.draft.length > 0);
   const [error, setError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
   const streaming = useStreaming(tutor.live, thread.id);
   useUnsentText(draft.trim().length > 0 && draft !== study.draft);
 
@@ -137,6 +138,13 @@ function Turn({
       setAgain(false);
     }
   };
+
+  /* An answer picked up again is carried on from its end, not its start. */
+  useEffect(() => {
+    if (stage !== "answering") return;
+    const end = field.current?.value.length ?? 0;
+    field.current?.setSelectionRange(end, end);
+  }, [stage]);
 
   /* Leaving saves what is written; the thread keeps it for next time. */
   const leave = useEffectEvent(() => {
@@ -253,6 +261,7 @@ function Turn({
       ) : null}
       {retryLine}
       <TextArea
+        ref={field}
         autoFocus
         rows={4}
         value={draft}
