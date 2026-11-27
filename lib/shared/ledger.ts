@@ -112,15 +112,16 @@ const quizEvidence = (bookId: BookId, quiz: ChapterQuiz): Evidence[] =>
       const question = quiz.questions.find((entry) => entry.id === answer.questionId);
       if (!question) return [];
       const turn = answer.turn;
-      return {
+      const base: Evidence = {
         id: `${bookId}:quiz:${quiz.chapter}:${question.id}:${attempt.at}`,
         at: attempt.at,
         bookId,
         item: `quiz:${quiz.chapter}:${question.id}`,
         anchor: question.anchor,
         chapter: quiz.chapter,
-        source: "quiz" as const,
-        outcome: turn ? turnOutcome(turn) : answer.correct ? 1 : 0,
+        source: "quiz",
+        /* The grader's mark; the reader's own call on it is a second, weaker check below. */
+        outcome: turn ? turnOutcome({ ...turn, override: null }) : answer.correct ? 1 : 0,
         /* An answer the grader wasn't sure of is a weak check, whichever way the reader then called it. */
         unaided: !turn?.unsure,
         hintLevel: 0,
@@ -128,6 +129,8 @@ const quizEvidence = (bookId: BookId, quiz: ChapterQuiz): Evidence[] =>
         topic: topicOf(question.question),
         exposedAt: quiz.createdAt,
       };
+      if (!turn?.override) return [base];
+      return [base, { ...base, id: `${base.id}:${turn.override}`, at: new Date(Date.parse(attempt.at) + 1).toISOString(), outcome: turnOutcome(turn), unaided: false }];
     }),
   );
 

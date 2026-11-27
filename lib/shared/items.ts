@@ -2,8 +2,8 @@ import { sameAnchor } from "./annotations";
 import { anchorItem } from "./ledger";
 import type { ChapterQuiz, QuizQuestion } from "./quiz";
 import { askable } from "./sitting";
-import { newSchedule, replaySchedule, studyDay } from "./schedule";
-import type { AnswerType, BookState, CardSet, Cue } from "./types";
+import { newSchedule, replaySchedule } from "./schedule";
+import type { AnswerType, BookState, CardSet, Cue, Schedule } from "./types";
 
 /*
  * The item bank. Every prompt the reader is brought back to is an item: a `Cue` with an answer type, in the set
@@ -48,6 +48,18 @@ const cueOf = (quiz: ChapterQuiz, question: QuizQuestion): Cue => {
 const answersTo = (quiz: ChapterQuiz, questionId: string) =>
   quiz.attempts.flatMap((attempt) => attempt.answers.filter((answer) => answer.questionId === questionId).map((answer) => ({ at: attempt.at, correct: answer.correct })));
 
+const DAY_MS = 86_400_000;
+
+/**
+ * A schedule rebuilt from a test's answers, held to come back no sooner than a day after the last one: the test was
+ * the reader's go at it, and a learning step minutes away would put the whole test back in front of them.
+ */
+const settled = (schedule: Schedule): Schedule => {
+  if (!schedule.lastReview || (schedule.state !== "learning" && schedule.state !== "relearning")) return schedule;
+  const earliest = new Date(Date.parse(schedule.lastReview) + DAY_MS).toISOString();
+  return schedule.due < earliest ? { ...schedule, due: earliest } : schedule;
+};
+
 /** A new set for questions of one passage. What the quizzes already know of the reader sets its schedule: the replay of their answers. */
 const setOf = (quiz: ChapterQuiz, question: QuizQuestion, cues: Cue[]): CardSet => {
   const answers = answersTo(quiz, question.id);
@@ -59,9 +71,10 @@ const setOf = (quiz: ChapterQuiz, question: QuizQuestion, cues: Cue[]): CardSet 
     chapterTitle: quiz.chapter,
     fact: question.answer,
     cues,
-    schedule: schedule ?? newSchedule(new Date(quiz.createdAt)),
+    schedule: schedule ? settled(schedule) : newSchedule(new Date(quiz.createdAt)),
     learningCueId: null,
-    introducedOn: answers.length ? studyDay(new Date(answers[0].at)) : null,
+    /* Taking a test is not meeting a new card: it must not use up the day's new limit. */
+    introducedOn: null,
     createdAt: quiz.createdAt,
   };
 };
@@ -103,8 +116,8 @@ export const bankQuizzes = (state: Banked): Pick<Banked, "cardSets" | "banked"> 
   }
   for (const [set, answers] of answered) {
     const sorted = answers.sort((a, b) => a.at.localeCompare(b.at));
-    set.schedule = replaySchedule(sorted) ?? set.schedule;
-    set.introducedOn = sorted.length ? studyDay(new Date(sorted[0].at)) : null;
+    const replayed = replaySchedule(sorted);
+    if (replayed) set.schedule = settled(replayed);
   }
   if (!added.length) return { cardSets: state.cardSets, banked: state.banked };
   return { cardSets: sets, banked: [...state.banked, ...added] };

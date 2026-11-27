@@ -71,7 +71,7 @@ export function ItemCard({
   onJump(anchor: Anchor): void;
 }) {
   const cue = pickCue(set, draw(`${set.id}:${set.schedule.reps}:${set.schedule.lastReview ?? ""}`));
-  const type = typeOf(cue) === "free" && !provider ? "flip" : typeOf(cue);
+  const type = (typeOf(cue) === "free" && !provider) || (typeOf(cue) === "choice" && !cue.choices?.length) ? "flip" : typeOf(cue);
   const [revealed, setRevealed] = useState(false);
   const [confidence, setConfidence] = useState<number | null>(null);
   const [thinking, setThinking] = useState("");
@@ -84,14 +84,21 @@ export function ItemCard({
   const marked = grading.state === "graded" ? grading.marked : null;
   /* What the answer suggests the rating is. The reader still presses it. */
   const suggested: Rating | null = type === "choice" && picked !== null ? (picked === cue.answer ? "good" : "again") : (marked?.suggested ?? null);
-  const aided = type === "choice" || !!marked?.unsure;
+  /* A wrong pick is a miss however the reader then rates it. */
+  const missed = type === "choice" && picked !== null && picked !== cue.answer;
+  const allowed = (rating: Rating) => !missed || rating === "again";
 
   const reveal = () => {
     /* The rating keys go to the sheet, not to the thinking line. */
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     setRevealed(true);
   };
-  const rate = (rating: Rating) => onRate(cue.id, rating, cleanStance(confidence, thinking), aided);
+  const rate = (rating: Rating) => {
+    if (!allowed(rating)) return;
+    /* Helped by options, an unsure grade, or the grader's own mark the reader then overruled: not recall from nothing. */
+    const overruled = !!marked && !marked.unsure && (rating === "again") !== (marked.verdict === "wrong");
+    onRate(cue.id, rating, cleanStance(confidence, thinking), type === "choice" || !!marked?.unsure || overruled);
+  };
 
   const pick = (option: string) => {
     setPicked(option);
@@ -173,6 +180,7 @@ export function ItemCard({
                 key={rating}
                 size="md"
                 variant={(suggested ?? "good") === rating ? "primary" : "outline"}
+                disabled={!allowed(rating)}
                 onClick={() => rate(rating)}
                 className="flex-col !h-auto gap-0.5 py-2"
               >
@@ -190,7 +198,7 @@ export function ItemCard({
           {type === "choice" ? (
             <ol className="flex flex-col gap-2">
               {options.map((option, i) => (
-                <li key={option}>
+                <li key={`${i}:${option}`}>
                   <Button size="md" variant="outline" onClick={() => pick(option)} className="!h-auto w-full justify-start gap-2 py-2 text-left">
                     <span className="text-caption tabular-nums opacity-70">{i + 1}</span>
                     <span className="min-w-0 whitespace-normal">{option}</span>
@@ -224,7 +232,7 @@ export function ItemCard({
                   {grading.state === "grading" ? <Spinner /> : null}
                   Check answer
                 </Button>
-                <button type="button" onClick={reveal} className="press text-label text-dim underline-offset-2 hover:text-paper hover:underline">
+                <button type="button" onClick={reveal} disabled={grading.state === "grading"} className="press text-label text-dim underline-offset-2 hover:text-paper hover:underline">
                   Show answer without checking
                 </button>
               </div>

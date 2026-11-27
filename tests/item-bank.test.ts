@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { addCards, changeCards } from "@/lib/shared/cards";
 import { bankQuizzes, isQuizSet, typeOf } from "@/lib/shared/items";
 import { evidenceOf, evidenceStrength, newEvents, studyEvidence, type Evidence } from "@/lib/shared/ledger";
 import type { ChapterQuiz } from "@/lib/shared/quiz";
-import { hasDeferred, newSchedule, reviewQueue, studyDay } from "@/lib/shared/schedule";
+import { hasDeferred, newSchedule, reviewQueue } from "@/lib/shared/schedule";
 import type { LearnerTurn, StudyThread } from "@/lib/shared/study";
 import { cleanLoad, emptyBookState, type Anchor, type BookId, type CardSet, type DailyLoad } from "@/lib/shared/types";
 import { parseCardFields } from "@/lib/server/cards/reply";
@@ -50,7 +50,7 @@ describe("banking quiz questions", () => {
     expect(typeOf(why.cues[0])).toBe("free");
     expect(recall.cues[0].origin).toEqual({ chapter: "Orbits", questionId: "q0" });
     expect(recall.schedule.state).not.toBe("new");
-    expect(recall.introducedOn).toBe(studyDay(new Date(at(1))));
+    expect(recall.introducedOn).toBeNull();
     expect(recall.createdAt).toBe(at(0));
     expect(isQuizSet(recall)).toBe(true);
   });
@@ -92,16 +92,29 @@ describe("banking quiz questions", () => {
 });
 
 describe("reading and writing a book in place", () => {
-  it("shows a saved book's quiz questions as items and keeps them after the next write", async () => {
+  it("shows a taken quiz's questions as items, saves them with the next write, and keeps them after another", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "bank-"));
-    await updateBookState(BOOK, () => base({ quizzes: [quiz([attempt(1, [true, false])])] }), dataDir);
-    /* That write already went through the read that moves questions in; the saved file holds both shapes. */
-    const saved = await readBookState(BOOK, dataDir);
-    expect(saved.cardSets).toHaveLength(2);
-    expect(saved.quizzes[0].attempts).toHaveLength(1);
-    expect(saved.banked).toHaveLength(2);
-    await updateBookState(BOOK, (state) => ({ ...state, cardSets: [] }), dataDir);
-    expect((await readBookState(BOOK, dataDir)).cardSets).toHaveLength(0);
+    await updateBookState(BOOK, (state) => ({ ...state, quizzes: [quiz([attempt(1, [true, false])])] }), dataDir);
+    /* The write that adds a quiz holds it as it was read; the read after it moves its questions in, and the next write saves them. */
+    expect((await readBookState(BOOK, dataDir)).cardSets).toHaveLength(2);
+    await updateBookState(BOOK, (state) => state, dataDir);
+    const file = path.join(dataDir, `${BOOK}.json`);
+    const raw = JSON.parse(await readFile(file, "utf8")) as { cardSets: unknown[]; banked: string[]; quizzes: { attempts: unknown[] }[] };
+    expect(raw.cardSets).toHaveLength(2);
+    expect(raw.banked).toHaveLength(2);
+    expect(raw.quizzes[0].attempts).toHaveLength(1);
+    await updateBookState(BOOK, (state) => ({ ...state, activeThreadId: null }), dataDir);
+    expect((await readBookState(BOOK, dataDir)).cardSets).toHaveLength(2);
+    /* A deleted item stays deleted through the next read and write. */
+    await updateBookState(BOOK, (state) => ({ ...state, cardSets: state.cardSets.slice(1) }), dataDir);
+    expect((await readBookState(BOOK, dataDir)).cardSets).toHaveLength(1);
+  });
+
+  it("keeps a test from using up the new limit or coming straight back for review", () => {
+    const { cardSets } = bankQuizzes(base({ quizzes: [quiz([attempt(1, [true, false])])] }));
+    expect(cardSets.every((set) => set.introducedOn === null)).toBe(true);
+    const day2 = new Date(T0 + 1 * DAY + 3_600_000);
+    expect(reviewQueue(cardSets, day2, { newPerDay: 20, reviewsPerDay: 60 })).toEqual([]);
   });
 });
 
@@ -224,6 +237,9 @@ describe("evidence from the bank, tests and Go deeper", () => {
     };
     expect(strength(graded({}))).toBe("strong");
     expect(strength(graded({ unsure: true, verdict: "partly", score: 0.5, override: "right" }))).toBe("weak");
+    /* A sure grade the reader overruled keeps the grader's mark as strong evidence and adds their call as a weak check. */
+    const overruled = newEvents([], graded({ verdict: "wrong", score: 0, override: "right" }));
+    expect(overruled.map((event) => [event.outcome, evidenceStrength(event)])).toEqual([[0, "strong"], [1, "weak"]]);
     expect(newEvents([], graded({ unsure: true, verdict: "partly", score: 0.5 }))[0].outcome).toBe(0.5);
   });
 

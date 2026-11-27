@@ -73,6 +73,14 @@ const LIMITS: { key: keyof DailyLoad; label: string }[] = [
 
 /** How much of the bank each day shows. What goes over waits for another day; it is never counted up. */
 function DailyLimit({ load, onChange }: { load: DailyLoad; onChange(load: DailyLoad): void }) {
+  /* What is typed stays as typed until the field is left, so a number can be cleared and retyped; one save per change. */
+  const [typed, setTyped] = useState<Partial<Record<keyof DailyLoad, string>>>({});
+  const commit = (key: keyof DailyLoad) => {
+    const text = typed[key];
+    setTyped((current) => Object.fromEntries(Object.entries(current).filter(([name]) => name !== key)));
+    const value = Number(text);
+    if (text !== undefined && text !== "" && Number.isInteger(value) && value >= 0 && value <= MAX_DAILY_LOAD && value !== load[key]) onChange({ ...load, [key]: value });
+  };
   return (
     <div className="flex items-center gap-3 px-3 pb-2 text-caption text-dim">
       {LIMITS.map(({ key, label }) => (
@@ -83,11 +91,10 @@ function DailyLimit({ load, onChange }: { load: DailyLoad; onChange(load: DailyL
             inputMode="numeric"
             min={0}
             max={MAX_DAILY_LOAD}
-            value={load[key]}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              if (event.target.value !== "" && Number.isInteger(value) && value >= 0 && value <= MAX_DAILY_LOAD) onChange({ ...load, [key]: value });
-            }}
+            value={typed[key] ?? load[key]}
+            onChange={(event) => setTyped((current) => ({ ...current, [key]: event.target.value }))}
+            onBlur={() => commit(key)}
+            onKeyDown={(event) => event.key === "Enter" && commit(key)}
             className="w-14 tabular-nums"
           />
         </label>

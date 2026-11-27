@@ -46,7 +46,7 @@ export const gradeCardAnswer = async (
       (state) => ({
         ...state,
         cardSets: state.cardSets.map((candidate) =>
-          candidate.id === set.id ? { ...candidate, cues: candidate.cues.map((entry) => (entry.id === cue.id && !entry.rubric ? { ...entry, rubric: grade.rubric } : entry)) } : candidate,
+          candidate.id === set.id ? { ...candidate, cues: candidate.cues.map((entry) => (entry.id === cue.id && !entry.rubric && entry.answer === cue.answer ? { ...entry, rubric: grade.rubric } : entry)) } : candidate,
         ),
       }),
       dataDir,
