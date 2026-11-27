@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { Markdown } from "@/components/chat/Markdown";
-import { Button, IconButton, Kbd } from "@/components/ui";
+import { Button, Kbd } from "@/components/ui";
+import { BookModal } from "@/components/ui/dialog";
 import { isTextEntry } from "@/lib/client/keys";
 import { cleanStance, ratedRight, signalOf, type Signal } from "@/lib/shared/confidence";
 import { intervalLabel, nextLearningAt, pickCue, previewDue, reviewQueue } from "@/lib/shared/schedule";
@@ -121,12 +121,9 @@ export function ReviewSheet({ cards, onClose, onJump }: { cards: CardsApi; onClo
   const [done, setDone] = useState(0);
   /* What each rating this session meant, for the summary at the end. */
   const [seen, setSeen] = useState<{ question: string; signal: Signal | null }[]>([]);
-  const sheet = useRef<HTMLDivElement>(null);
   const queue = reviewQueue(cards.sets, now);
   const head = queue[0];
   const comeBack = head ? null : nextLearningAt(cards.sets, now);
-
-  useEffect(() => sheet.current?.focus(), []);
 
   /* A learning step comes due while the sheet is open: wake up for it. */
   useEffect(() => {
@@ -134,15 +131,6 @@ export function ReviewSheet({ cards, onClose, onJump }: { cards: CardsApi; onClo
     const timer = setTimeout(() => setNow(new Date()), Math.max(0, comeBack.getTime() - Date.now()) + 250);
     return () => clearTimeout(timer);
   }, [comeBack]);
-
-  const onEscape = useEffectEvent(onClose);
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isTextEntry(event.target)) onEscape();
-    };
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  }, []);
 
   const rate = (set: CardSet, cueId: string, rating: Rating, stance: Stance) => {
     cards.change({ op: "review", setId: set.id, cueId, rating, reps: set.schedule.reps, ...stance });
@@ -153,23 +141,19 @@ export function ReviewSheet({ cards, onClose, onJump }: { cards: CardsApi; onClo
   };
 
   return (
-    <div
-      ref={sheet}
-      tabIndex={-1}
-      role="dialog"
-      aria-modal
-      aria-label="Review cards"
-      className="animate-fade absolute inset-0 z-30 flex flex-col bg-page outline-none"
+    <BookModal
+      label="Review cards"
+      heading={
+        <>
+          <span className="text-label text-fog tabular-nums">{head ? `${queue.length} left` : "Done"}</span>
+          {done ? <span className="text-label text-dim tabular-nums">{done} reviewed</span> : null}
+        </>
+      }
+      closeLabel="Close review (Escape)"
+      veiled={!!head}
+      typingKeepsEscape
+      onClose={onClose}
     >
-      <div className="flex h-11 shrink-0 items-center gap-3 px-3">
-        <span className="text-label text-fog tabular-nums">{head ? `${queue.length} left` : "Done"}</span>
-        {done ? <span className="text-label text-dim tabular-nums">{done} reviewed</span> : null}
-        <span className="flex-1" />
-        <IconButton label="Close review (Escape)" onClick={onClose}>
-          <X />
-        </IconButton>
-      </div>
-      <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pb-10 pt-[12vh]">
         {head ? (
           <Card
             key={`${head.id}:${head.schedule.reps}`}
@@ -182,7 +166,7 @@ export function ReviewSheet({ cards, onClose, onJump }: { cards: CardsApi; onClo
             }}
           />
         ) : (
-          <div className="flex max-w-[52ch] flex-col items-center gap-3 text-center">
+          <div className="flex max-w-[52ch] flex-col items-center gap-3 py-6 text-center">
             <p className="text-title font-medium text-paper">{done ? "That's all for now." : "Nothing to review."}</p>
             <p className="text-label leading-relaxed text-dim">
               {comeBack
@@ -190,10 +174,9 @@ export function ReviewSheet({ cards, onClose, onJump }: { cards: CardsApi; onClo
                 : "New cards and due reviews show up here. Make cards from any passage you select."}
             </p>
             <SignalSummary items={seen} />
-            <Button onClick={onClose}>Back to the book</Button>
+            <Button onClick={onClose}>Close</Button>
           </div>
         )}
-      </div>
-    </div>
+    </BookModal>
   );
 }

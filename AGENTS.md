@@ -7,3 +7,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Where a new surface opens
+
+Full rule and its tests: `roadmap.md`, ground rules, "A moment away from the book is a modal over it".
+
+- A short turn that returns to the same reading place (a question to answer, a review, a test, a search) opens in a modal over the book. Use `BookModal` or `ModalDialog` from `components/ui/dialog.tsx`; do not add another overlay.
+- A new page is only for when attention moves on to a different task.
+- The book stays mounted and in place behind a modal: fold or resize nothing beside it.
+- Esc, the close button and a click outside return to the exact reading position, and save anything typed first. If the work lives only in the modal, turn off the click outside (`lightDismiss={false}`).
+- Nothing in a modal navigates away or opens a second modal of its own.
+- A modal that asks for recall sets `veiled`, which blurs the book until the answer is in.
+- What the reader consults while reading (tutor panel, notes, contents) is not modal. A whiteboard takes the pane.

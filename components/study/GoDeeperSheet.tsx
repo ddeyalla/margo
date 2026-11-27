@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
-import { X } from "lucide-react";
 import { Markdown, StreamingMarkdown } from "@/components/chat/Markdown";
 import { awaitsAnswer, useStreaming, type Tutor } from "@/components/chat/useTutor";
-import { Button, IconButton, Kbd, Spinner, TextArea } from "@/components/ui";
+import { Button, Kbd, Spinner, TextArea } from "@/components/ui";
+import { BookModal } from "@/components/ui/dialog";
 import { studyStep } from "@/lib/client/api";
 import { useUnsentText } from "@/lib/client/unsent";
 import { placeLabel } from "@/lib/shared/place";
@@ -14,7 +14,7 @@ import { JUST_TELL_ME } from "@/lib/shared/work";
 import { Outcome, Passage } from "./Outcome";
 import type { StudyView } from "./useStudy";
 
-/** One study thread in the sheet: the question with the passage out of sight, then the grade with the passage back. */
+/** One study thread in the modal: the question with the passage out of sight, then the grade with the passage back. */
 function Turn({
   bookId,
   thread,
@@ -22,6 +22,7 @@ function Turn({
   provider,
   unavailable,
   leaveRef,
+  onAnswering,
   onClose,
   onJump,
 }: {
@@ -30,8 +31,10 @@ function Turn({
   tutor: Tutor;
   provider: ProviderId | null;
   unavailable: string | null;
-  /** Set to this turn's way out, which saves an unfinished answer first; the sheet's Escape and close button use it. */
+  /** Set to this turn's way out, which saves an unfinished answer first; every way of closing the modal uses it. */
   leaveRef: RefObject<(() => void) | null>;
+  /** Told whether the reader is answering, which is when the page behind must not be readable. */
+  onAnswering(answering: boolean): void;
   onClose(): void;
   onJump(): void;
 }) {
@@ -81,6 +84,9 @@ function Turn({
       setAgain(false);
     }
   };
+
+  const answering = stage === "answering";
+  useEffect(() => onAnswering(answering), [answering, onAnswering]);
 
   /* An answer picked up again is carried on from its end, not its start. */
   useEffect(() => {
@@ -146,9 +152,6 @@ function Turn({
         ) : (
           retryLine
         )}
-        <Button size="md" variant="primary" onClick={onClose} className="self-start">
-          Back to the book
-        </Button>
       </div>
     );
   }
@@ -167,9 +170,6 @@ function Turn({
             Try again
           </Button>
           {tellMe}
-          <Button size="md" variant={right ? "primary" : "outline"} onClick={onClose}>
-            Back to the book
-          </Button>
         </div>
       </div>
     );
@@ -242,9 +242,11 @@ function Turn({
 }
 
 /**
- * The reader's turn on a passage, over the book: answer first with the passage out of sight, then see how the answer
- * was graded against it. Opening it can wait on the tutor for a question; grading waits on the checker. The grade is
- * advice: one tap overrules it. Enter checks the answer, and Escape saves and closes from anywhere in the sheet.
+ * The reader's turn on a passage, in a modal over the book: answer first with the passage out of sight, then see how
+ * the answer was graded against it. The book stays where it was behind the modal, blurred while the reader answers
+ * so the passage can't be read off it. Opening can wait on the tutor for a question; grading waits on the checker.
+ * The grade is advice: one tap overrules it. Enter checks the answer. Escape, the close button and a click outside
+ * all save what is written and close.
  */
 export function GoDeeperSheet({
   bookId,
@@ -262,70 +264,56 @@ export function GoDeeperSheet({
   onJump(anchor: Anchor): void;
 }) {
   const { thread, error, close } = study;
-  const sheet = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!thread) sheet.current?.focus();
-  }, [thread]);
+  /* True until a turn says otherwise: while the question is being written the passage is already out of sight. */
+  const [answering, setAnswering] = useState(true);
   /* The open turn's way out, which saves first. Before a thread exists there is nothing to save. */
   const leaveRef = useRef<(() => void) | null>(null);
-  const leave = useEffectEvent(() => (leaveRef.current ?? close)());
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => {
-      /* Escape that ends an IME composition, or closes a dialog over the sheet such as search, is not for the sheet. */
-      if (event.key !== "Escape" || event.isComposing || document.querySelector("dialog[open]")) return;
-      event.preventDefault();
-      leave();
-    };
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  }, []);
+  const leave = () => (leaveRef.current ?? close)();
   const place = thread ? placeLabel(thread.chapterTitle, thread.anchor) : null;
 
   return (
-    <div ref={sheet} tabIndex={-1} role="dialog" aria-modal aria-label="Go deeper" className="animate-fade absolute inset-0 z-30 flex flex-col bg-page outline-none">
-      <div className="flex h-11 shrink-0 items-center gap-3 px-3">
-        <span className="min-w-0 truncate text-label text-fog">Go deeper{place ? ` · ${place}` : ""}</span>
-        <span className="flex-1" />
-        <IconButton label="Save and close (Escape)" onClick={() => (leaveRef.current ?? close)()}>
-          <X />
-        </IconButton>
-      </div>
-      <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pb-10 pt-[10vh]">
-        {thread ? (
-          <Turn
-            key={thread.id}
-            bookId={bookId}
-            thread={thread}
-            tutor={tutor}
-            provider={provider}
-            unavailable={unavailable}
-            leaveRef={leaveRef}
-            onClose={close}
-            onJump={() => {
-              close();
-              onJump(thread.anchor);
-            }}
-          />
-        ) : error ? (
-          <div className="flex max-w-[44ch] flex-col items-center gap-3 text-center">
-            <p className="text-title font-medium text-paper">Couldn’t start this one.</p>
-            <p role="alert" className="text-label leading-relaxed text-danger">{error}</p>
-            <div className="flex gap-2">
-              {study.canRetry ? (
-                <Button variant="primary" onClick={study.retry}>
-                  Try again
-                </Button>
-              ) : null}
-              <Button onClick={close}>Back to the book</Button>
-            </div>
+    <BookModal
+      label="Go deeper"
+      heading={<span className="min-w-0 truncate text-label text-fog">Go deeper{place ? ` · ${place}` : ""}</span>}
+      closeLabel="Save and close (Escape)"
+      veiled={answering && !error}
+      onClose={leave}
+    >
+      {thread ? (
+        <Turn
+          key={thread.id}
+          bookId={bookId}
+          thread={thread}
+          tutor={tutor}
+          provider={provider}
+          unavailable={unavailable}
+          leaveRef={leaveRef}
+          onAnswering={setAnswering}
+          onClose={close}
+          onJump={() => {
+            close();
+            onJump(thread.anchor);
+          }}
+        />
+      ) : error ? (
+        <div className="flex max-w-[44ch] flex-col items-center gap-3 py-6 text-center">
+          <p className="text-title font-medium text-paper">Couldn’t start this one.</p>
+          <p role="alert" className="text-label leading-relaxed text-danger">{error}</p>
+          <div className="flex gap-2">
+            {study.canRetry ? (
+              <Button variant="primary" onClick={study.retry}>
+                Try again
+              </Button>
+            ) : null}
+            <Button onClick={close}>Close</Button>
           </div>
-        ) : (
-          <p role="status" className="flex items-center gap-2 text-label text-dim">
-            <Spinner />
-            Writing a question for you to try…
-          </p>
-        )}
-      </div>
-    </div>
+        </div>
+      ) : (
+        <p role="status" className="flex items-center gap-2 py-6 text-label text-dim">
+          <Spinner />
+          Writing a question for you to try…
+        </p>
+      )}
+    </BookModal>
   );
 }

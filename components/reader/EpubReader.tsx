@@ -528,6 +528,9 @@ export function EpubReader({
     let frame = 0;
     let settle = 0;
     const columns = new ResizeObserver(() => {
+      /* React takes the reader off the page before this effect's cleanup runs, and the pane reports that as a
+         resize to nothing. The book's frame has no document by then, so there is nothing to lay out. */
+      if (!host.isConnected) return;
       const renderer = openRef.current ? view?.renderer : null;
       if (renderer && fitColumns(renderer, host.clientWidth) && pagedRef.current) renderer.render();
       /* The sections lay out again after a resize, which moves the text under the reading line. */

@@ -144,7 +144,7 @@ export function BookWorkspace({
     if (changes && typeof changes.ops !== "string") boardLink.place(changes.key, changes.board, changes.ops);
   });
   const tutor = useTutor(book.id, initialState.threads, initialState.activeThreadId, placeAnswer);
-  /* The reader's turn on a passage, in a sheet over the book. */
+  /* The reader's turn on a passage, in a modal over the book. */
   const study = useStudy(book.id, tutor, provider);
   const [reviewing, setReviewing] = useState(openReview);
   const [quizChapter, setQuizChapter] = useState<string | null>(openQuiz);
@@ -230,20 +230,6 @@ export function BookWorkspace({
     dismissNotice();
     setReviewing(true);
   }, [dismissNotice]);
-
-  /* Go deeper hides the passage, so the chat beside it, which may show that passage and the tutor's answer, folds
-     away while the sheet is open and comes back after, as it does for Draw it back. */
-  const beforeStudy = useRef(false);
-  const foldForStudy = useEffectEvent((shown: boolean) => {
-    if (shown) {
-      beforeStudy.current = panel.isOpen();
-      panel.collapse();
-    } else if (beforeStudy.current) {
-      beforeStudy.current = false;
-      panel.expand();
-    }
-  });
-  useEffect(() => foldForStudy(study.shown), [study.shown]);
 
   const goDeeper = (selection: SelectionContext) => {
     if (!provider || tutor.sending) return;

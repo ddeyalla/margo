@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { Check, RotateCcw, X } from "lucide-react";
+import { Check, RotateCcw } from "lucide-react";
 import { SignalSummary, StanceInput } from "@/components/cards/Stance";
 import { Markdown } from "@/components/chat/Markdown";
 import type { TocEntry } from "@/components/reader/types";
 import { Outcome } from "@/components/study/Outcome";
-import { Button, IconButton, Kbd, Spinner, TextArea } from "@/components/ui";
+import { Button, Kbd, Spinner, TextArea } from "@/components/ui";
+import { BookModal } from "@/components/ui/dialog";
 import { isTextEntry } from "@/lib/client/keys";
 import { cleanStance, signalOf, SKIPPED } from "@/lib/shared/confidence";
 import { isPassed, passMark, type QuizAnswer, type QuizQuestion } from "@/lib/shared/quiz";
@@ -245,7 +246,7 @@ function Result({
           {retest ? "Take the whole quiz" : "Retake"}
         </Button>
         <Button size="md" variant={(gated && !passed) || retest ? "outline" : "primary"} onClick={onClose}>
-          Back to the book
+          Close
         </Button>
       </div>
     </div>
@@ -350,19 +351,8 @@ export function QuizSheet({
   /* A retake after a retest is the whole test. */
   const [round, setRound] = useState(0);
   const retesting = retest && round === 0 ? retest : null;
-  const sheet = useRef<HTMLDivElement>(null);
   const writing = quizzes.writing.includes(chapter);
   const failed = quizzes.failed.find((f) => f.chapter === chapter);
-
-  useEffect(() => sheet.current?.focus(), []);
-  const onEscape = useEffectEvent(onClose);
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !isTextEntry(event.target)) onEscape();
-    };
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  }, []);
 
   const jump = (anchor: Anchor) => {
     onClose();
@@ -370,23 +360,28 @@ export function QuizSheet({
   };
 
   return (
-    <div ref={sheet} tabIndex={-1} role="dialog" aria-modal aria-label={`Quiz: ${chapter}`} className="animate-fade absolute inset-0 z-30 flex flex-col bg-page outline-none">
-      <div className="flex h-11 shrink-0 items-center gap-3 px-3">
-        <span className="min-w-0 truncate text-label text-fog">
-          {retesting ? "Retest" : "Chapter quiz"} · {chapter}
-        </span>
-        {quizzes.gated(chapter) && isPassed(quiz) ? (
-          <span className="inline-flex shrink-0 items-center gap-1 text-label text-live">
-            <Check aria-hidden className="size-3.5" />
-            Passed
+    <BookModal
+      label={`Quiz: ${chapter}`}
+      heading={
+        <>
+          <span className="min-w-0 truncate text-label text-fog">
+            {retesting ? "Retest" : "Chapter quiz"} · {chapter}
           </span>
-        ) : null}
-        <span className="flex-1" />
-        <IconButton label="Close quiz (Escape)" onClick={onClose}>
-          <X />
-        </IconButton>
-      </div>
-      <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-6 pb-10 pt-[10vh]">
+          {quizzes.gated(chapter) && isPassed(quiz) ? (
+            <span className="inline-flex shrink-0 items-center gap-1 text-label text-live">
+              <Check aria-hidden className="size-3.5" />
+              Passed
+            </span>
+          ) : null}
+        </>
+      }
+      closeLabel="Close quiz (Escape)"
+      veiled={!!quiz}
+      /* A test part-way through lives only in this modal, so a stray click outside must not end it. */
+      lightDismiss={false}
+      typingKeepsEscape
+      onClose={onClose}
+    >
         {quiz ? (
           <Taking
             key={round}
@@ -401,7 +396,7 @@ export function QuizSheet({
             onJump={jump}
           />
         ) : (
-          <div className="flex max-w-[44ch] flex-col items-center gap-3 text-center">
+          <div className="flex max-w-[44ch] flex-col items-center gap-3 py-6 text-center">
             <p className="text-title font-medium text-paper">{writing ? "The quiz is being written." : "This chapter’s quiz isn’t written yet."}</p>
             <p className="text-label leading-relaxed text-dim">
               {writing
@@ -418,11 +413,10 @@ export function QuizSheet({
               ) : (
                 <Spinner />
               )}
-              <Button onClick={onClose}>Back to the book</Button>
+              <Button onClick={onClose}>Close</Button>
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </BookModal>
   );
 }

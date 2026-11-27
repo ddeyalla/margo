@@ -73,13 +73,26 @@ export function useTutorPanel() {
    * Folds the tutor panel away. Its room goes to the book, or to the board when the book is folded: the pane next to
    * it may be the board's empty slot, which can't take it, and the fold would otherwise be refused.
    */
+  /* The panel's share of the room before it was last folded, so it opens again at the width the reader chose. */
+  const widthBeforeFold = useRef<number | null>(null);
+  const expandPanel = () => {
+    if (isOpen()) return;
+    layout.expand(PANEL_ID);
+    if (widthBeforeFold.current) layout.resize(PANEL_ID, `${widthBeforeFold.current}%`);
+  };
   const collapsePanel = () => {
+    if (isOpen()) widthBeforeFold.current = Object.values(layout.getLayout())[INDEX[PANEL_ID]] ?? null;
+    const emptySlots = (["left", "right"] as const).filter((side) => !boardShownAt(side)).map((side) => INDEX[BOARD_PANE_IDS[side]]);
     layout.collapse(PANEL_ID);
-    if (!isOpen()) return;
     const sizes = [...Object.values(layout.getLayout())];
     const to = layout.isCollapsed(BOOK_PANE_ID) ? INDEX[BOARD_PANE_IDS[boardShownAt("left") ? "left" : "right"]] : INDEX[BOOK_PANE_ID];
-    sizes[to] += sizes[INDEX[PANEL_ID]];
-    sizes[INDEX[PANEL_ID]] = 0;
+    /* Refused: the fold is made by hand. Or made, with the room handed to the board's empty slot, which shows as a blank strip. */
+    const strays = [...(isOpen() ? [INDEX[PANEL_ID]] : []), ...emptySlots.filter((slot) => sizes[slot] > 0)];
+    if (!strays.length) return;
+    for (const from of strays) {
+      sizes[to] += sizes[from];
+      sizes[from] = 0;
+    }
     layout.setLayout(sizes);
   };
 
@@ -90,10 +103,8 @@ export function useTutorPanel() {
     isOpen,
     /** Reads the panes' state again after the layout changed. */
     sync,
-    toggle: () => (isOpen() ? collapsePanel() : layout.expand(PANEL_ID)),
-    expand: () => {
-      if (!isOpen()) layout.expand(PANEL_ID);
-    },
+    toggle: () => (isOpen() ? collapsePanel() : expandPanel()),
+    expand: expandPanel,
     collapse: collapsePanel,
     boardOpen,
     boardSide,
