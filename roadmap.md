@@ -32,6 +32,22 @@ Effort: `S` hours · `M` a day or two · `L` a week or more.
   answer, and the two agreed (Phase 27).
 - **A model's grade is advice.** The reader can overrule it in one tap, and a middling answer
   is reported as unsure, not given a verdict. Flip-and-rate review never waits on one.
+- **A moment away from the book is a modal over it; a new task is a page.** When the reader's
+  attention leaves the page for a short turn and must come back to the same place (answering
+  a question, a review, a chapter's test, a search), the turn opens in a modal over the book.
+  A page is for when attention moves on to something else: the library, a Course, what you
+  know. What follows from it, and is checked when a surface is added (Phase 31):
+  - The book stays mounted and in place behind the modal. Nothing beside it folds or resizes.
+  - Esc, the close button and a click outside all return to the exact reading position.
+  - Nothing typed is lost by closing. An unfinished answer is saved and opens again where it
+    was. Where the work lives only in the modal, as in a test part-way through, a click
+    outside does not close it.
+  - Nothing in a modal navigates away, and a modal never opens a second one of its own.
+  - A modal that asks for recall blurs the book behind it until the answer is in, since a
+    visible passage would answer the question.
+  - Exceptions: what the reader consults while reading is not modal at all (the tutor panel,
+    notes, the contents). What needs the room, a whiteboard, takes the pane or sits beside the
+    book. Long or many-step work gets a page.
 
 ## Phase 1 — Tighter tutor answers · S
 
@@ -1080,6 +1096,44 @@ Done when the type check, lint, build and tests pass, the backfill fills the led
 data and adds nothing on a second run, rating a card, answering a quiz and highlighting each
 add their event in the running app, and a real `claude -p` with the app closed answers what
 the reader is weakest on in a book from the ledger tools.
+
+## Phase 31 — Modals over the book · S
+
+Go deeper, card review and the chapter test each took over the whole reader pane, like a new
+page, and Go deeper folded the tutor panel as well, which left a blank strip beside it. The
+reader was only away for a moment and had lost the page they were on. The ground rule above
+is the result; the sources behind it are in the pull request.
+
+- [x] **The rule, written down** in the ground rules and in `AGENTS.md`, after reading what
+      Nielsen Norman Group, Apple and Material say about modals and what the interruption
+      studies measured.
+      *The sources agree a modal should be short, keep its context in view and never lose
+      work; that is where the exceptions in the rule come from.*
+- [x] **One modal for a turn away from the book**, `BookModal` in `components/ui/dialog.tsx`,
+      built on `ModalDialog`: centred over the dimmed book, as tall as what it holds up to most
+      of the window, scrolling inside. Go deeper, card review and the chapter test all use it.
+      *The book is blurred while a question is unanswered and clear once it is graded.*
+- [x] **Go deeper no longer folds the tutor panel**, so the book does not move. Esc, the close
+      button and a click outside all save the answer first. "Back to the book" is gone; the
+      modal's own close does it.
+- [x] **A chapter test is not closed by a click outside**: a test part-way through lives only
+      in the modal. Esc and the close button still close it.
+- [x] **The reader no longer throws when it leaves the page.** A change saved elsewhere
+      remounts the book on return; the reader's pane then reported a resize to nothing, and
+      laying out a frame with no document threw `Cannot read properties of null (reading
+      'documentElement')`. Both resize observers, ours and foliate's, now skip a reader that is
+      off the page.
+- [x] **Folding the tutor panel gives its room to the book.** The room went to the board's
+      empty slot and showed as a blank strip; the panel opens again at its earlier width.
+- [ ] A chapter test part-way through is lost when it is closed. Saving the sitting, as Go
+      deeper saves its answer, would let a click outside close it too.
+- [ ] The whiteboard sheet, the end-of-session recall and the contents drawer are overlays of
+      their own making, not `ModalDialog`. Left as they are; see the audit in the pull request.
+
+Done when the type check, lint, build and tests pass, and in the running app on an EPUB Go
+deeper opens over the visible book, the console stays clear of the `documentElement` error
+while it opens, the window is resized and it closes, Esc returns to the same page, a
+half-typed answer is there on reopening, and a chapter test runs in the same modal.
 
 ## Open: where the books come from
 

@@ -752,7 +752,9 @@ export class Paginator extends HTMLElement {
         return { height, width, margin, gap, columnWidth }
     }
     render() {
-        if (!this.#view) return
+        // rigg learn: off the page the section's frame has no document, and a
+        // resize observer can still fire once as the element is removed
+        if (!this.#view || !this.isConnected) return
         this.#view.render(this.#beforeRender({
             vertical: this.#vertical,
             rtl: this.#rtl,
