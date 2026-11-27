@@ -118,6 +118,28 @@ describe("reading and writing a book in place", () => {
   });
 });
 
+describe("a quiz with many misses", () => {
+  it("does not come back all at once, on day 2 or long after, and says more is waiting", () => {
+    const anchors = Array.from({ length: 30 }, (_, i) => i + 1);
+    const q = quiz([{ at: at(0.01), passed: false, answers: anchors.map((_, i) => ({ questionId: `q${i}`, correct: false, confidence: null, thinking: null })) }], anchors);
+    const { cardSets } = bankQuizzes(base({ quizzes: [q] }));
+    const load = { newPerDay: 2, reviewsPerDay: 3 };
+    for (const days of [2, 40]) {
+      const now = new Date(T0 + days * DAY);
+      expect(reviewQueue(cardSets, now, load)).toHaveLength(3);
+      expect(hasDeferred(cardSets, now, load)).toBe(true);
+    }
+    expect(reviewQueue(cardSets, new Date(T0 + 0.5 * DAY), load)).toHaveLength(0);
+  });
+
+  it("leaves a test's own rating out of the ledger and the day's review count", () => {
+    const state = base({ quizzes: [quiz([attempt(1, [true, true])])] });
+    const set = bankQuizzes(state).cardSets[0];
+    const rated: CardSet = { ...set, history: [{ at: at(5), cueId: set.cues[0].id, rating: "good", confidence: null, thinking: null, test: true }] };
+    expect(evidenceOf(BOOK, { ...emptyBookState(), cardSets: [rated] })).toEqual([]);
+  });
+});
+
 describe("the daily limit", () => {
   const load: DailyLoad = { newPerDay: 2, reviewsPerDay: 3 };
   const now = new Date(T0 + 30 * DAY);

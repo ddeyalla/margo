@@ -138,6 +138,8 @@ export const pickCue = (set: CardSet, random: number): Cue => {
 export interface Review extends Partial<Stance> {
   /** Picked from options, or graded unsure: see `ReviewRecord.aided`. */
   aided?: boolean;
+  /** Rated by a chapter test: see `ReviewRecord.test`. */
+  test?: boolean;
   cueId: string;
   rating: Rating;
   /** The set's `schedule.reps` when the cue was shown. A stale or repeated rating carries an old count and is ignored. */
@@ -166,6 +168,7 @@ export const applyReview = (set: CardSet, review: Review, now: Date): CardSet =>
         confidence: review.confidence ?? null,
         thinking: review.thinking ?? null,
         ...(review.aided ? { aided: true } : {}),
+        ...(review.test ? { test: true } : {}),
       },
     ].slice(-HISTORY_LIMIT),
   };
@@ -176,7 +179,7 @@ export const DEFAULT_LOAD: DailyLoad = DEFAULT_DAILY_LOAD;
 
 /** Sets introduced before `day` that were rated on it: the day's due reviews done so far, one per set however many times it came up. Sets introduced that day count against the new limit instead. */
 const reviewedOn = (sets: readonly CardSet[], day: string): number =>
-  sets.filter((set) => set.introducedOn !== day && (set.history ?? []).some((record) => studyDay(new Date(record.at)) === day)).length;
+  sets.filter((set) => set.introducedOn !== day && (set.history ?? []).some((record) => !record.test && studyDay(new Date(record.at)) === day)).length;
 
 /**
  * The sets to review now, in order: learning steps that are ready, then due reviews, then new sets. A learning

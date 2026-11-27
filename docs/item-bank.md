@@ -16,10 +16,16 @@
 - Chapter tests: an unsure grade is weak; an overrule adds a weak check after the grader's mark.
 - Bank reviews: picked-from-options, unsure grades and ratings that overrule the grader are `aided` (weak). A wrong pick allows only Again. Reviews of quiz-origin items land on the quiz's ledger item.
 
+## After upgrading
+Restart the MCP server and the app. An older running process derives card evidence the old way (it ignores `aided`) under the same event ids, so it could record an aided review as strong.
+
+## Chapter tests and the bank
+A test answer to a banked question also rates its item (marked `test`, left out of the ledger and the day's review count), and Course retention counts a banked question by its set, so tests and reviews move one schedule.
+
 ## Known limits
 - The limit is per book, not across books.
 - `delete-set` on a set that quiz questions joined removes them for good.
-- A set mixing the reader's own cards and quiz questions counts the quiz replay and the set in mastery.
+- The review limit counts a set once if it was rated today, including learning steps of a set introduced on an earlier day.
 - Quiz sets use a 32-bit hash of the anchor for their id.
 
 ## Test by hand

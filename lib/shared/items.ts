@@ -51,13 +51,13 @@ const answersTo = (quiz: ChapterQuiz, questionId: string) =>
 const DAY_MS = 86_400_000;
 
 /**
- * A schedule rebuilt from a test's answers, held to come back no sooner than a day after the last one: the test was
- * the reader's go at it, and a learning step minutes away would put the whole test back in front of them.
+ * A schedule rebuilt from a test's answers, as a review due a day after the last one. The test was the reader's go
+ * at it: a learning step minutes away would put every missed question straight back, and a learning set skips the
+ * daily limit, so a long-ago quiz with many misses would come back all at once.
  */
 const settled = (schedule: Schedule): Schedule => {
   if (!schedule.lastReview || (schedule.state !== "learning" && schedule.state !== "relearning")) return schedule;
-  const earliest = new Date(Date.parse(schedule.lastReview) + DAY_MS).toISOString();
-  return schedule.due < earliest ? { ...schedule, due: earliest } : schedule;
+  return { ...schedule, state: "review", learningSteps: 0, due: new Date(Date.parse(schedule.lastReview) + DAY_MS).toISOString() };
 };
 
 /** A new set for questions of one passage. What the quizzes already know of the reader sets its schedule: the replay of their answers. */

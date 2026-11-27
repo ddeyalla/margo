@@ -308,6 +308,8 @@ export interface ReviewRecord extends Stance {
   rating: Rating;
   /** The reader picked from options, or the grader wasn't sure of the answer: not recall from nothing. */
   aided?: boolean;
+  /** Made by a chapter test answering this item, which already left its own ledger evidence and is not a review of the day. */
+  test?: boolean;
 }
 
 /** The cards made from one passage: one fact, a few ways to recall it, one schedule. */

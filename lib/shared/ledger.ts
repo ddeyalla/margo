@@ -78,6 +78,8 @@ const RATING_OUTCOME: Record<Rating, number> = { again: 0, hard: 0.6, good: 1, e
 
 const cardEvidence = (bookId: BookId, set: CardSet): Evidence[] =>
   (set.history ?? []).flatMap((record) => {
+    /* A test's own answer already left its evidence, on the quiz item. */
+    if (record.test) return [];
     const cue = set.cues.find((entry) => entry.id === record.cueId);
     /* A question that came from a chapter quiz is the same item whichever way it is answered, so the test's evidence and the bank's meet. */
     const fromQuiz = cue?.origin;

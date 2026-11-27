@@ -30,7 +30,7 @@ export const dayWork = (activity: ActivityFile, books: readonly { cardSets: Card
     for (const seconds of Object.values(byBook)) at(day).seconds += (seconds.reading ?? 0) + (seconds.review ?? 0) + (seconds.quiz ?? 0);
   }
   for (const book of books) {
-    for (const set of book.cardSets) for (const record of set.history ?? []) at(studyDay(new Date(record.at))).ratings++;
+    for (const set of book.cardSets) for (const record of (set.history ?? []).filter((entry) => !entry.test)) at(studyDay(new Date(record.at))).ratings++;
     for (const quiz of book.quizzes) for (const attempt of quiz.attempts) at(studyDay(new Date(attempt.at))).quizzes++;
   }
   const made = books.flatMap((book) => book.cardSets.filter((set) => set.cues.length && !isQuizSet(set)).map((set) => studyDay(new Date(set.createdAt))));
