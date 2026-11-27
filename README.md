@@ -191,7 +191,10 @@ What an agent can do:
 | `list_library`, `get_book_text`, `search_library`, `list_annotations`, `list_threads`, `get_thread`, `review_queue`, `get_today`, `list_courses`, `list_boards`, `read_board`, `list_suggestions` | Read. Nothing changes. |
 | `park_question`, `log_activity` | Write directly: a question left on a passage for you to ask later, and learning time added to today. |
 | `propose_card` | Propose. The cards wait on the Today card with **Add** and **Reject**, and are only added when you accept. |
+| `propose_session_plan` | Propose. A prepared session (items to check again, an exercise or two, open questions) waits on the Today card with **Got it** and **Dismiss**; it changes nothing in your books. One a day. |
 | `verify_item`, `grade_answer` | Ask a model and change nothing: check a written question against its passage before you see it, and grade a free-text answer, saying so when it is unsure. |
+
+The **prep** and **follow-through** playbooks (`.claude/skills/`) use these tools: [AGENTS.md](AGENTS.md#agent-playbooks).
 
 An agent can't change your highlights, notes, cards or boards any other way, and the server has no tool that reaches the web. Every call is written to `data/tool-log.jsonl`.
 

@@ -2,6 +2,7 @@ import { boardRecall, type Board } from "./boards";
 import { recordSignal, signalOf, type Signal } from "./confidence";
 import { courseSteps, type Course } from "./courses";
 import { isPassed, type ChapterQuiz } from "./quiz";
+import { questionKey } from "./items";
 import { recallAt, replaySchedule, studyDay } from "./schedule";
 import type { BookId, CardSet } from "./types";
 
@@ -29,8 +30,10 @@ export const cardRecall = (set: CardSet, now: Date): RecallItem | null => {
 };
 
 /** Each question of a quiz with its recall now, from replaying every answer to it. Questions never answered are left out. */
-export const quizRecall = (quiz: ChapterQuiz, now: Date): RecallItem[] =>
+export const quizRecall = (quiz: ChapterQuiz, now: Date, banked: ReadonlySet<string> = new Set()): RecallItem[] =>
   quiz.questions.flatMap((question) => {
+    /* A question in the bank is counted by its set, whose schedule both tests and reviews move. */
+    if (banked.has(questionKey(quiz.chapter, question.id))) return [];
     const answers = quiz.attempts.flatMap((attempt) => attempt.answers.filter((a) => a.questionId === question.id).map((a) => ({ ...a, at: attempt.at })));
     const schedule = replaySchedule(answers);
     const recall = schedule && recallAt(schedule, now);
@@ -77,13 +80,14 @@ export const courseMastery = (course: Pick<Course, "books" | "units">, books: Re
     const evidence = books.get(bookId);
     if (!evidence) continue;
     const labels = new Set<string>();
+    const bankedQuestions = new Set(evidence.cardSets.flatMap((set) => set.cues.flatMap((cue) => (cue.origin ? [questionKey(cue.origin.chapter, cue.origin.questionId)] : []))));
     for (const step of bookSteps) {
       labels.add(step.chapter);
       const quiz = evidence.quizzes.find((q) => q.chapter === step.chapter);
       if (!quiz) continue;
       for (const label of quiz.labels ?? []) labels.add(label);
       if (isPassed(quiz)) passed++;
-      items.push(...quizRecall(quiz, now));
+      items.push(...quizRecall(quiz, now, bankedQuestions));
     }
     /* A chapter's draw-it-back attempts count once, as one thing to remember. */
     for (const board of evidence.boards ?? []) {

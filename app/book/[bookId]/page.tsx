@@ -55,6 +55,7 @@ async function Book({ params, searchParams }: Pick<PageProps<"/book/[bookId]">, 
         panelTab: settings.panelTab,
         readAloudVoice: settings.readAloudVoice,
         readAloudRate: settings.readAloudRate,
+        dailyLoad: settings.dailyLoad,
       }}
     />
   );

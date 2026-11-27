@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { studyEvidence } from "@/lib/shared/ledger";
 import { placeLabel } from "@/lib/shared/place";
 import {
   EXPLAIN_BACK_QUESTION,
@@ -21,6 +22,7 @@ import type { Checker } from "./check/provider";
 import { replyObject, textField } from "./check/reply";
 import { getConfig } from "./config";
 import { passageThread } from "./passage";
+import { noteEvidence } from "./ledger";
 import { hold, readBookState, updateBookState } from "./store";
 import { ACTION_MESSAGES, type BookLabel } from "./tutor/prompt";
 import { structured } from "./tutor/structured";
@@ -192,7 +194,7 @@ const gradeAndSave = async (bookId: BookId, threadId: string, text: string, chec
     signal,
   );
   const at = new Date().toISOString();
-  return changeStudy(
+  const saved = await changeStudy(
     bookId,
     threadId,
     (current) => {
@@ -215,6 +217,9 @@ const gradeAndSave = async (bookId: BookId, threadId: string, text: string, chec
     },
     dataDir,
   );
+  /* The answer is kept whatever happens to the ledger: a log that can't be written is logged and caught up later. */
+  noteEvidence(studyEvidence(bookId, saved), dataDir);
+  return saved;
 };
 
 /** Keeps the answer the reader left unfinished, for when they come back. */
@@ -224,10 +229,14 @@ export const saveStudyDraft = (bookId: BookId, threadId: string, draft: unknown,
 };
 
 /** Records the reader's own call on a graded answer, by the turn's time. Null takes it back. */
-export const overruleStudy = (bookId: BookId, threadId: string, at: unknown, override: Overrule | null, dataDir = getConfig().dataDir): Promise<StudyThread> =>
-  changeStudy(
+export const overruleStudy = async (bookId: BookId, threadId: string, at: unknown, override: Overrule | null, dataDir = getConfig().dataDir): Promise<StudyThread> => {
+  const saved = await changeStudy(
     bookId,
     threadId,
     (thread) => ({ ...thread, study: { ...thread.study, turns: thread.study.turns.map((turn) => (turn.at === at ? { ...turn, override } : turn)) } }),
     dataDir,
   );
+  /* Taking the call back adds nothing: the log only grows, and the check it made stays. */
+  noteEvidence(studyEvidence(bookId, saved), dataDir);
+  return saved;
+};

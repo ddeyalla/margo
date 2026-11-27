@@ -1,7 +1,8 @@
 import { compactScene, isBoardId, type BoardElement } from "@/lib/shared/boards";
 import { masteryLine } from "@/lib/shared/mastery";
 import { isParked } from "@/lib/shared/parked";
-import { reviewQueue } from "@/lib/shared/schedule";
+import { typeOf } from "@/lib/shared/items";
+import { hasDeferred, reviewQueue } from "@/lib/shared/schedule";
 import type { Thread } from "@/lib/shared/types";
 import { listBoards, NoSuchBoard, openBoard } from "../boards";
 import { getFolders } from "../config";
@@ -9,6 +10,7 @@ import { masteryOf } from "../courses/progress";
 import { readCourses } from "../courses/store";
 import { readLibrary } from "../library";
 import { bookText, searchLibrary } from "../search/index";
+import { readSettings } from "../settings";
 import { readBookState } from "../store";
 import { readToday } from "../today";
 import { ToolError } from "./schema";
@@ -23,7 +25,7 @@ const listLibrary = defineTool({
   effect: "read",
   input: {},
   run: async (_, { now }) => {
-    const { books } = await readLibrary();
+    const [{ books }, { dailyLoad }] = await Promise.all([readLibrary(), readSettings()]);
     return {
       books: await Promise.all(
         books.map(async (book) => {
@@ -40,7 +42,7 @@ const listLibrary = defineTool({
             highlights: state?.highlights.length ?? 0,
             notes: state?.notes.length ?? 0,
             cardSets: state?.cardSets.length ?? 0,
-            cardsDue: state ? reviewQueue(state.cardSets, now).length : 0,
+            cardsDue: state ? reviewQueue(state.cardSets, now, dailyLoad).length : 0,
             threads: state?.threads.length ?? 0,
             boards: state?.boards.length ?? 0,
           };
@@ -185,29 +187,32 @@ const MAX_QUEUE = 50;
 
 const reviewQueueTool = defineTool({
   name: "review_queue",
-  description: `The review cards ready now, in the order the app would show them: for each, the fact, the questions with their answers, the passage and where its schedule stands. One book, or every book. At most ${MAX_QUEUE} are listed; \`due\` is the full count.`,
+  description: `The bank's items ready now, in the order the app would show them, held to the reader's daily limit: for each passage, the fact, its items (each a question and answer with its type: "flip" to recall and rate, "choice" with its options, or "free" for a written answer a grader marks), the passage and where its schedule stands. Review cards and chapter-quiz questions are the same items. One book, or every book. At most ${MAX_QUEUE} are listed; \`due\` is how many the limit lets through today. \`moreWaiting\` says only that the limit held some back; it is not a backlog to work through.`,
   effect: "read",
-  input: { bookId: { ...BOOK_ID, optional: true, description: "Only this book's cards." } },
+  input: { bookId: { ...BOOK_ID, optional: true, description: "Only this book's items." } },
   run: async ({ bookId }, { now }) => {
-    const books = bookId ? [(await requireBook(bookId)).book] : (await readLibrary()).books;
+    const [books, { dailyLoad }] = await Promise.all([bookId ? requireBook(bookId).then(({ book }) => [book]) : readLibrary().then((library) => library.books), readSettings()]);
     const queues = await Promise.all(
       books.map(async (book) => {
         const state = await readBookState(book.id).catch(() => null);
-        return (state ? reviewQueue(state.cardSets, now) : []).map((set) => ({
-          bookId: book.id,
-          book: titleOf(state, book.fileTitle),
-          setId: set.id,
-          chapter: set.chapterTitle,
-          fact: set.fact,
-          quote: clip(set.quote, 400),
-          cards: set.cues.map(({ question, answer }) => ({ question, answer })),
-          state: set.schedule.state,
-          dueAt: set.schedule.due,
-        }));
+        return {
+          moreWaiting: !!state && hasDeferred(state.cardSets, now, dailyLoad),
+          cards: (state ? reviewQueue(state.cardSets, now, dailyLoad) : []).map((set) => ({
+            bookId: book.id,
+            book: titleOf(state, book.fileTitle),
+            setId: set.id,
+            chapter: set.chapterTitle,
+            fact: set.fact,
+            quote: clip(set.quote, 400),
+            cards: set.cues.map((cue) => ({ question: cue.question, answer: cue.answer, type: typeOf(cue), ...(cue.choices ? { choices: cue.choices } : {}) })),
+            state: set.schedule.state,
+            dueAt: set.schedule.due,
+          })),
+        };
       }),
     );
-    const due = queues.flat();
-    return { due: due.length, cards: due.slice(0, MAX_QUEUE) };
+    const due = queues.flatMap((queue) => queue.cards);
+    return { due: due.length, moreWaiting: queues.some((queue) => queue.moreWaiting), cards: due.slice(0, MAX_QUEUE) };
   },
 });
 

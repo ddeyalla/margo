@@ -124,7 +124,7 @@ describe("scheduler", () => {
     const introducedToday = { ...review, id: "seen", introducedOn: studyDay(morning), schedule: { ...review.schedule, due: "2026-03-20T00:00:00Z" } };
     const fresh = ["n1", "n2", "n3"].map((id, i) => ({ ...set(id, new Date(morning.getTime() + i)) }));
     const empty = set("empty", morning, []);
-    const queue = reviewQueue([...fresh, empty, notYet, review, step, introducedToday], morning, 3);
+    const queue = reviewQueue([...fresh, empty, notYet, review, step, introducedToday], morning, { newPerDay: 3, reviewsPerDay: 60 });
     expect(queue.map((s) => s.id)).toEqual(["step", "review", "n1", "n2"]);
     expect(nextLearningAt([notYet, step], morning)?.toISOString()).toBe("2026-03-10T09:30:00.000Z");
   });

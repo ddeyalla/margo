@@ -128,7 +128,7 @@ export function BookWorkspace({
 
   const { providers, current: provider, choose: chooseProvider, models, chooseModel, unavailable } = useProviders(saved.provider, saved.models);
   const annotations = useAnnotations(book.id, { highlights: initialState.highlights, notes: initialState.notes }, readerRef);
-  const cards = useCards(book.id, initialState.cardSets);
+  const cards = useCards(book.id, initialState.cardSets, saved.dailyLoad);
   const quizzes = useQuizzes({ bookId: book.id, initial: initialState.quizzes, initialSkips: initialState.quizSkips, courses, spot, toc, provider });
   /* The chapter being read, as a board made now is about: the Course's chapter when a Course reads this book. */
   const boardContext = useStableCallback(() => {
@@ -163,6 +163,7 @@ export function BookWorkspace({
   const [noteFocus, setNoteFocus] = useState<{ id: string; at: number } | null>(null);
   const { notice, dismiss: dismissNotice, placeMoved, navigate } = useOpeningNotice({
     initialState,
+    dailyLoad: saved.dailyLoad,
     readerRef,
     spot,
     highlights: annotations.highlights,
@@ -614,7 +615,7 @@ export function BookWorkspace({
                   }}
                 />
               ) : null}
-              {reviewing ? <ReviewSheet cards={cards} onClose={closeReview} onJump={jumpTo} /> : null}
+              {reviewing ? <ReviewSheet bookId={book.id} cards={cards} provider={provider && !unavailable ? provider : null} onClose={closeReview} onJump={jumpTo} /> : null}
               {!reviewing && !quizChapter && !study.shown && !spotlight && !noticeExit.shown ? (
                 <QuizNotice
                   quizzes={quizzes}

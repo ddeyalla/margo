@@ -1,3 +1,4 @@
+import type { NewCard } from "./cards";
 import type { Anchor, BookId } from "./types";
 
 /*
@@ -33,13 +34,44 @@ export interface CardSuggestion extends SuggestionFrame {
     chapterTitle: string | null;
     fact: string;
     /** The cards the reader can add: each passed the check against the quote when it was proposed, at `verifiedAt`. */
-    cards: { question: string; answer: string; verifiedAt?: string }[];
+    cards: NewCard[];
     /** Proposed cards that didn't pass, with why. They are shown as left out and are never added. */
     failed?: { question: string; answer: string; reason: string }[];
   };
 }
 
-export type Suggestion = CardSuggestion;
+/** One thing in a prepared plan: a passage or topic, in a book, and why it is there. */
+export interface PlanItem {
+  bookId: BookId;
+  bookTitle: string;
+  topic: string;
+  chapter: string | null;
+  anchor: Anchor | null;
+  why: string;
+}
+
+/** An exercise is tied to a passage and says what the reader is asked to do. */
+export type PlanExercise = PlanItem & { anchor: Anchor; prompt: string };
+
+export interface PlanQuestion {
+  bookId: BookId;
+  bookTitle: string;
+  question: string;
+  threadId: string | null;
+}
+
+/**
+ * A prepared session for a day: what to retest, an exercise or two tied to where the reader is, and open questions.
+ * It is read-only advice. Accepting it only says the reader has seen it; any cards it wants are suggestions of their own.
+ */
+export interface PlanSuggestion extends SuggestionFrame {
+  kind: "plan";
+  /** Plans span books, so there is no one book to aim at. */
+  target: { bookId: null };
+  payload: { forDay: string; note: string | null; retest: PlanItem[]; exercises: PlanExercise[]; questions: PlanQuestion[] };
+}
+
+export type Suggestion = CardSuggestion | PlanSuggestion;
 export type SuggestionKind = Suggestion["kind"];
 
 export interface SuggestionsFile {
