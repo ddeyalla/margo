@@ -19,3 +19,12 @@ Full rule and its tests: `roadmap.md`, ground rules, "A moment away from the boo
 - Nothing in a modal navigates away or opens a second modal of its own.
 - A modal that asks for recall sets `veiled`, which blurs the book until the answer is in.
 - What the reader consults while reading (tutor panel, notes, contents) is not modal. A whiteboard takes the pane.
+
+## Agent playbooks
+
+Two playbooks run on the `rigg-learn` MCP server (`npm run mcp:setup`). Claude Code loads them as skills from `.claude/skills/`; Codex reads the same files. They are the single copy of each: do not duplicate them.
+
+- Prep, the night before: `.claude/skills/prep/SKILL.md`. Reads the ledger and review queue, then leaves one prepared plan (`propose_session_plan`) and any new cards on the Today card.
+- Follow-through, after a session: `.claude/skills/follow-through/SKILL.md`. Turns parked questions and missed answers into verified card suggestions and a short recap.
+
+Both only propose. The reader accepts or dismisses on Today. Never write to the ledger from Prep.

@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { evidenceOf, newEvents, type Evidence, type LedgerEvent } from "@/lib/shared/ledger";
+import { evidenceOf, evidenceStrength, newEvents, type Evidence, type LedgerEvent, type Strength } from "@/lib/shared/ledger";
 import { getFolders } from "./config";
 import { readBookState, savedBookIds, serializedFile } from "./store";
 
@@ -62,11 +62,21 @@ export const ledgerIdle = async (): Promise<void> => {
   while (pending.size) await Promise.all(pending);
 };
 
+export interface BackfillReport {
+  books: number;
+  found: number;
+  added: number;
+  /** What would be added (dry run) or was added, counted by where it came from and by evidence strength. */
+  bySource: Record<string, number>;
+  byStrength: Partial<Record<Strength, number>>;
+}
+
 /**
  * Rebuilds events from what every book's file already holds: card ratings, quiz attempts, draw-it-back attempts,
- * highlights and questions on passages. Running it again adds nothing.
+ * highlights and questions on passages. Running it again adds nothing. With `dryRun` it reads and counts and writes
+ * nothing. It only ever appends to the log, and never touches the book files.
  */
-export const backfillLedger = async (dataDir = getFolders().dataDir): Promise<{ books: number; found: number; added: number }> => {
+export const backfillLedger = async (dataDir = getFolders().dataDir, { dryRun = false }: { dryRun?: boolean } = {}): Promise<BackfillReport> => {
   const ids = [...(await savedBookIds(dataDir))];
   const evidence: Evidence[] = [];
   let books = 0;
@@ -77,5 +87,13 @@ export const backfillLedger = async (dataDir = getFolders().dataDir): Promise<{ 
     books++;
     evidence.push(...evidenceOf(id, state));
   }
-  return { books, found: evidence.length, added: (await recordEvidence(evidence, dataDir)).length };
+  const events = dryRun ? newEvents(await readLedger(dataDir), evidence) : await recordEvidence(evidence, dataDir);
+  const bySource: Record<string, number> = {};
+  const byStrength: Partial<Record<Strength, number>> = {};
+  for (const event of events) {
+    bySource[event.source] = (bySource[event.source] ?? 0) + 1;
+    const strength = evidenceStrength(event);
+    byStrength[strength] = (byStrength[strength] ?? 0) + 1;
+  }
+  return { books, found: evidence.length, added: events.length, bySource, byStrength };
 };

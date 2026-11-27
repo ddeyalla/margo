@@ -180,10 +180,15 @@ describe("the ledger file", () => {
       };
     });
 
-    expect(await backfillLedger(dataDir)).toEqual({ books: 1, found: 6, added: 4 });
+    const dry = await backfillLedger(dataDir, { dryRun: true });
+    expect(dry).toMatchObject({ books: 1, found: 6, added: 4 });
+    expect(Object.values(dry.bySource).reduce((a, b) => a + b, 0)).toBe(4);
+    expect(Object.values(dry.byStrength).reduce((a, b) => a + (b ?? 0), 0)).toBe(4);
+    expect((await readFile(ledgerFile(dataDir), "utf8")).trim().split("\n")).toHaveLength(2);
+    expect(await backfillLedger(dataDir)).toMatchObject({ books: 1, found: 6, added: 4 });
     const lines = (await readFile(ledgerFile(dataDir), "utf8")).trim().split("\n");
     expect(lines).toHaveLength(6);
-    expect(await backfillLedger(dataDir)).toEqual({ books: 1, found: 6, added: 0 });
+    expect(await backfillLedger(dataDir)).toMatchObject({ books: 1, found: 6, added: 0 });
     expect((await readFile(ledgerFile(dataDir), "utf8")).trim().split("\n")).toEqual(lines);
 
     const cards = (await readLedger(dataDir)).filter((event) => event.source === "card");

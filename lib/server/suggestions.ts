@@ -6,10 +6,12 @@ import {
   withProposed,
   type CardSuggestion,
   type Decision,
+  type PlanSuggestion,
   type Suggestion,
   type SuggestionStatus,
   type SuggestionsFile,
 } from "@/lib/shared/suggestions";
+import { studyDay } from "@/lib/shared/schedule";
 import type { LibraryBook } from "@/lib/shared/types";
 import { verifyCards } from "./cards/generate";
 import { parseCardFields } from "./cards/reply";
@@ -83,6 +85,40 @@ export const proposeCard = async (
   return suggestion;
 };
 
+/**
+ * Adds a prepared session plan to the inbox. There is one plan a day: a plan still waiting for that day is
+ * replaced, and plans waiting for days already gone are dropped, so preparing again never stacks plans or fills the
+ * inbox. Those are unread advice, never the reader's content or a decision of theirs. The inbox's cap applies as it
+ * does to every proposal, counted after they go.
+ */
+export const proposePlan = async (
+  plan: PlanSuggestion["payload"],
+  proposer: string,
+  now = new Date(),
+  dataDir = getConfig().dataDir,
+): Promise<PlanSuggestion> => {
+  const suggestion: PlanSuggestion = {
+    id: randomUUID(),
+    kind: "plan",
+    target: { bookId: null },
+    payload: plan,
+    proposer,
+    createdAt: now.toISOString(),
+    status: "pending",
+    decidedAt: null,
+  };
+  let full = false;
+  await updateSuggestions((current) => {
+    const today = studyDay(now);
+    const rest = { suggestions: current.suggestions.filter((entry) => !(entry.kind === "plan" && entry.status === "pending" && (entry.payload.forDay === plan.forDay || entry.payload.forDay < today))) };
+    const next = withProposed(rest, suggestion);
+    full = next === null;
+    return next ?? current;
+  }, dataDir);
+  if (full) throw new ToolError("The reader's inbox is full of suggestions they haven't decided on yet. Propose more once they have.");
+  return suggestion;
+};
+
 /** Why a suggestion can't be decided as asked, worded for the reader. */
 export class SuggestionError extends Error {
   override name = "SuggestionError";
@@ -91,6 +127,9 @@ export class SuggestionError extends Error {
 /* Makes the change a suggestion proposes. Each kind goes through the code the app uses for that change. */
 const apply = async (suggestion: Suggestion, now: Date, dataDir: string, notesDir: string | null): Promise<void> => {
   switch (suggestion.kind) {
+    /* A prepared plan is advice. Accepting it only says the reader has seen it; it changes nothing in any book. */
+    case "plan":
+      return;
     case "card": {
       const found = await findBook(suggestion.target.bookId, undefined, dataDir);
       if (!found) throw new SuggestionError("That book is no longer in the library, so the card has nowhere to go. Reject it instead.");
@@ -135,7 +174,7 @@ export const pendingSuggestions = async (dataDir = getConfig().dataDir): Promise
   const books = new Map((await recentLibrary(undefined, dataDir)).books.map((book) => [book.id, book]));
   return Promise.all(
     pending.map(async (suggestion) => {
-      const book = books.get(suggestion.target.bookId);
+      const book = suggestion.target.bookId ? books.get(suggestion.target.bookId) : undefined;
       const state = book ? await readBookState(book.id, dataDir).catch(() => null) : null;
       return { ...suggestion, bookTitle: book ? state?.meta?.title || book.fileTitle : null };
     }),
