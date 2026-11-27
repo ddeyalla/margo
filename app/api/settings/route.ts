@@ -56,7 +56,7 @@ export async function PATCH(request: Request) {
     return Response.json(
       {
         error:
-          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { models: { <provider>: \"<model id>\" | null } }, { pdfPage: \"auto\" | \"dark\" | \"light\" }, { readingMode: \"scroll\" | \"pages\" }, { epubPage: \"auto\" | \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false }, { panelTab: \"chat\" | \"notes\" | \"highlights\" | \"cards\" }, { readAloudVoice: \"<voiceURI>\" | null }, { readAloudRate: 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2 }, { libraryView: \"grid\" | \"shelf\" }, { dailyLoad: { newPerDay: 20, reviewsPerDay: 60 } }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
+          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { models: { <provider>: \"<model id>\" | null } }, { pdfPage: \"auto\" | \"dark\" | \"light\" }, { readingMode: \"scroll\" | \"pages\" }, { epubPage: \"auto\" | \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false }, { panelTab: \"chat\" | \"notes\" | \"highlights\" | \"cards\" }, { readAloudVoice: \"heart\" | \"michael\" | \"emma\" | null }, { readAloudRate: 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2 }, { libraryView: \"grid\" | \"shelf\" }, { dailyLoad: { newPerDay: 20, reviewsPerDay: 60 } }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
       },
       { status: 400 },
     );

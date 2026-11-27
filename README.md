@@ -1,4 +1,6 @@
-# rigg learn
+# Margo
+
+Margo is a research product. It tests how learning will change in the next ten years, and how a Learner can understand and remember more. The plan, the thesis and the experiment are in [docs/plans/margo-rd-plan.md](docs/plans/margo-rd-plan.md).
 
 Read your own EPUB and PDF books with an AI tutor beside you.
 
@@ -100,18 +102,18 @@ Build it:
 npm run app:build
 ```
 
-The disk image lands in `dist-app/`, as `rigg learn-0.1.0-arm64.dmg`. It is for Apple silicon Macs. Open it and drag rigg learn to Applications.
+The disk image lands in `dist-app/`, as `Margo-0.1.0-arm64.dmg`. It is for Apple silicon Macs. Open it and drag Margo to Applications.
 
 The first time, macOS says it can't verify the developer. Right-click the app and choose Open, then Open again. Or go to System Settings, then Privacy & Security, scroll down and choose Open Anyway.
 
 How it works:
 
-- The app starts its own copy of the server and stops it when you quit. If a rigg learn server is already running on port 3210, such as `npm run dev`, the app uses that one and leaves it running. If another program holds port 3210, the app tells you and quits.
+- The app starts its own copy of the server and stops it when you quit. If a Margo server is already running on port 3210, such as `npm run dev`, the app uses that one and leaves it running. If another program holds port 3210, the app tells you and quits.
 - While the app is open, the browser at [http://localhost:3210](http://localhost:3210) shows the same books and notes. **Open in Browser** in the File menu opens it.
-- The app keeps its data in `~/Library/Application Support/rigg learn/data`. To share it with `npm run dev`, start that with `DATA_DIR` set to the same full path.
+- The app keeps its data in `~/Library/Application Support/Margo/data`. A Mac that ran the app before the rename (as rigg learn) keeps using `~/Library/Application Support/rigg learn` until a `Margo` folder exists. To share it with `npm run dev`, start that with `DATA_DIR` set to the same full path.
 - Closing the window leaves the app running, as on any Mac app. Quit with `⌘Q`.
-- The app finds `claude` and `codex` the way your terminal does. For the API tutor, put `ANTHROPIC_API_KEY=` and your key in `~/Library/Application Support/rigg learn/.env`.
-- If the app won't start, read `~/Library/Application Support/rigg learn/server.log`.
+- The app finds `claude` and `codex` the way your terminal does. For the API tutor, put `ANTHROPIC_API_KEY=` and your key in `~/Library/Application Support/Margo/.env`.
+- If the app won't start, read `~/Library/Application Support/Margo/server.log`.
 
 To try the app without making a disk image, run `npm run app:server` once, then `npm run app`.
 
@@ -132,7 +134,7 @@ To try the app without making a disk image, run `npm run app:server` once, then 
 - **Page colours.** In an EPUB, **Aa** at the top right switches between a dark page and a warm light one. Only the page changes; the app around it stays dark. Your place is kept. In a PDF, the moon at the top right shows white pages dark and the sun shows them in their own colours. Photos keep their colours.
 - **Bold starts.** In an EPUB, choose Bold starts under **Aa** and the first letters of each word turn bold, in the style of Bionic Reading®. Some people find it helps them keep their place, but studies so far haven't found that it makes reading faster. Your place and your highlights stay put when you switch. Code is left alone, and so is Chinese, Japanese, Korean and Thai text.
 - **Font.** **Aa** also lists the fonts on your Mac, each name in its own face, with a few faces made for reading at the top. Hover over a font, or move to it with the arrow keys, to see the book in it. Click it or press `Return` to keep it, or press `Esc` to go back. Reset to Literata returns to the default. Code stays in a monospaced face, and if a font you chose is removed from your Mac, the book goes back to Literata. PDFs keep their own fonts.
-- **Speak instead of typing.** The mic button sits in the chat box and in the Ask and Park fields. Click it, talk, click it again. The words land where your cursor is, for you to fix before you send. `Esc` cancels. A recording can run up to 90 seconds. Transcription runs on your computer with the Parakeet TDT 0.6B v3 model, and no audio leaves it. The first time, the app asks before downloading the model, which is about 490 MB, and shows the progress. It is kept in a `models` folder beside the data folder (`~/Library/Application Support/rigg learn/models` for the Mac app, `./models` in a checkout), and it uses about 1.4 GB of memory while loaded. The Mac app asks for the microphone the first time you use it. Your browser asks too.
+- **Speak instead of typing.** The mic button sits in the chat box and in the Ask and Park fields. Click it, talk, click it again. The words land where your cursor is, for you to fix before you send. `Esc` cancels. A recording can run up to 90 seconds. Transcription runs on your computer with the Parakeet TDT 0.6B v3 model, and no audio leaves it. The first time, the app asks before downloading the model, which is about 490 MB, and shows the progress. It is kept in a `models` folder beside the data folder (`~/Library/Application Support/Margo/models` for the Mac app, `./models` in a checkout), and it uses about 1.4 GB of memory while loaded. The Mac app asks for the microphone the first time you use it. Your browser asks too.
 - **Park it.** Select text and choose the parking button, then type or dictate a question. It is saved with the passage and not sent to the tutor. A small note says it is parked, and the panel stays as it is. Parked questions wait at the top of the Chat tab. **Ask now** sends one to the tutor, the bin deletes it, and clicking the passage jumps there.
 - **Where you left off.** When you open a book you have not read for half an hour, a small card shows the last few lines before your place and your latest highlights and notes in that chapter. **Recap** asks the tutor for a short recap of what came before your place, with nothing after it. The card goes away when you scroll, turn the page, press `Esc` or close it. A PDF shows the lines on your page when it has text there.
 - **Spotlight.** In an EPUB, the focus button at the top right, or `⌘⇧F`, dims everything but the paragraph at your reading line and hides the top bar, the chapters column and the side panel. Click or select a paragraph to light it until you move. `Esc` or `⌘⇧F` leaves. It is off in a PDF for now, and it starts off each time.
@@ -151,7 +153,7 @@ A PDF made of scanned pictures has no text to select. You can still read it, but
 | Your tutor choice, the books and notes folders you chose in the app, scroll or pages, the page colours for EPUBs and PDFs, bold starts, the book font, whether the chapters column is open, and which side panel tab you were on | `data/settings.json` |
 | Book covers, made from each book the first time it's shown | `data/covers/`. Safe to delete; they're made again. |
 | Images you show the tutor | `data/attachments/<book id>/`. Nothing deletes them yet, so images you removed before sending stay here too. |
-| The speech model for voice input, downloaded the first time you use the mic | `models/`, beside the data folder. Safe to delete; it is downloaded again when asked. |
+| The speech model for voice input and the reading voice (Kokoro), each downloaded the first time you use it | `models/`, beside the data folder. Safe to delete; each is downloaded again when asked. |
 | What agents proposed and what you decided about each | `data/suggestions.json` |
 | Every tool call an agent made: when, which tool, who called, a short form of the arguments, and how it went | `data/tool-log.jsonl`, one line per call. Lines are only added. Safe to delete. |
 | The markdown copy of each book's highlights, notes and cards | `<notes folder>/<book title>.md`. The notes folder is `NOTES_DIR`, or the one you chose in the app. |
@@ -174,12 +176,12 @@ Claude Code and Codex can use your library as tools: search your books, read a c
 npm run mcp:setup
 ```
 
-That registers a server called `rigg-learn` with each of the two that is installed, for every project on this Mac (`claude mcp add --scope user` and `codex mcp add`). Run it again if you move this folder. Then ask in any Claude Code or Codex session, for example "which of my books explains attention, and what cards are due today?"
+That registers a server called `margo` with each of the two that is installed, for every project on this Mac (`claude mcp add --scope user` and `codex mcp add`). Run it again if you move this folder. Then ask in any Claude Code or Codex session, for example "which of my books explains attention, and what cards are due today?"
 
 The server reads the same folders the app does: `DATA_DIR`, `BOOKS_DIR` and `NOTES_DIR` from `.env.local` in this folder, otherwise `./data` and the folders you chose in the app. To point it at the Mac app's data instead:
 
 ```bash
-npm run mcp:setup -- --data-dir "$HOME/Library/Application Support/rigg learn/data"
+npm run mcp:setup -- --data-dir "$HOME/Library/Application Support/Margo/data"
 ```
 
 What an agent can do:

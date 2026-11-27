@@ -42,6 +42,7 @@ import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
 import type { PlaceStore, ReadingSpot } from "./place";
 import { FocusClock, FocusRecap } from "./FocusSession";
+import { GlanceCard, type GlanceAsk } from "./GlanceCard";
 import { ReadAloudBar } from "./ReadAloudBar";
 import { OpenFailed, PageTurn, SpotlightExit } from "./ReaderChrome";
 import { ReadingFooter } from "./ReadingFooter";
@@ -57,6 +58,9 @@ import { useSpotlight } from "./useSpotlight";
 import { useFocusSession } from "./useFocusSession";
 import { useTutorActions } from "./useTutorActions";
 import { BOARD_PANE_IDS, BOOK_PANE_ID, PANEL_ID, useTutorPanel, type BoardSide } from "./useTutorPanel";
+
+/** Turns glance mode on and off: resting the pointer on a word glances at it. */
+const GLANCE_SHORTCUT = "⌘⇧G";
 
 /** A sheet opened from a link leaves the link once closed, so a reload opens the book. */
 /* The bar between two panes, drawn only while it's hovered, focused or dragged. */
@@ -176,6 +180,18 @@ export function BookWorkspace({
   const noticeExit = useNoticeExit(notice, bare || reviewing);
   /* Read-along, null while its controls are closed. Its voice and speed are settings, remembered for every book. */
   const [readAloud, setReadAloud] = useState<{ playing: boolean } | null>(null);
+  /* The hover glance (a spike): the word Option is held over, until it is let go. */
+  const [glance, setGlance] = useState<GlanceAsk | null>(null);
+  const [glanceMode, setGlanceMode] = useState(false);
+  const toggleGlanceMode = useCallback(() => {
+    setGlance(null);
+    setGlanceMode((on) => !on);
+  }, []);
+  /* The glance worker starts as the book opens, so the first glance does not wait for the CLI to start. */
+  useEffect(() => {
+    if (book.format !== "epub") return;
+    void fetch(`/api/books/${book.id}/glance`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ warm: true }) }).catch(() => {});
+  }, [book.id, book.format]);
   const toggleReadAloud = useCallback(() => {
     if (book.format !== "epub" || error) return;
     dismissNotice();
@@ -301,6 +317,7 @@ export function BookWorkspace({
     },
     { code: "KeyF", shift: true, skipInText: true, run: toggleSpotlight },
     { code: "KeyS", shift: true, skipInText: true, run: toggleReadAloud },
+    { code: "KeyG", shift: true, skipInText: true, run: toggleGlanceMode },
     { code: "KeyK", shift: false, run: search.open },
   ];
   useShortcuts({
@@ -315,7 +332,9 @@ export function BookWorkspace({
       const selected = !!readerRef.current?.getSelection();
       readerRef.current?.clearSelection();
       if (!selected) {
-        if (notice) dismissNotice();
+        if (glance) setGlance(null);
+        else if (glanceMode) toggleGlanceMode();
+        else if (notice) dismissNotice();
         else if (spotlight) toggleSpotlight();
       }
     },
@@ -485,7 +504,7 @@ export function BookWorkspace({
 
   return (
     <div className="flex h-dvh flex-col bg-ink">
-      <title>{`${title} · rigg learn`}</title>
+      <title>{`${title} · Margo`}</title>
       <BookHeader
         title={title}
         spot={spot}
@@ -553,10 +572,18 @@ export function BookWorkspace({
                         spotlight={spotlight}
                         readAloud={readAloud && { playing: readAloud.playing, rate: settings.readAloudRate, voice: settings.readAloudVoice }}
                         onReadAloudStop={pauseReadAloud}
+                        onGlance={setGlance}
+                        glanceMode={glanceMode}
                       />
                     ) : (
                       <PdfReader {...readerProps} />
                     )}
+                    {glance ? <GlanceCard key={`${glance.term}|${glance.sentence}`} bookId={book.id} ask={glance} /> : null}
+                    {glanceMode && book.format === "epub" ? (
+                      <span role="status" className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full bg-panel-raised px-3 py-1 text-label text-fog shadow-float">
+                        Glance mode: rest on a word · {GLANCE_SHORTCUT} to stop
+                      </span>
+                    ) : null}
                     {readAloud && book.format === "epub" ? (
                       <ReadAloudBar
                         playing={readAloud.playing}

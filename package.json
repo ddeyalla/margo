@@ -1,11 +1,11 @@
 {
-  "name": "rigg-learn",
+  "name": "margo",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "main": "electron/main.cjs",
-  "description": "Read your own books with an AI tutor beside you.",
-  "author": "rigg",
+  "description": "A research product on how learning changes in the next decade: read your own books, think out loud, and test what stays.",
+  "author": "deyalla",
   "scripts": {
     "predev": "node scripts/copy-pdfjs-assets.mjs",
     "dev": "next dev -H 127.0.0.1",
@@ -70,8 +70,8 @@
     "vitest": "^5.1.0"
   },
   "build": {
-    "appId": "app.rigglearn",
-    "productName": "rigg learn",
+    "appId": "app.margo",
+    "productName": "Margo",
     "directories": {
       "output": "dist-app"
     },
@@ -103,11 +103,11 @@
       "identity": null,
       "category": "public.app-category.education",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "rigg learn uses the microphone so you can speak to the tutor. Your voice is turned into text on this Mac and is never sent anywhere."
+        "NSMicrophoneUsageDescription": "Margo uses the microphone so you can speak to the tutor. Your voice is turned into text on this Mac and is never sent anywhere."
       }
     },
     "dmg": {
-      "title": "rigg learn"
+      "title": "Margo"
     },
     "npmRebuild": false,
     "afterPack": "electron/after-pack.cjs"

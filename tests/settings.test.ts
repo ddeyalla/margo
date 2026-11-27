@@ -57,16 +57,19 @@ describe("settings", () => {
 
   it("remembers the read-along voice and speed, and drops speeds it doesn't offer", async () => {
     expect(await readSettings()).toMatchObject({ readAloudVoice: null, readAloudRate: 1 });
-    await saveSettings({ readAloudVoice: "com.apple.voice.compact.en-US.Samantha", readAloudRate: 1.5 });
-    expect(await readSettings()).toMatchObject({ readAloudVoice: "com.apple.voice.compact.en-US.Samantha", readAloudRate: 1.5 });
+    await saveSettings({ readAloudVoice: "emma", readAloudRate: 1.5 });
+    expect(await readSettings()).toMatchObject({ readAloudVoice: "emma", readAloudRate: 1.5 });
+    /* A system voice saved before the Kokoro voices reads as the default. */
+    await writeFile(path.join(dir, "data", "settings.json"), JSON.stringify({ readAloudVoice: "com.apple.voice.compact.en-US.Samantha" }));
+    expect(await readSettings()).toMatchObject({ readAloudVoice: null });
     await writeFile(path.join(dir, "data", "settings.json"), JSON.stringify({ readAloudVoice: 4, readAloudRate: 3 }));
     expect(await readSettings()).toMatchObject({ readAloudVoice: null, readAloudRate: 1 });
   });
 
   it("saves the read-along voice and speed through the route", async () => {
     const patch = (body: object) => PATCH(new Request("http://x/api/settings", { method: "PATCH", body: JSON.stringify(body) }));
-    expect((await patch({ readAloudRate: 1.25, readAloudVoice: "Daniel" })).status).toBe(200);
-    expect(await readSettings()).toMatchObject({ readAloudVoice: "Daniel", readAloudRate: 1.25 });
+    expect((await patch({ readAloudRate: 1.25, readAloudVoice: "michael" })).status).toBe(200);
+    expect(await readSettings()).toMatchObject({ readAloudVoice: "michael", readAloudRate: 1.25 });
     expect((await patch({ readAloudVoice: null })).status).toBe(200);
     expect(await readSettings()).toMatchObject({ readAloudVoice: null, readAloudRate: 1.25 });
     expect((await patch({ readAloudRate: 5 })).status).toBe(400);

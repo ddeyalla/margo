@@ -11,7 +11,7 @@ const literata = Literata({
 });
 
 export const metadata: Metadata = {
-  title: "rigg learn",
+  title: "Margo",
   description: "Read your own books with a tutor beside them.",
 };
 

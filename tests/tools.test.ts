@@ -412,7 +412,7 @@ describe("the MCP server", () => {
 
   it("shakes hands and lists every tool with its schema", async () => {
     const reply = await talk([hello, ready, { id: 2, method: "tools/list" }, { id: 3, method: "ping" }]);
-    expect(reply(1).result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "rigg-learn" } });
+    expect(reply(1).result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "margo" } });
     const tools = reply(2).result!.tools as { name: string; inputSchema: { type: string }; annotations: { readOnlyHint: boolean } }[];
     expect(tools.map((tool) => tool.name)).toEqual(TOOLS.map((tool) => tool.name));
     expect(tools.every((tool) => tool.inputSchema.type === "object")).toBe(true);

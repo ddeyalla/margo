@@ -13,9 +13,9 @@ import { jsonSchema } from "../tools/schema";
 /** The protocol versions this server can speak, newest first. A client asking for another gets the newest. */
 const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
-export const SERVER_NAME = "rigg-learn";
+export const SERVER_NAME = "margo";
 
-const INSTRUCTIONS = `The reader's own library in rigg learn: their books, highlights, notes, review cards, tutor conversations, Courses and whiteboards, on this machine.
+const INSTRUCTIONS = `The reader's own library in Margo: their books, highlights, notes, review cards, tutor conversations, Courses and whiteboards, on this machine.
 Start with list_library for book ids. search_library and get_book_text give passages with anchors; quote the book from them, not from memory.
 You may read anything. You may write three things directly: park_question, log_activity and record_evidence. For what the reader knows and where they are weak, call weakest_items or query_ledger. Any other change is proposed with propose_card and waits for the reader to accept it in the app.
 propose_card checks each card against the quote you give and leaves out the ones that fail, with why. Check any other question you write with verify_item before you show it to the reader. grade_answer grades a free-text answer; when it says "unsure", show the gap and let the reader decide.`;

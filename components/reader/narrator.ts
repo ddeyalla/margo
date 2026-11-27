@@ -1,4 +1,5 @@
 import { markAt, ssmlToText } from "./ssml";
+import { DEFAULT_VOICE, type VoiceId } from "@/lib/shared/voices";
 
 /** foliate's TTS for one section (tts.js). Each call returns the SSML of a block, or undefined past the end. */
 export interface FoliateTTS {
@@ -11,35 +12,35 @@ export interface FoliateTTS {
   setMark(mark: string): void;
 }
 
-/** The on-device voices, the only ones read-along uses: their audio never leaves this machine. */
-export const localVoices = (): SpeechSynthesisVoice[] =>
-  typeof speechSynthesis === "undefined" ? [] : speechSynthesis.getVoices().filter((voice) => voice.localService);
+/** Where a block is cut for the voice: after a sentence's end and any closing quote or bracket. */
+const SENTENCE_END = /[.!?…]+["'”’)\]]*\s+/g;
 
-/**
- * The on-device voices once the browser has listed them. Chromium lists none until it has asked the system,
- * then fires voiceschanged; a machine with no voices never fires it, so the wait gives up after `timeoutMs`.
- */
-export const loadLocalVoices = (timeoutMs = 1500): Promise<SpeechSynthesisVoice[]> => {
-  if (typeof speechSynthesis === "undefined") return Promise.resolve([]);
-  if (speechSynthesis.getVoices().length) return Promise.resolve(localVoices());
-  return new Promise((resolve) => {
-    const done = () => {
-      speechSynthesis.removeEventListener("voiceschanged", done);
-      clearTimeout(timer);
-      resolve(localVoices());
-    };
-    const timer = setTimeout(done, timeoutMs);
-    speechSynthesis.addEventListener("voiceschanged", done);
-  });
+/** A block's text cut into sentences, each with where it starts and ends in the block. Short ones join the next. */
+export const sentencesOf = (text: string): { start: number; end: number }[] => {
+  const parts: { start: number; end: number }[] = [];
+  let start = 0;
+  for (const match of text.matchAll(SENTENCE_END)) {
+    const end = match.index + match[0].length;
+    if (end - start < 24) continue;
+    parts.push({ start, end });
+    start = end;
+  }
+  if (start < text.length) parts.push({ start, end: text.length });
+  return parts.filter((part) => text.slice(part.start, part.end).trim());
 };
 
-/** The voice for a saved voiceURI, else this machine's default on-device voice for the language, else any. */
-export const pickVoice = (voices: SpeechSynthesisVoice[], uri: string | null, lang: string): SpeechSynthesisVoice | null => {
-  const saved = uri ? voices.find((voice) => voice.voiceURI === uri) : undefined;
-  if (saved) return saved;
-  const base = lang.toLowerCase().split("-")[0];
-  const fits = voices.filter((voice) => voice.lang.toLowerCase().split("-")[0] === base);
-  return fits.find((voice) => voice.default) ?? fits.find((voice) => voice.lang.toLowerCase() === lang.toLowerCase()) ?? fits[0] ?? voices.find((voice) => voice.default) ?? voices[0] ?? null;
+/** Speaks text on this machine (POST /api/voice/say) and decodes it for Web Audio. */
+export const fetchSpeech = async (context: BaseAudioContext, text: string, voice: VoiceId, speed: number): Promise<AudioBuffer> => {
+  const response = await fetch("/api/voice/say", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, voice, speed }),
+  });
+  if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? "Speaking failed.");
+  const samples = new Float32Array(await response.arrayBuffer());
+  const buffer = context.createBuffer(1, Math.max(1, samples.length), Number(response.headers.get("X-Sample-Rate")) || 24_000);
+  buffer.copyToChannel(samples, 0);
+  return buffer;
 };
 
 export interface NarratorHooks {
@@ -51,26 +52,34 @@ export interface NarratorHooks {
   stopped(reason: "end" | "error"): void;
 }
 
+type Say = (context: BaseAudioContext, text: string, voice: VoiceId, speed: number) => Promise<AudioBuffer>;
+
 /**
- * Speaks a book a block at a time through the browser's speech voices and moves foliate's mark with each word.
- * Pausing cancels the voice and playing again resumes at the last word, since a paused utterance is unreliable
- * in Chromium. Every utterance carries a generation, so the end or error a cancel fires on an old one is ignored.
+ * Speaks a book a block at a time in the Kokoro voice on this machine, a sentence at a time so the next
+ * sentence is made while this one plays, and moves foliate's mark along with the voice. Kokoro gives no
+ * word timings, so the mark moves through each sentence at the rate its characters are spoken: close, not
+ * exact. Every play carries a generation, so audio an older play asked for is dropped when it arrives.
  */
 export class Narrator {
   rate = 1;
-  voice: SpeechSynthesisVoice | null = null;
+  voice: VoiceId = DEFAULT_VOICE;
   #hooks: NarratorHooks;
+  #say: Say;
   #generation = 0;
-  /* Held so the utterance isn't collected mid-speech, which would lose its end event. */
-  #utterance: SpeechSynthesisUtterance | null = null;
+  #context: AudioContext | null = null;
+  #source: AudioBufferSourceNode | null = null;
+  #ticker: ReturnType<typeof setInterval> | null = null;
 
-  constructor(hooks: NarratorHooks) {
+  constructor(hooks: NarratorHooks, say: Say = fetchSpeech) {
     this.#hooks = hooks;
+    this.#say = say;
   }
 
   /** Starts at `from`, or at the last word read when null. */
   async play(from: Range | null) {
     const generation = this.#silence();
+    this.#context ??= new AudioContext();
+    void this.#context.resume();
     const tts = await this.#tts();
     if (generation !== this.#generation) return;
     if (!tts) return this.#fail();
@@ -81,7 +90,7 @@ export class Narrator {
       /* foliate's `from` throws when the range lies past the section's last block. */
       ssml = tts.start();
     }
-    this.#speak(tts, ssml, generation);
+    void this.#speak(tts, ssml, generation);
   }
 
   /** Stops the voice; the last word stays marked, and `play(null)` goes on from it. */
@@ -91,8 +100,18 @@ export class Narrator {
 
   #silence() {
     this.#generation += 1;
-    this.#utterance = null;
-    if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    clearInterval(this.#ticker ?? undefined);
+    this.#ticker = null;
+    const source = this.#source;
+    this.#source = null;
+    if (source) {
+      source.onended = null;
+      try {
+        source.stop();
+      } catch {
+        /* Never started. */
+      }
+    }
     return this.#generation;
   }
 
@@ -110,43 +129,72 @@ export class Narrator {
     this.#hooks.stopped("error");
   }
 
-  #speak(tts: FoliateTTS, ssml: string | undefined, generation: number) {
+  async #speak(tts: FoliateTTS, ssml: string | undefined, generation: number) {
     /* Blocks with nothing to say, a lone image for one, are passed over. */
     while (ssml !== undefined) {
       const block = ssmlToText(ssml);
-      if (block.text.trim() && block.marks.length) return this.#say(tts, block, generation);
+      if (block.text.trim() && block.marks.length) {
+        const done = await this.#sayBlock(tts, block, generation);
+        if (!done) return;
+      }
+      if (generation !== this.#generation) return;
       ssml = tts.next();
     }
     void this.#nextSection(generation);
   }
 
-  #say(tts: FoliateTTS, { text, marks }: ReturnType<typeof ssmlToText>, generation: number) {
-    /* Never speak without an on-device voice: left unset, the browser picks its own, which may send the text away. */
-    if (typeof speechSynthesis === "undefined" || !this.voice?.localService) return this.#fail();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = this.rate;
-    utterance.voice = this.voice;
-    utterance.lang = this.voice.lang;
-    /* The first word lights before its boundary arrives, so the highlight never lags the voice. */
+  /** Speaks one block. True when it was spoken to the end, false when it was stopped or failed. */
+  async #sayBlock(tts: FoliateTTS, { text, marks }: ReturnType<typeof ssmlToText>, generation: number) {
+    const context = this.#context!;
+    const sentences = sentencesOf(text);
+    const make = (i: number) => this.#say(context, text.slice(sentences[i].start, sentences[i].end).trim(), this.voice, this.rate);
+    /* The first word lights before the audio arrives, so the page shows where reading starts. */
     tts.setMark(marks[0].name);
-    utterance.onboundary = (event) => {
-      if (generation !== this.#generation || event.name !== "word") return;
-      const mark = markAt(marks, event.charIndex);
-      if (mark) tts.setMark(mark);
-    };
-    utterance.onend = () => {
-      if (generation === this.#generation) this.#speak(tts, tts.next(), generation);
-    };
-    utterance.onerror = (event) => {
-      if (generation !== this.#generation || event.error === "interrupted" || event.error === "canceled") return;
-      this.#fail();
-    };
-    this.#utterance = utterance;
-    speechSynthesis.speak(utterance);
+    let next = make(0);
+    for (let i = 0; i < sentences.length; i++) {
+      let buffer: AudioBuffer;
+      try {
+        buffer = await next;
+      } catch {
+        if (generation === this.#generation) this.#fail();
+        return false;
+      }
+      if (generation !== this.#generation) return false;
+      if (i + 1 < sentences.length) next = make(i + 1);
+      /* A rejected prefetch is reported when its turn comes, not as an unhandled rejection now. */
+      next.catch(() => {});
+      await this.#playBuffer(tts, buffer, sentences[i], marks, generation);
+      if (generation !== this.#generation) return false;
+    }
+    return true;
+  }
+
+  #playBuffer(tts: FoliateTTS, buffer: AudioBuffer, sentence: { start: number; end: number }, marks: ReturnType<typeof ssmlToText>["marks"], generation: number) {
+    const context = this.#context!;
+    return new Promise<void>((resolve) => {
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      const began = context.currentTime;
+      let lit: string | null = null;
+      clearInterval(this.#ticker ?? undefined);
+      this.#ticker = setInterval(() => {
+        if (generation !== this.#generation) return;
+        const progress = Math.min(1, (context.currentTime - began) / buffer.duration);
+        const mark = markAt(marks, Math.floor(sentence.start + progress * (sentence.end - sentence.start)));
+        if (mark && mark !== lit) tts.setMark((lit = mark));
+      }, 50);
+      source.onended = () => {
+        clearInterval(this.#ticker ?? undefined);
+        this.#ticker = null;
+        resolve();
+      };
+      this.#source = source;
+      source.start();
+    });
   }
 
   async #nextSection(generation: number) {
-    this.#utterance = null;
     let turned: boolean;
     try {
       turned = await this.#hooks.nextSection();
@@ -162,6 +210,6 @@ export class Narrator {
     const tts = await this.#tts();
     if (generation !== this.#generation) return;
     if (!tts) return this.#fail();
-    this.#speak(tts, tts.start(), generation);
+    void this.#speak(tts, tts.start(), generation);
   }
 }

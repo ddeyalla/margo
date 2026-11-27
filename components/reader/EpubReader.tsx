@@ -12,11 +12,12 @@ import { openFailure } from "./errors";
 import { addFixations, removeFixations, skipFixations } from "./fixations";
 import { cssFamily } from "./fonts";
 import type { FoliateTTS } from "./narrator";
+import { glanceAt } from "./glance";
 import { READ_ALONG, ReadAlong } from "./readAlong";
 import { mergeLineBoxes, type Box } from "./rects";
 import { blockAtReadingLine, blockOf, installSpotlight, markBlock, removeSpotlight } from "./spotlight";
 import { epubToc, wholeChapterSections, type FoliateTocItem } from "./toc";
-import type { PageNumber, ReaderProps, TocEntry } from "./types";
+import type { PageNumber, ReaderProps, SelectionRect, TocEntry } from "./types";
 
 /* foliate-js ships no types. These cover the parts this adapter uses. */
 interface FoliateRenderer extends HTMLElement {
@@ -67,7 +68,7 @@ interface FoliateView extends HTMLElement {
 export interface ReadAloud {
   playing: boolean;
   rate: number;
-  /** The chosen voice's voiceURI, or null for the default on-device voice. */
+  /** The chosen reading voice (lib/shared/voices.ts), or null for the default. */
   voice: string | null;
 }
 
@@ -250,6 +251,8 @@ export function EpubReader({
   spotlight,
   readAloud,
   onReadAloudStop,
+  onGlance,
+  glanceMode = false,
   onInteract,
   onReady,
   onSelectionChange,
@@ -269,6 +272,10 @@ export function EpubReader({
   readAloud: ReadAloud | null;
   /** Read-along stopped by itself: the book ended, the voice failed, or the reader moved to another chapter. */
   onReadAloudStop(): void;
+  /** The hover glance (a spike): Option held over a word asks for its meaning; null when it should close. */
+  onGlance?(glance: { term: string; sentence: string; rect: SelectionRect } | null): void;
+  /** Glance mode: resting the pointer on a word glances at it, no key needed. */
+  glanceMode?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
@@ -420,6 +427,8 @@ export function EpubReader({
 
   /* Read-along for this page, made once its view can exist. */
   const emitReadAloudStop = useEffectEvent(onReadAloudStop);
+  const glanceModeNow = useEffectEvent(() => glanceMode);
+  const emitGlance = useEffectEvent((glance: Parameters<NonNullable<typeof onGlance>>[0]) => onGlance?.(glance));
   useEffect(() => {
     const readAlong = new ReadAlong({
       view: () => (openRef.current ? viewRef.current : null),
@@ -633,6 +642,49 @@ export function EpubReader({
       });
       doc.addEventListener("wheel", onWheel, { passive: true });
       doc.addEventListener("touchmove", () => emitInteract(), { passive: true });
+      /* The hover glance. Three ways in: Option held over a word (the request starts the moment Option goes down);
+         glance mode (⌘⇧G), where resting on a word is enough; and a right click or two-finger click on a word. */
+      let dwell: ReturnType<typeof setTimeout> | undefined;
+      let glanced: string | null = null;
+      let pointer: { x: number; y: number } | null = null;
+      const glanceHere = (x: number, y: number) => {
+        const target = glanceAt(doc, x, y);
+        const rect = target && viewportRect(target.range, doc.defaultView?.frameElement);
+        if (!target || !rect) return false;
+        if (target.term !== glanced) emitGlance({ term: target.term, sentence: target.sentence, rect });
+        glanced = target.term;
+        return true;
+      };
+      doc.addEventListener("mousemove", (e) => {
+        clearTimeout(dwell);
+        pointer = { x: e.clientX, y: e.clientY };
+        const { clientX, clientY } = e;
+        if (e.altKey) dwell = setTimeout(() => glanceHere(clientX, clientY), 120);
+        else if (glanceModeNow()) dwell = setTimeout(() => glanceHere(clientX, clientY), 400);
+      });
+      doc.addEventListener("mouseleave", () => {
+        clearTimeout(dwell);
+        pointer = null;
+      });
+      doc.addEventListener("keydown", (e) => {
+        if (e.key === "Alt" && !e.repeat && pointer) glanceHere(pointer.x, pointer.y);
+      });
+      doc.addEventListener("keyup", (e) => {
+        if (e.key !== "Alt" || glanceModeNow()) return;
+        clearTimeout(dwell);
+        glanced = null;
+        emitGlance(null);
+      });
+      doc.addEventListener("contextmenu", (e) => {
+        /* A selection keeps its own menu; a click on a word is a glance. */
+        if (selectedRange(doc)) return;
+        if (glanceHere(e.clientX, e.clientY)) e.preventDefault();
+      });
+      doc.addEventListener("pointerdown", () => {
+        if (!glanced) return;
+        glanced = null;
+        emitGlance(null);
+      });
       refreshSpot();
     };
 

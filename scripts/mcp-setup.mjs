@@ -2,11 +2,13 @@
 // this machine. Run it again after moving the repo; it replaces the earlier registration.
 // Usage: npm run mcp:setup [-- --data-dir <folder>]
 //   --data-dir  The data folder the server reads, when it isn't the one in .env.local or ./data. The Mac app
-//               keeps its data in ~/Library/Application Support/rigg learn/data.
+//               keeps its data in ~/Library/Application Support/Margo/data.
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
-const NAME = "rigg-learn";
+const NAME = "margo";
+/** The name before the rename to Margo. Setup removes it, so the old and new servers never both run. */
+const OLD_NAME = "rigg-learn";
 const server = path.resolve(import.meta.dirname, "mcp-server.mjs");
 
 const flag = process.argv.indexOf("--data-dir");
@@ -24,13 +26,13 @@ const AGENTS = [
   {
     label: "Claude Code",
     command: "claude",
-    remove: ["mcp", "remove", "--scope", "user", NAME],
+    remove: (name) => ["mcp", "remove", "--scope", "user", name],
     add: ["mcp", "add", "--scope", "user", NAME, ...env.flatMap((pair) => ["--env", pair]), "--", "node", server],
   },
   {
     label: "Codex",
     command: "codex",
-    remove: ["mcp", "remove", NAME],
+    remove: (name) => ["mcp", "remove", name],
     add: ["mcp", "add", NAME, ...env.flatMap((pair) => ["--env", pair]), "--", "node", server],
   },
 ];
@@ -41,7 +43,7 @@ for (const agent of AGENTS) {
     console.log(`${agent.label}: not installed, skipped.`);
     continue;
   }
-  run(agent.command, agent.remove);
+  for (const name of [OLD_NAME, NAME]) run(agent.command, agent.remove(name));
   const added = run(agent.command, agent.add);
   if (added.status === 0) {
     console.log(`${agent.label}: registered "${NAME}".`);

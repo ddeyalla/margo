@@ -1,7 +1,7 @@
-// The Mac app. It is a window around the rigg learn server.
+// The Mac app. It is a window around the Margo server.
 //
 // One server at a time. On launch we ask http://127.0.0.1:3210/api/health who is there:
-//   - rigg learn answers: attach to it (for example `npm run dev`) and never start another.
+//   - Margo answers: attach to it (for example `npm run dev`) and never start another.
 //   - nothing is listening: start the packaged server with Electron's own Node, and stop it on quit.
 //   - something else answers: say so and quit.
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, screen, session, shell } = require("electron");
@@ -22,8 +22,11 @@ const STOP_TIMEOUT_MS = 3000;
 
 // The name sets the menu title. The path is set outright so it is exactly this folder.
 // RIGG_USER_DATA, like RIGG_PORT, lets a test copy run beside the real app with its own data.
-app.setName("rigg learn");
-app.setPath("userData", process.env.RIGG_USER_DATA || path.join(app.getPath("appData"), "rigg learn"));
+app.setName("Margo");
+/* The app was called "rigg learn" before. Its folder is used until a Margo folder exists, so no data is lost. */
+const legacyUserData = path.join(app.getPath("appData"), "rigg learn");
+const margoUserData = path.join(app.getPath("appData"), "Margo");
+app.setPath("userData", process.env.RIGG_USER_DATA || (!fs.existsSync(margoUserData) && fs.existsSync(legacyUserData) ? legacyUserData : margoUserData));
 const userData = app.getPath("userData");
 const dataDir = path.join(userData, "data");
 const logPath = path.join(userData, "server.log");
@@ -41,7 +44,7 @@ let stopping = false;
 // ---- Server discovery ---------------------------------------------------------------------
 
 /**
- * "ours": rigg learn answered. "free": nothing is listening. "other": a port taken by something else.
+ * "ours": Margo answered. "free": nothing is listening. "other": a port taken by something else.
  * "slow": something accepted the connection but did not answer in time, such as a dev server compiling its first route.
  */
 const probe = (timeoutMs) =>
@@ -53,7 +56,7 @@ const probe = (timeoutMs) =>
       res.on("data", (chunk) => (body += chunk.slice(0, 2000)));
       res.on("end", () => {
         try {
-          resolve(JSON.parse(body).app === "rigg-learn" ? "ours" : "other");
+          resolve(["margo", "rigg-learn"].includes(JSON.parse(body).app) ? "ours" : "other");
         } catch {
           resolve("other");
         }
@@ -186,7 +189,7 @@ const stopServer = () =>
 const offerRestart = async ({ code, signal }) => {
   const { response } = await dialog.showMessageBox({
     type: "error",
-    message: "The rigg learn server stopped",
+    message: "The Margo server stopped",
     detail: `It exited unexpectedly (${code ?? signal ?? "unknown"}), so the app cannot load pages until it is restarted.\n\nLast lines of ${logPath}:\n\n${lastLogLines(10)}`,
     buttons: ["Restart", "Quit"],
     defaultId: 0,
@@ -298,7 +301,7 @@ const createWindow = () => {
   });
   win.webContents.on("did-fail-load", (_event, code, description, _url, isMainFrame) => {
     // -3 is a navigation that was cancelled on purpose.
-    if (isMainFrame && code !== -3) void win.loadURL(`data:text/html,${encodeURIComponent(`<body style="background:#111113;color:#ededf0;font:15px system-ui;padding:40px">Could not reach rigg learn (${description}). <a href="${ORIGIN}" style="color:#f0b429">Try again</a></body>`)}`);
+    if (isMainFrame && code !== -3) void win.loadURL(`data:text/html,${encodeURIComponent(`<body style="background:#111113;color:#ededf0;font:15px system-ui;padding:40px">Could not reach Margo (${description}). <a href="${ORIGIN}" style="color:#f0b429">Try again</a></body>`)}`);
   });
 
   void win.loadURL(ORIGIN);
@@ -359,10 +362,10 @@ const launch = async () => {
   let found = await probe(5000);
   while (found === "slow" && Date.now() < giveUp) found = await probe(5000);
   if (found === "slow") {
-    return fail("rigg learn is not answering", `Something on port ${PORT} accepted the connection but did not answer for 30 seconds. If it is the dev server, wait for it to finish compiling and open rigg learn again.`);
+    return fail("Margo is not answering", `Something on port ${PORT} accepted the connection but did not answer for 30 seconds. If it is the dev server, wait for it to finish compiling and open Margo again.`);
   }
   if (found === "other") {
-    return fail(`Port ${PORT} is in use`, `Another program is using port ${PORT}, so rigg learn cannot start. Close that program and open rigg learn again.`);
+    return fail(`Port ${PORT} is in use`, `Another program is using port ${PORT}, so Margo cannot start. Close that program and open Margo again.`);
   }
   if (found === "free") {
     const serverDir = findServerDir();
@@ -373,7 +376,7 @@ const launch = async () => {
     try {
       await waitForServer();
     } catch (error) {
-      return fail("rigg learn could not start", `${error.message}\n\nLast lines of ${logPath}:\n\n${lastLogLines(15)}`);
+      return fail("Margo could not start", `${error.message}\n\nLast lines of ${logPath}:\n\n${lastLogLines(15)}`);
     }
   }
   launched = true;

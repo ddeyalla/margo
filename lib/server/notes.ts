@@ -72,7 +72,7 @@ export const listNotes = async (notesDir: string): Promise<NotesIndex> => {
 /** Why a note can't be edited: it is one of the app's per-book files. */
 export class GeneratedFileError extends NotesPathError {
   constructor() {
-    super("This file is written by rigg learn from a book's highlights. Edit those in the book instead.");
+    super("This file is written by Margo from a book's highlights. Edit those in the book instead.");
   }
 }
 

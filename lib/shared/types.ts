@@ -1,3 +1,4 @@
+import { isVoiceId } from "./voices";
 import type { Board, BoardMention } from "./boards";
 import type { ChapterQuiz, QuizSkip } from "./quiz";
 import type { Study } from "./study";
@@ -389,9 +390,8 @@ export type ReadAloudRate = (typeof READ_ALOUD_RATES)[number];
 
 export const isReadAloudRate = (value: unknown): value is ReadAloudRate => READ_ALOUD_RATES.includes(value as ReadAloudRate);
 
-/** An on-device voice, by its voiceURI, or null for the default one. */
-export const isReadAloudVoice = (value: unknown): value is string | null =>
-  value === null || (typeof value === "string" && value.length > 0 && value.length <= 300 && !/\p{Cc}/u.test(value));
+/** One of the reading voices (lib/shared/voices.ts), or null for the default one. */
+export const isReadAloudVoice = (value: unknown): value is string | null => value === null || isVoiceId(value);
 
 /** The tab showing in the side panel. */
 export type PanelTab = "chat" | "notes" | "highlights" | "cards";
