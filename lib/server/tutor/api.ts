@@ -81,7 +81,7 @@ export const apiUsage = (model: string, usage: BetaUsage, window: number | null)
 };
 
 /** The key is read here and nowhere else. */
-const apiKey = () => process.env.ANTHROPIC_API_KEY?.trim() || null;
+export const apiKey = () => process.env.ANTHROPIC_API_KEY?.trim() || null;
 
 async function* run(turn: TutorTurn, signal: AbortSignal): AsyncGenerator<TutorEvent> {
   const key = apiKey();

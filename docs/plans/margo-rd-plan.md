@@ -120,19 +120,22 @@ Write the margin down before the first test. The proposed margin is **20 points*
   2. Glance mode: press ⌘⇧G. Then resting the pointer on a word for 400 ms is enough. Press ⌘⇧G or Esc to stop.
   3. Right click or two-finger click on a word.
 - **Card:** the meaning of the word in its sentence, one example, and a flag that tells if the passage teaches this idea. The text streams into the card.
-- **How it runs:** one `claude` CLI process with Haiku stays running. Each glance is one more message to it. The process starts when the book opens and gets one short warm-up message. It restarts after 20 glances and stops after 10 minutes without use.
+- **How it runs:**
+  - If `ANTHROPIC_API_KEY` is set in `.env.local`, each glance is one streamed call to Claude Haiku 5.5 through the API, at low effort. This is the fast path.
+  - If no key is set, one `claude` CLI process with Haiku stays running. Each glance is one more message to it. The process starts when the book opens and gets one short warm-up message. It restarts after 20 glances and stops after 10 minutes without use.
 - **Cache:** each book saves its answers in `glances/<bookId>.json` in the data folder. A word glanced at again shows at once.
-- **Log:** each glance goes to `glances.jsonl` in the data folder (term, core flag, cached, time to first text, total time).
+- **Log:** each glance goes to `glances.jsonl` in the data folder (term, core flag, cached, path `api` or `cli`, time to first text, total time).
 - **Measured speed** (time to first text):
 
-  | Version | Time |
-  |---|---|
-  | New CLI process for each glance | 4.3 s |
-  | Warm Haiku worker, first glance after warm-up | 1.5 s |
-  | Warm Haiku worker, later glances | 2.1 to 2.9 s |
-  | Cached word | 0.01 s |
+  | Version | First text | Full card |
+  |---|---|---|
+  | New CLI process for each glance | 4.3 s | - |
+  | Warm CLI worker (Haiku), first glance after warm-up | 1.5 s | 2.0 s |
+  | Warm CLI worker (Haiku), later glances | 2.1 to 2.9 s | 2.6 to 3.2 s |
+  | **API, Haiku 5.5, low effort** (5 glances, in the app) | **0.51 to 0.67 s** | **1.0 to 1.1 s** |
+  | Cached word | 0.01 s | 0.01 s |
 
-- **Next:** the CLI costs about 2 s for each turn, even with Haiku. Test the direct API path (Haiku with streaming) with the API credits, and compare it with the numbers above.
+- **Cost (API path):** about 210 input tokens and 100 to 130 output tokens for each glance. At $0.10 and $0.50 for each million tokens, that is about $0.0001 for each glance, or about 10,000 glances for $1.
 - **Measure:** day-7 recall on Nodes the Learner glanced at, against Nodes the Learner did not glance at. Compare core terms and prerequisite terms separately.
 - **Kill rule:** if day-7 recall on glanced core terms is lower than on non-glanced core terms, remove the glance from core terms. Keep it for prerequisite terms.
 

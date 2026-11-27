@@ -1,15 +1,18 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { getConfig } from "./config";
+import { apiKey } from "./tutor/api";
 import { parseClaudeLine } from "./tutor/claude";
 import { childEnv, scratchDir } from "./tutor/process";
 
-/* The hover glance (a spike, see docs/plans/margo-rd-plan.md). Starting the claude CLI costs 3 to 4 s, so one
-   CLI process with Haiku stays running and each glance is one more message to it: the first words then come in
-   about 1 s. The answer streams as plain text, and each book keeps the answers it has had, so a word glanced
-   at again shows at once. */
+/* The hover glance (a spike, see docs/plans/margo-rd-plan.md). With ANTHROPIC_API_KEY set, each glance is one
+   streamed Haiku call to the API: the first words come in about 0.7 s. Without a key, one claude CLI process
+   with Haiku stays running and each glance is one more message to it (about 2 s, since the CLI adds its own
+   time to each turn). Either way the answer streams as plain text, and each book keeps the answers it has had,
+   so a word glanced at again shows at once. */
 
 export const GLANCE_SYSTEM = `You explain one word or term from a book to its reader, in the sentence they found it in.
 Each message gives the book, the sentence and the term. Answer each message on its own, in exactly three lines:
@@ -21,6 +24,8 @@ Each message gives the book, the sentence and the term. Answer each message on i
 export const TURNS_PER_WORKER = 20;
 /** And after this long unused, giving back its memory. */
 const IDLE_MS = 10 * 60_000;
+
+export const GLANCE_API_MODEL = "claude-haiku-5-5";
 
 export interface GlanceAsk {
   bookId: string;
@@ -100,11 +105,12 @@ const finish = (worker: Worker, error: string | null) => {
   next(worker);
 };
 
+const askText = ({ book, sentence, term }: GlanceAsk) => `Book: ${book}\nSentence: ${sentence}\nTerm: ${term}`;
+
 const send = (worker: Worker, job: Job) => {
   worker.current = job;
   worker.turns += 1;
-  const { book, sentence, term } = job.ask;
-  const content = [{ type: "text", text: `Book: ${book}\nSentence: ${sentence}\nTerm: ${term}` }];
+  const content = [{ type: "text", text: askText(job.ask) }];
   worker.child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`);
 };
 
@@ -192,6 +198,7 @@ const worker = async () => {
  * of its starting when its first message arrives, so a short warm-up message goes too (one small Haiku call).
  */
 export const warmGlance = async () => {
+  if (apiKey()) return;
   const running = await worker();
   if (running.turns === 0 && !running.current && !running.queue.length) {
     running.queue.push({ ask: { bookId: "", book: "-", term: "ready", sentence: "Say ready." }, text: "", done: false, error: null, listeners: new Set(), started: Date.now(), firstText: null, prime: true });
@@ -203,7 +210,38 @@ export const warmGlance = async () => {
  * Streams the answer for one glance: each call of `onText` gets the whole text so far. A newer glance drops any
  * that are still waiting, since the reader has moved on; the one being written finishes and is saved.
  */
-export const glance = async (ask: GlanceAsk, onText: (text: string) => void, signal: AbortSignal): Promise<{ text: string; firstMs: number | null; totalMs: number }> => {
+export interface GlanceDone {
+  text: string;
+  firstMs: number | null;
+  totalMs: number;
+  via: "api" | "cli";
+}
+
+/** One glance as one streamed API call. Low effort: a glance needs speed, not deep thought. */
+const glanceByApi = async (key: string, ask: GlanceAsk, onText: (text: string) => void, signal: AbortSignal): Promise<GlanceDone> => {
+  const started = Date.now();
+  let first: number | null = null;
+  let text = "";
+  const stream = new Anthropic({ apiKey: key }).messages.stream(
+    { model: GLANCE_API_MODEL, max_tokens: 400, output_config: { effort: "low" }, system: GLANCE_SYSTEM, messages: [{ role: "user", content: askText(ask) }] },
+    { signal },
+  );
+  for await (const event of stream) {
+    if (event.type !== "content_block_delta" || event.delta.type !== "text_delta") continue;
+    first ??= Date.now() - started;
+    text += event.delta.text;
+    onText(text);
+  }
+  const final = await stream.finalMessage();
+  if (final.stop_reason === "refusal") throw new Error("The model declined this glance.");
+  if (!text.trim()) throw new Error("The glance came back empty.");
+  void remember(ask.bookId, ask.term, text.trim()).catch(() => {});
+  return { text: text.trim(), firstMs: first, totalMs: Date.now() - started, via: "api" };
+};
+
+export const glance = async (ask: GlanceAsk, onText: (text: string) => void, signal: AbortSignal): Promise<GlanceDone> => {
+  const key = apiKey();
+  if (key) return glanceByApi(key, ask, onText, signal);
   clearTimeout(state.idle ?? undefined);
   const running = await worker();
   for (const waiting of running.queue.splice(0).filter((job) => !job.prime)) {
@@ -220,7 +258,7 @@ export const glance = async (ask: GlanceAsk, onText: (text: string) => void, sig
       if (!job.done) return;
       job.listeners.delete(listener);
       if (job.error) reject(new Error(job.error));
-      else resolve({ text: job.text.trim(), firstMs: job.firstText && job.firstText - job.started, totalMs: Date.now() - job.started });
+      else resolve({ text: job.text.trim(), firstMs: job.firstText && job.firstText - job.started, totalMs: Date.now() - job.started, via: "cli" });
     };
     job.listeners.add(listener);
     signal.addEventListener("abort", () => job.listeners.delete(listener), { once: true });

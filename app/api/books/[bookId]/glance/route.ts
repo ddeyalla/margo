@@ -49,7 +49,7 @@ export const POST = withBook(async ({ book, request }) => {
           },
           request.signal,
         );
-        void log({ bookId: book.id, term, core: parseGlance(done.text).core, cached: false, firstMs: done.firstMs, totalMs: done.totalMs }).catch(() => {});
+        void log({ bookId: book.id, term, core: parseGlance(done.text).core, cached: false, via: done.via, firstMs: done.firstMs, totalMs: done.totalMs }).catch(() => {});
         controller.close();
       } catch (error) {
         controller.error(error instanceof Error ? error : new Error("The glance failed."));
