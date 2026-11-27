@@ -44,7 +44,7 @@ describe("parking a question", () => {
   });
 
   it("is saved with the book, and deleting removes it", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-parked-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-parked-"));
     const thread = parked();
     await saveParked(bookId, thread, dir);
     expect((await readBookState(bookId, dir)).threads.map((t) => t.id)).toEqual([thread.id]);
@@ -52,7 +52,7 @@ describe("parking a question", () => {
   });
 
   it("refuses to delete a thread that was already sent", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-parked-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-parked-"));
     const thread = parked();
     await saveParked(bookId, thread, dir);
     const turn = await openTurn(bookId, { kind: "retry", threadId: thread.id }, "claude", dir);
@@ -61,7 +61,7 @@ describe("parking a question", () => {
   });
 
   it("clears the parked mark when the question is sent, and uses the provider in use now", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-parked-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-parked-"));
     const thread = parked();
     await saveParked(bookId, thread, dir);
     const turn = await openTurn(bookId, { kind: "retry", threadId: thread.id }, "claude", dir);
@@ -77,7 +77,7 @@ describe("parking a question", () => {
 
 describe("parked questions in saved state", () => {
   it("loads state saved before parking existed, with and without the new fields", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-parked-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-parked-"));
     const old = { ...parked(), id: "old" } as Record<string, unknown>;
     delete old.parkedAt;
     delete old.kind;

@@ -70,7 +70,7 @@ const loseBook = async (relPath: string, newPath: string, content: string) => {
 const unknownId = "0123456789abcdef0123456789abcdef01234567" as BookId;
 
 beforeEach(async () => {
-  const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-missing-"));
+  const base = await mkdtemp(path.join(tmpdir(), "margo-missing-"));
   root = path.join(base, "books");
   dataDir = path.join(base, "data");
   notesDir = path.join(base, "notes");
@@ -268,7 +268,7 @@ describe("rebind racing a save", () => {
   it("never leaves a target's saved file without an index entry, whichever lands first", async () => {
     /* The save starts a little later each time, so some land before the relink's check and some while it holds the queues. */
     for (let ticks = 0; ticks <= 40; ticks += 2) {
-      const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-race-"));
+      const base = await mkdtemp(path.join(tmpdir(), "margo-race-"));
       root = path.join(base, "books");
       dataDir = path.join(base, "data");
       await Promise.all([mkdir(root), mkdir(dataDir)]);

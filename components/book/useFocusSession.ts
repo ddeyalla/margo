@@ -11,8 +11,8 @@ export type FocusSession =
 
 type Running = Extract<FocusSession, { phase: "running" }>;
 
-const storageKey = (bookId: BookId) => `rigg-learn:focus:${bookId}`;
-const CHANGED = "rigg-learn:focus-changed";
+const storageKey = (bookId: BookId) => `margo:focus:${bookId}`;
+const CHANGED = "margo:focus-changed";
 
 /* The running session is kept in storage, so a refresh mid-session doesn't end it. */
 const save = (bookId: BookId, session: Running | null) => {

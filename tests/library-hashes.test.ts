@@ -30,7 +30,7 @@ vi.mock("@/lib/server/store", async (importOriginal) => {
   };
 });
 
-const tempDir = () => mkdtemp(path.join(tmpdir(), "rigg-learn-hashes-"));
+const tempDir = () => mkdtemp(path.join(tmpdir(), "margo-hashes-"));
 const indexPath = (dataDir: string) => path.join(dataDir, "library.json");
 const storedBooks = async (dataDir: string): Promise<LibraryIndex> =>
   (JSON.parse(await readFile(indexPath(dataDir), "utf8")) as { books: LibraryIndex }).books;

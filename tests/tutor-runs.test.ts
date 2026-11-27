@@ -55,7 +55,7 @@ const turn: TutorTurn = {
 describe("CLI runs with images", () => {
   let bin = "";
   beforeAll(async () => {
-    bin = await mkdtemp(path.join(tmpdir(), "rigg-learn-fake-cli-"));
+    bin = await mkdtemp(path.join(tmpdir(), "margo-fake-cli-"));
     for (const [name, script] of [["codex", FAKE_CODEX], ["claude", FAKE_CLAUDE]]) {
       await writeFile(path.join(bin, name), script);
       await chmod(path.join(bin, name), 0o755);

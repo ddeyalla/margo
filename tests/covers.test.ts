@@ -69,7 +69,7 @@ describe("bookCover", () => {
   const png = () => new Uint8Array(createCanvas(30, 45).encodeSync("png"));
 
   it("makes a JPEG once, keeps it while the book is unchanged, and remakes it when the book changes", async () => {
-    const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-covers-"));
+    const base = await mkdtemp(path.join(tmpdir(), "margo-covers-"));
     const absPath = path.join(base, "book.epub");
     const zip = zipSync({
       "META-INF/container.xml": strToU8(CONTAINER),

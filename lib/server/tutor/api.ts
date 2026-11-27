@@ -44,7 +44,7 @@ export const apiCost = (model: string, usage: BetaUsage): number | null => {
 };
 
 /** Each model's context window, asked once per server. A failed lookup is tried again next time. */
-const windows = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.context-windows")] ??= new Map()) as Map<string, number>;
+const windows = ((globalThis as { [key: symbol]: unknown })[Symbol.for("margo.context-windows")] ??= new Map()) as Map<string, number>;
 
 const contextWindow = async (client: Anthropic, model: string): Promise<number | null> => {
   const known = windows.get(model);

@@ -78,7 +78,7 @@ The tutor can run through any one of these. You only need one.
 
 - **Claude Code.** Install [Claude Code](https://claude.com/claude-code), then run `claude` in a terminal once and sign in. It uses your Claude plan.
 - **Codex.** Install the Codex CLI, then run `codex login` in a terminal and sign in.
-- **Anthropic API.** Put your key after `ANTHROPIC_API_KEY=` in `.env.local`. You pay per use.
+- **Anthropic API.** Put your key after `ANTHROPIC_API_KEY=` in `.env.local`. You pay per use. The key also makes the word glance faster (see [Read](#read)).
 
 Pick one from the tutor menu in the bar above the book, beside Scroll and Pages. The menu says which ones are ready, and what to do for the rest. The app remembers your choice, and the same tutor writes your cards.
 
@@ -110,7 +110,7 @@ How it works:
 
 - The app starts its own copy of the server and stops it when you quit. If a Margo server is already running on port 3210, such as `npm run dev`, the app uses that one and leaves it running. If another program holds port 3210, the app tells you and quits.
 - While the app is open, the browser at [http://localhost:3210](http://localhost:3210) shows the same books and notes. **Open in Browser** in the File menu opens it.
-- The app keeps its data in `~/Library/Application Support/Margo/data`. A Mac that ran the app before the rename (as rigg learn) keeps using `~/Library/Application Support/rigg learn` until a `Margo` folder exists. To share it with `npm run dev`, start that with `DATA_DIR` set to the same full path.
+- The app keeps its data in `~/Library/Application Support/Margo/data`. A Mac that ran the app under its old name has its data folder moved there the first time Margo starts. To share it with `npm run dev`, start that with `DATA_DIR` set to the same full path.
 - Closing the window leaves the app running, as on any Mac app. Quit with `⌘Q`.
 - The app finds `claude` and `codex` the way your terminal does. For the API tutor, put `ANTHROPIC_API_KEY=` and your key in `~/Library/Application Support/Margo/.env`.
 - If the app won't start, read `~/Library/Application Support/Margo/server.log`.
@@ -135,6 +135,13 @@ To try the app without making a disk image, run `npm run app:server` once, then 
 - **Bold starts.** In an EPUB, choose Bold starts under **Aa** and the first letters of each word turn bold, in the style of Bionic Reading®. Some people find it helps them keep their place, but studies so far haven't found that it makes reading faster. Your place and your highlights stay put when you switch. Code is left alone, and so is Chinese, Japanese, Korean and Thai text.
 - **Font.** **Aa** also lists the fonts on your Mac, each name in its own face, with a few faces made for reading at the top. Hover over a font, or move to it with the arrow keys, to see the book in it. Click it or press `Return` to keep it, or press `Esc` to go back. Reset to Literata returns to the default. Code stays in a monospaced face, and if a font you chose is removed from your Mac, the book goes back to Literata. PDFs keep their own fonts.
 - **Speak instead of typing.** The mic button sits in the chat box and in the Ask and Park fields. Click it, talk, click it again. The words land where your cursor is, for you to fix before you send. `Esc` cancels. A recording can run up to 90 seconds. Transcription runs on your computer with the Parakeet TDT 0.6B v3 model, and no audio leaves it. The first time, the app asks before downloading the model, which is about 490 MB, and shows the progress. It is kept in a `models` folder beside the data folder (`~/Library/Application Support/Margo/models` for the Mac app, `./models` in a checkout), and it uses about 1.4 GB of memory while loaded. The Mac app asks for the microphone the first time you use it. Your browser asks too.
+- **Read aloud.** The play button in the bar under the book reads from your place, one sentence at a time, and the word being read is marked. The voice is Kokoro 82M and runs on your computer, so the book text does not leave it. There are three voices: Heart and Michael (US) and Emma (UK). The first time, the bar asks before it downloads the voice, which is about 350 MB.
+- **Glance at a word.** In an EPUB, get a short card with what a word means in its sentence, one example, and whether the passage teaches that idea or only uses it. Three ways to open it:
+  - Hold `Option` and rest the pointer on the word.
+  - Press `⌘⇧G` for glance mode. Then resting the pointer on a word for a moment is enough. `⌘⇧G` or `Esc` stops it.
+  - Right click or two-finger click on the word.
+
+  With `ANTHROPIC_API_KEY` in `.env.local`, a glance goes to Claude Haiku 5.5 and the first words come in about half a second, for about $0.0001. Without a key it goes through Claude Code, which takes about 2 seconds. A word you glanced at before in the same book shows at once. The glance is an experiment: see section 6.2 of the [plan](docs/plans/margo-rd-plan.md).
 - **Park it.** Select text and choose the parking button, then type or dictate a question. It is saved with the passage and not sent to the tutor. A small note says it is parked, and the panel stays as it is. Parked questions wait at the top of the Chat tab. **Ask now** sends one to the tutor, the bin deletes it, and clicking the passage jumps there.
 - **Where you left off.** When you open a book you have not read for half an hour, a small card shows the last few lines before your place and your latest highlights and notes in that chapter. **Recap** asks the tutor for a short recap of what came before your place, with nothing after it. The card goes away when you scroll, turn the page, press `Esc` or close it. A PDF shows the lines on your page when it has text there.
 - **Spotlight.** In an EPUB, the focus button at the top right, or `⌘⇧F`, dims everything but the paragraph at your reading line and hides the top bar, the chapters column and the side panel. Click or select a paragraph to light it until you move. `Esc` or `⌘⇧F` leaves. It is off in a PDF for now, and it starts off each time.
@@ -189,7 +196,8 @@ What an agent can do:
 | Tools | What they do |
 | --- | --- |
 | `list_library`, `get_book_text`, `search_library`, `list_annotations`, `list_threads`, `get_thread`, `review_queue`, `get_today`, `list_courses`, `list_boards`, `read_board`, `list_suggestions` | Read. Nothing changes. |
-| `park_question`, `log_activity` | Write directly: a question left on a passage for you to ask later, and learning time added to today. |
+| `weakest_items`, `query_ledger` | Read the learner ledger: what you know, and what is shaky or not tested yet. |
+| `park_question`, `log_activity`, `record_evidence` | Write directly: a question left on a passage for you to ask later, learning time added to today, and one piece of evidence (a right or wrong answer) in the ledger. |
 | `propose_card` | Propose. The cards wait on the Today card with **Add** and **Reject**, and are only added when you accept. |
 | `propose_session_plan` | Propose. A prepared session (items to check again, an exercise or two, open questions) waits on the Today card with **Got it** and **Dismiss**; it changes nothing in your books. One a day. |
 | `verify_item`, `grade_answer` | Ask a model and change nothing: check a written question against its passage before you see it, and grade a free-text answer, saying so when it is unsure. |
@@ -198,13 +206,9 @@ The **prep** and **follow-through** playbooks (`.claude/skills/`) use these tool
 
 An agent can't change your highlights, notes, cards or boards any other way, and the server has no tool that reaches the web. Every call is written to `data/tool-log.jsonl`.
 
-## What Phase 2 might add
+## What comes next
 
-Order, effort and what was rejected first: [roadmap.md](roadmap.md).
-
-- Reading your Obsidian edits back into the app.
-- Search across your books and notes.
-- A light theme for the whole app. EPUB pages can already be light.
+Margo is now a research product. The phases, the experiment and the kill rule are in [docs/plans/margo-rd-plan.md](docs/plans/margo-rd-plan.md). Next is the thought stream: speak a thought while you read, and Margo sorts it and returns it as a challenge at the end of the chapter. The earlier feature roadmap, with what was rejected and why, is in [roadmap.md](roadmap.md).
 
 ## How it works
 
@@ -220,7 +224,7 @@ It's a [Next.js](https://nextjs.org) app. The browser shows the books and the pa
 | Tutor | `app/api/chat/route.ts`, `lib/server/tutor/` | One adapter per tutor (Claude Code, Codex, API). Answers stream back to the panel. |
 | Go deeper | `components/study/`, `lib/server/study.ts`, `app/api/books/[bookId]/study/route.ts` | The reader's turn on a passage, kept on its thread in the book's JSON: the question, each answer, its grade and any overrule. Grading is `gradeAnswer` on the checking model, apart from the tutor. |
 | Images | `lib/client/images.ts`, `lib/server/attachments.ts` | The browser shrinks each image to 1568 px on its longest side before upload. The server reads its type from its bytes, not its name, and keeps it under a random id. |
-| Folders | `lib/server/config.ts`, `components/library/FolderForm.tsx` | The environment first, then `data/settings.json`. The setup screen and the Folders button save to `PATCH /api/settings`, which accepts only a folder that exists. Inside the Mac app, `window.riggApp.pickFolder` opens a native picker. |
+| Folders | `lib/server/config.ts`, `components/library/FolderForm.tsx` | The environment first, then `data/settings.json`. The setup screen and the Folders button save to `PATCH /api/settings`, which accepts only a folder that exists. Inside the Mac app, `window.margoApp.pickFolder` opens a native picker. |
 | Two windows | `components/book/useRefreshOnReturn.ts`, `app/api/books/[bookId]/revision/route.ts` | A window notes the book's revision (the saved state's and the settings' modified times) when it loses focus, and asks again when it returns. If it changed, the page refreshes. `/api/health` tells the Mac app that a server is already running. |
 | Saving | `lib/server/store.ts`, `lib/server/file-lock.ts` | Writes `data/<book id>.json` safely: to a temp file first, one write at a time per book. A lock file beside each data file (`<file>.lock`) keeps that true when the app and an agent's server write at once; a lock left by a process that died is taken over. |
 | Tools | `lib/server/tools/`, `lib/server/mcp/server.ts`, `scripts/mcp-server.mjs` | One list of tools, each with a name, a description, its input fields and a typed function. The fields make both the schema an agent reads and the check its arguments pass. The MCP server is that list over stdio; routes that do the same thing call the same functions. |

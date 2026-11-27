@@ -259,11 +259,11 @@ describe("a board in a Course's retention", () => {
 
 const bookId = "b".repeat(40) as BookId;
 let notes: string;
-const EMPTY = JSON.stringify({ type: "excalidraw", version: 2, source: "rigg-learn", elements: [], appState: {}, files: {} });
+const EMPTY = JSON.stringify({ type: "excalidraw", version: 2, source: "margo", elements: [], appState: {}, files: {} });
 const WITH = (text: string) => JSON.stringify({ type: "excalidraw", version: 2, elements: [{ id: "x", type: "text", text }], appState: {}, files: {} });
 
 beforeEach(async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "rigg-boards-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "margo-boards-"));
   notes = path.join(dir, "notes");
   await mkdir(notes);
   vi.stubEnv("DATA_DIR", path.join(dir, "data"));
@@ -355,7 +355,7 @@ describe("board files in the notes folder", () => {
 
   it("refuses text that isn't a board, and a board folder that leaves the notes folder through a link", async () => {
     await expect(save("Habits", "{}", null)).rejects.toThrow(/isn't an Excalidraw board/);
-    const outside = await mkdtemp(path.join(tmpdir(), "rigg-outside-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "margo-outside-"));
     await symlink(outside, path.join(notes, "Whiteboards"));
     await expect(save("Habits", EMPTY, null)).rejects.toThrow(/link the app does not follow/);
     expect(await readdir(outside)).toEqual([]);

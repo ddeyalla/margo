@@ -22,7 +22,7 @@ Full rule and its tests: `roadmap.md`, ground rules, "A moment away from the boo
 
 ## Agent playbooks
 
-Two playbooks run on the `rigg-learn` MCP server (`npm run mcp:setup`). Claude Code loads them as skills from `.claude/skills/`; Codex reads the same files. They are the single copy of each: do not duplicate them.
+Two playbooks run on the `margo` MCP server (`npm run mcp:setup`). Claude Code loads them as skills from `.claude/skills/`; Codex reads the same files. They are the single copy of each: do not duplicate them.
 
 - Prep, the night before: `.claude/skills/prep/SKILL.md`. Reads the ledger and review queue, then leaves one prepared plan (`propose_session_plan`) and any new cards on the Today card.
 - Follow-through, after a session: `.claude/skills/follow-through/SKILL.md`. Turns parked questions and missed answers into verified card suggestions and a short recap.

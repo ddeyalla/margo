@@ -116,7 +116,7 @@ interface Library {
   run: Promise<void> | null;
 }
 
-const libraries = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.search")] ??= new Map()) as Map<string, Library>;
+const libraries = ((globalThis as { [key: symbol]: unknown })[Symbol.for("margo.search")] ??= new Map()) as Map<string, Library>;
 
 const libraryFor = (dataDir: string): Library => {
   let library = libraries.get(dataDir);

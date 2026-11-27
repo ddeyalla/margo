@@ -83,7 +83,7 @@ export const BoardLinkContext = createContext<BoardLink | null>(null);
 
 export const useBoardLink = () => useContext(BoardLinkContext);
 
-const placedKey = (bookId: string) => `rigg-learn.board-placed.${bookId}`;
+const placedKey = (bookId: string) => `margo.board-placed.${bookId}`;
 
 /* Which answers' changes went on a board is remembered in this browser, so a reload doesn't offer to put them on twice. */
 const readPlaced = (bookId: string): Record<string, Placed> => {

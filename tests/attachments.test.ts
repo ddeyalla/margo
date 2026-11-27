@@ -12,7 +12,7 @@ import type { BookId } from "@/lib/shared/types";
 const image = (name: string) => readFileSync(path.join(__dirname, "fixtures", "images", name));
 
 const bookId = "c".repeat(40) as BookId;
-const tempData = () => mkdtemp(path.join(tmpdir(), "rigg-learn-attachments-"));
+const tempData = () => mkdtemp(path.join(tmpdir(), "margo-attachments-"));
 
 describe("image sniffing", () => {
   it.each([

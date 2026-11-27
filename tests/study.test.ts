@@ -53,7 +53,7 @@ const grader = (mark: "yes" | "partly" | "no", confidence: number, seen: TutorTu
   ),
 });
 
-const tmp = () => mkdtemp(path.join(tmpdir(), "rigg-learn-study-"));
+const tmp = () => mkdtemp(path.join(tmpdir(), "margo-study-"));
 
 const asked = (overrides: Partial<PassageThread> = {}): PassageThread => ({
   kind: "passage",

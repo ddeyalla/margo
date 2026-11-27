@@ -28,7 +28,7 @@ const startWriter = async (dataDir: string, name: string, count: number) => {
 
 describe("writes from separate processes", () => {
   it("lose no update when two processes and this one change the same files at once", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-lock-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-lock-"));
     const each = 40;
     const writers = await Promise.all([startWriter(dir, "one", each), startWriter(dir, "two", each)]);
     const counter = path.join(dir, "counter.json");
@@ -57,7 +57,7 @@ describe("writes from separate processes", () => {
 
 describe("a lock that can't be taken", () => {
   it("fails the write and the hold, and leaves nothing waiting", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-lock-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-lock-"));
     /* A file where the folder should be: no lock file can be made inside it. */
     const blocked = path.join(dir, "not-a-folder");
     await writeFile(blocked, "");
@@ -67,7 +67,7 @@ describe("a lock that can't be taken", () => {
 });
 
 describe("a lock left behind", () => {
-  const file = async () => path.join(await mkdtemp(path.join(tmpdir(), "rigg-learn-lock-")), "data.json");
+  const file = async () => path.join(await mkdtemp(path.join(tmpdir(), "margo-lock-")), "data.json");
 
   it("is taken over when the process that held it is gone", async () => {
     const target = await file();

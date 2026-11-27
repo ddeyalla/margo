@@ -118,7 +118,7 @@ describe("a compacted thread", () => {
 
 describe("writing and saving a summary", () => {
   it("saves the summary beside the thread's messages, which stay as they were, and counts its cost", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-compact-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-compact-"));
     const bookId = "d".repeat(40) as BookId;
     const thread = longThread(200);
     const turn = await openTurn(bookId, { kind: "new", thread }, "api", dir);

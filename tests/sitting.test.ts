@@ -236,7 +236,7 @@ describe("gradeQuizAnswer", () => {
   });
 
   it("grades against the question's text, keeps the rubric for next time, and saves nothing else", async () => {
-    const dataDir = await mkdtemp(path.join(tmpdir(), "rigg-learn-quiz-"));
+    const dataDir = await mkdtemp(path.join(tmpdir(), "margo-quiz-"));
     const saved = quiz("One", 3);
     saved.questions[0].quote = QUOTE;
     await updateBookState(bookId, (state) => ({ ...state, quizzes: [saved] }), dataDir);

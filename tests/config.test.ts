@@ -9,7 +9,7 @@ describe("getConfig", () => {
   const saveSettings = (value: unknown) => writeFile(path.join(dir, "data", "settings.json"), JSON.stringify(value));
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-config-"));
+    dir = await mkdtemp(path.join(tmpdir(), "margo-config-"));
     await mkdir(path.join(dir, "data"));
     vi.spyOn(process, "cwd").mockReturnValue(dir);
     vi.stubEnv("BOOKS_DIR", "");

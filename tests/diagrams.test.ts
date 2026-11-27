@@ -104,7 +104,7 @@ describe("POST /api/books/[bookId]/diagrams", () => {
   const stored = async () => (await readBookState(bookId)).threads[0].messages[1];
 
   beforeEach(async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-diagrams-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-diagrams-"));
     vi.stubEnv("DATA_DIR", path.join(dir, "data"));
     vi.stubEnv("BOOKS_DIR", dir);
     tutor.reply = `\`\`\`mermaid\n${FIXED}\n\`\`\``;
@@ -159,7 +159,7 @@ describe("POST /api/books/[bookId]/boards, checking what the page sent", () => {
   const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
   beforeEach(async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-boards-route-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-boards-route-"));
     vi.stubEnv("DATA_DIR", path.join(dir, "data"));
     vi.stubEnv("BOOKS_DIR", dir);
   });
