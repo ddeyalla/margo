@@ -3,7 +3,7 @@
  * refresh-on-return hook leaves a mark just before it refreshes; the next page to open consumes it, so
  * it can tell the two apart and stay quiet after a refresh.
  */
-const KEY = "rigg-learn.refreshed-at";
+const KEY = "margo.refreshed-at";
 /** A mark older than this belongs to a refresh that never reached a page. */
 const FRESH_MS = 15_000;
 

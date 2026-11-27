@@ -13,7 +13,7 @@ import { BOOK_ID_PATTERN } from "./library-index";
  * loads a separate copy of this module for each route; a module-level map
  * would let /api/chat and /api/books/.../state write the same file at once.
  */
-const QUEUES: unique symbol = Symbol.for("rigg-learn.store.queues");
+const QUEUES: unique symbol = Symbol.for("margo.store.queues");
 type GlobalWithQueues = typeof globalThis & { [QUEUES]?: Map<string, Promise<unknown>> };
 const queues = ((globalThis as GlobalWithQueues)[QUEUES] ??= new Map());
 
@@ -107,7 +107,7 @@ export const savedFiles = (id: BookId, dataDir: string): [state: string, positio
  * write that found the book before that is refused rather than leave data no book opens. On globalThis for
  * the same reason as the queues.
  */
-const CLOSED: unique symbol = Symbol.for("rigg-learn.store.closed");
+const CLOSED: unique symbol = Symbol.for("margo.store.closed");
 type GlobalWithClosed = typeof globalThis & { [CLOSED]?: Set<string> };
 const closed = ((globalThis as GlobalWithClosed)[CLOSED] ??= new Set());
 

@@ -64,7 +64,7 @@ describe("quoting passages into a message", () => {
   });
 
   it("saves the passages with the message, so citations still resolve when the thread is read again", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-citations-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-citations-"));
     const turn = await openTurn(bookId, { kind: "new", thread: thread([user("What links these?", [passage(1)])]) }, "claude", dir);
     if (typeof turn === "string") throw new Error(turn);
     await turn.close({ text: "They [both rebuild memory](#cite-1).", sessionId: null, partial: false });

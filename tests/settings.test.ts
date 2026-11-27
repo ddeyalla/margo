@@ -9,7 +9,7 @@ describe("settings", () => {
   let dir: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-settings-"));
+    dir = await mkdtemp(path.join(tmpdir(), "margo-settings-"));
     await mkdir(path.join(dir, "data"));
     vi.spyOn(process, "cwd").mockReturnValue(dir);
     vi.stubEnv("BOOKS_DIR", dir);
@@ -86,7 +86,7 @@ describe("folder settings", () => {
   let books: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-folders-"));
+    dir = await mkdtemp(path.join(tmpdir(), "margo-folders-"));
     books = path.join(dir, "books");
     await mkdir(path.join(dir, "data"));
     await mkdir(books);

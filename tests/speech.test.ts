@@ -33,7 +33,7 @@ describe("the model folder", () => {
   let root: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(path.join(tmpdir(), "rigg-learn-speech-"));
+    root = await mkdtemp(path.join(tmpdir(), "margo-speech-"));
     vi.stubEnv("DATA_DIR", path.join(root, "data"));
     resetRecognizer();
   });

@@ -17,7 +17,7 @@ export const BOARD_PANE_IDS: Record<BoardSide, string> = { left: "board-pane-lef
 /* Where each pane sits in the group, for reading sizes out of the layout. */
 const INDEX: Record<string, number> = { [BOARD_PANE_IDS.left]: 0, [BOOK_PANE_ID]: 1, [BOARD_PANE_IDS.right]: 2, [PANEL_ID]: 3 };
 
-const SIDE_KEY = "rigg-learn.board-side";
+const SIDE_KEY = "margo.board-side";
 
 const savedSide = (): BoardSide => {
   try {

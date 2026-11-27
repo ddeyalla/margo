@@ -66,7 +66,7 @@ describe("annotation changes", () => {
   });
 
   it("keeps the saved change when the notes folder cannot be written", async () => {
-    const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-annotations-"));
+    const base = await mkdtemp(path.join(tmpdir(), "margo-annotations-"));
     await writeFile(path.join(base, "file"), "");
     const book: LibraryBook = {
       id: "d".repeat(40) as BookId,

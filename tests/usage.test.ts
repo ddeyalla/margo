@@ -216,7 +216,7 @@ describe("usage figures", () => {
 
 describe("saving usage", () => {
   it("keeps the provider's usage on the saved answer", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-usage-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-usage-"));
     const bookId = "c".repeat(40) as BookId;
     const opened = await openTurn(bookId, { kind: "new", thread: thread([ask]) }, "claude", dir);
     if (typeof opened === "string") throw new Error(opened);

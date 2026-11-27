@@ -7,7 +7,7 @@ import { backfillHashes, bookIdOf, findBook, libraryProblem, scanLibrary } from 
 import { LibraryIndexError, readIndex, type LibraryIndex } from "@/lib/server/library-index";
 import type { BookId } from "@/lib/shared/types";
 
-const tempDir = () => mkdtemp(path.join(tmpdir(), "rigg-learn-library-"));
+const tempDir = () => mkdtemp(path.join(tmpdir(), "margo-library-"));
 const indexPath = (dataDir: string) => path.join(dataDir, "library.json");
 const storedBooks = async (dataDir: string): Promise<LibraryIndex> =>
   (JSON.parse(await readFile(indexPath(dataDir), "utf8")) as { books: LibraryIndex }).books;

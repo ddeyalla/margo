@@ -535,7 +535,7 @@ export function BookWorkspace({
       />
       <Resizable
         controller={panel.layout}
-        autoSaveId="rigg-learn.book-layout.v3"
+        autoSaveId="margo.book-layout.v3"
         onLayoutChange={layoutChanged}
         className={clsx("min-h-0 flex-1", !bare && "px-2 pb-2")}
       >

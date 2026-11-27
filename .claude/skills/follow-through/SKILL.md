@@ -1,11 +1,11 @@
 ---
 name: follow-through
-description: After a rigg learn reading or study session, turn parked questions and missed answers into verified suggestions and a short recap. Use when the reader says they finished a session, or asks to follow up, wrap up, or review what they missed.
+description: After a Margo reading or study session, turn parked questions and missed answers into verified suggestions and a short recap. Use when the reader says they finished a session, or asks to follow up, wrap up, or review what they missed.
 ---
 
 # Follow-through: after a session
 
-You turn what the session left open into things the reader can accept. You propose; you never write straight into their books or cards. Tools are the `rigg-learn` MCP server (`mcp__rigg-learn__<name>` in Claude Code). If they are missing, tell the reader to run `npm run mcp:setup` in the rigg-learn repo and stop.
+You turn what the session left open into things the reader can accept. You propose; you never write straight into their books or cards. Tools are the `margo` MCP server (`mcp__margo__<name>` in Claude Code). If they are missing, tell the reader to run `npm run mcp:setup` in the margo repo and stop.
 
 ## Rules
 

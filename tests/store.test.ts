@@ -24,12 +24,12 @@ const thread = (n: number): Thread => ({
 
 describe("book state store", () => {
   it("starts empty for a book that was never opened", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-store-"));
     expect(await readBookState(id, dir)).toMatchObject({ meta: null, position: null, threads: [], activeThreadId: null });
   });
 
   it("keeps every concurrent update and leaves valid JSON", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-store-"));
     await Promise.all([
       ...Array.from({ length: 20 }, (_, n) =>
         updateBookState(id, (state) => ({ ...state, threads: [...state.threads, thread(n)] }), dir),
@@ -44,7 +44,7 @@ describe("book state store", () => {
   });
 
   it("reads threads saved before questions without a passage existed as passage threads", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-store-"));
     const old: Record<string, unknown> = { ...thread(1) };
     delete old.kind;
     await writeFile(path.join(dir, `${id}.json`), JSON.stringify({ threads: [old] }));
@@ -68,14 +68,14 @@ describe("reading position", () => {
   };
 
   it("reads the position kept inside an older state file", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-store-"));
     await writeOldState(dir);
     expect(await readBookState(id, dir)).toMatchObject({ position: oldPosition, lastReadAt: "2026-01-01T00:00:00.000Z" });
     expect((await readBookState(id, dir)).threads).toEqual([thread(1)]);
   });
 
   it("saves the position without touching the state file", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-store-"));
     await writeOldState(dir);
     const before = await readFile(stateFile(dir));
     const beforeTime = (await stat(stateFile(dir))).mtimeMs;
@@ -89,7 +89,7 @@ describe("reading position", () => {
   });
 
   it("keeps the saved position through later state changes and drops the stale copy from the state file", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-store-"));
     await writeOldState(dir);
     await saveBookPosition(id, newPosition, dir);
     await updateBookState(id, (state) => ({ ...state, threads: [...state.threads, thread(2)] }), dir);
@@ -101,7 +101,7 @@ describe("reading position", () => {
   });
 
   it("moves the last-changed time forward on a position save", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-store-"));
     await writeOldState(dir);
     const before = await bookStateUpdatedAt(id, dir);
     expect(before?.toISOString()).toBe(new Date("2026-01-01").toISOString());
@@ -112,7 +112,7 @@ describe("reading position", () => {
   });
 
   it("counts a book whose only saved state is its position as opened", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-store-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-store-"));
     expect(await bookStateUpdatedAt(id, dir)).toBeNull();
     await saveBookPosition(id, newPosition, dir);
     expect(await bookStateUpdatedAt(id, dir)).not.toBeNull();

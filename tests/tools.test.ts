@@ -63,7 +63,7 @@ interface Hit {
 const tidalHit = async (): Promise<Hit> => (await call<{ hits: Hit[] }>("search_library", { query: "tidal locking" })).hits[0];
 
 beforeAll(async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "rigg-learn-tools-"));
+  const root = await mkdtemp(path.join(tmpdir(), "margo-tools-"));
   const booksDir = path.join(root, "books");
   dataDir = path.join(root, "data");
   await mkdir(booksDir);

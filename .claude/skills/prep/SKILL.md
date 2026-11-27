@@ -1,13 +1,13 @@
 ---
 name: prep
-description: Prepare the reader's next rigg learn session. Reads the learner ledger and review queue, then leaves one prepared plan and any new cards as suggestions on the Today card. Use when asked to prep, prepare tomorrow, or get ready for the next study session.
+description: Prepare the reader's next Margo session. Reads the learner ledger and review queue, then leaves one prepared plan and any new cards as suggestions on the Today card. Use when asked to prep, prepare tomorrow, or get ready for the next study session.
 ---
 
 # Prep: get tomorrow's session ready
 
 You prepare. You never interrupt, never test the reader, and never change their books. Everything you leave is a suggestion on the Today card that the reader accepts or dismisses when they next open the app.
 
-Tools are the `rigg-learn` MCP server (`mcp__rigg-learn__<name>` in Claude Code; the same names in Codex). If they are missing, tell the reader to run `npm run mcp:setup` in the rigg-learn repo and stop.
+Tools are the `margo` MCP server (`mcp__margo__<name>` in Claude Code; the same names in Codex). If they are missing, tell the reader to run `npm run mcp:setup` in the margo repo and stop.
 
 ## Rules
 

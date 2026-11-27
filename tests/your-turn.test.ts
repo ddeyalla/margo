@@ -14,7 +14,7 @@ describe("the Your turn prompts of a session", () => {
     vi.stubGlobal("sessionStorage", { getItem: (key: string) => items.get(key) ?? null, setItem: (key: string, value: string) => void items.set(key, value) });
     return items;
   };
-  const stored = (items: Map<string, string>) => JSON.parse(items.get("rigg-learn:your-turn") ?? "null") as { offered: string | null; settled: string[]; skips: number };
+  const stored = (items: Map<string, string>) => JSON.parse(items.get("margo:your-turn") ?? "null") as { offered: string | null; settled: string[]; skips: number };
 
   it("counts a prompt passed over by sending something else, and one dismissed", async () => {
     const items = withStorage();

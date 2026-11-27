@@ -22,7 +22,7 @@ let dir: string;
 const AT = new Date(2026, 10, 24, 14, 32, 5);
 
 beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "rigg-notes-"));
+  dir = await mkdtemp(path.join(tmpdir(), "margo-notes-"));
 });
 
 const put = async (rel: string, text: string) => {
@@ -117,7 +117,7 @@ describe("creating notes", () => {
 
 describe("what the app may touch in the notes folder", () => {
   it("refuses paths outside the folder, hidden files, other kinds of file and links out", async () => {
-    const outside = await mkdtemp(path.join(tmpdir(), "rigg-outside-"));
+    const outside = await mkdtemp(path.join(tmpdir(), "margo-outside-"));
     await writeFile(path.join(outside, "secret.md"), "secret");
     await symlink(outside, path.join(dir, "linked"));
     for (const bad of ["../x.md", "/etc/passwd.md", "a/../../x.md", ".obsidian/workspace.md", "notes.txt", "linked/secret.md", "", "a//b.md"]) {

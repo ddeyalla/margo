@@ -142,16 +142,16 @@ interface Scan {
   at: number;
   library: Promise<ScannedLibrary>;
 }
-const scans = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-scans")] ??= new Map()) as Map<string, Scan>;
+const scans = ((globalThis as { [key: symbol]: unknown })[Symbol.for("margo.library-scans")] ??= new Map()) as Map<string, Scan>;
 
-const backfills = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-backfills")] ??= new Map()) as Map<
+const backfills = ((globalThis as { [key: symbol]: unknown })[Symbol.for("margo.library-backfills")] ??= new Map()) as Map<
   string,
   Promise<void>
 >;
 
 /* Per library, every file version that could not be hashed, so a file that never reads is not reopened and
    logged again after every scan. The key changes when the file's size or mtime does, which retries it. */
-const unhashable = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.library-unhashable")] ??= new Map()) as Map<
+const unhashable = ((globalThis as { [key: symbol]: unknown })[Symbol.for("margo.library-unhashable")] ??= new Map()) as Map<
   string,
   Set<string>
 >;

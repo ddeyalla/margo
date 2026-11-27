@@ -105,7 +105,7 @@ export const diagramTitle = (source: string): string => {
 };
 
 /** An empty board, as its first file holds it until the reader draws. */
-export const EMPTY_BOARD = JSON.stringify({ type: "excalidraw", version: 2, source: "rigg-learn", elements: [], appState: {}, files: {} }, null, 2);
+export const EMPTY_BOARD = JSON.stringify({ type: "excalidraw", version: 2, source: "margo", elements: [], appState: {}, files: {} }, null, 2);
 
 /** A board as opened: its file's text and the hash a save must start from. */
 export interface BoardVersion {

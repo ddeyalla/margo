@@ -185,7 +185,7 @@ describe("PDF blocks", () => {
 });
 
 const setUp = async () => {
-  const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-search-"));
+  const base = await mkdtemp(path.join(tmpdir(), "margo-search-"));
   const root = path.join(base, "books");
   const dataDir = path.join(base, "data");
   await mkdir(root, { recursive: true });

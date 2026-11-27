@@ -137,7 +137,7 @@ describe("the ledger file", () => {
   const sources = async () => (await readLedger(dataDir)).map((event) => event.source);
 
   beforeAll(async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "rigg-learn-ledger-"));
+    const root = await mkdtemp(path.join(tmpdir(), "margo-ledger-"));
     const booksDir = path.join(root, "books");
     dataDir = path.join(root, "data");
     await mkdir(booksDir);

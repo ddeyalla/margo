@@ -12,7 +12,7 @@ let api: NoteApi;
 let events: NoteEvents & { log: string[] };
 
 beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "rigg-session-"));
+  dir = await mkdtemp(path.join(tmpdir(), "margo-session-"));
   api = {
     save: (p, text, hash) => saveNote(dir, p, text, hash),
     change: async (p, since) => {

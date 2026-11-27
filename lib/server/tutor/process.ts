@@ -28,7 +28,7 @@ export const childEnv = (): NodeJS.ProcessEnv => {
 
 /** A stable scratch folder per provider, outside the project and the books folder. CLIs key sessions by folder. */
 export const scratchDir = async (provider: string): Promise<string> => {
-  const dir = path.join(tmpdir(), "rigg-learn-tutor", provider);
+  const dir = path.join(tmpdir(), "margo-tutor", provider);
   await mkdir(dir, { recursive: true });
   return dir;
 };

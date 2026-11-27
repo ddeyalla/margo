@@ -11,8 +11,8 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 
-// RIGG_PORT exists so the start path can be tested while a dev server holds 3210.
-const PORT = Number(process.env.RIGG_PORT) || 3210;
+// MARGO_PORT exists so the start path can be tested while a dev server holds 3210.
+const PORT = Number(process.env.MARGO_PORT) || 3210;
 const HOST = "127.0.0.1";
 const ORIGIN = `http://${HOST}:${PORT}`;
 const BROWSER_URL = `http://localhost:${PORT}`;
@@ -21,12 +21,13 @@ const START_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 3000;
 
 // The name sets the menu title. The path is set outright so it is exactly this folder.
-// RIGG_USER_DATA, like RIGG_PORT, lets a test copy run beside the real app with its own data.
+// MARGO_USER_DATA, like MARGO_PORT, lets a test copy run beside the real app with its own data.
 app.setName("Margo");
-/* The app was called "rigg learn" before. Its folder is used until a Margo folder exists, so no data is lost. */
-const legacyUserData = path.join(app.getPath("appData"), "rigg learn");
 const margoUserData = path.join(app.getPath("appData"), "Margo");
-app.setPath("userData", process.env.RIGG_USER_DATA || (!fs.existsSync(margoUserData) && fs.existsSync(legacyUserData) ? legacyUserData : margoUserData));
+/* Before the rename the folder had the old app name. Move it once, so no data is lost. */
+const oldUserData = path.join(app.getPath("appData"), "rigg learn");
+if (!process.env.MARGO_USER_DATA && !fs.existsSync(margoUserData) && fs.existsSync(oldUserData)) fs.renameSync(oldUserData, margoUserData);
+app.setPath("userData", process.env.MARGO_USER_DATA || margoUserData);
 const userData = app.getPath("userData");
 const dataDir = path.join(userData, "data");
 const logPath = path.join(userData, "server.log");
@@ -56,7 +57,7 @@ const probe = (timeoutMs) =>
       res.on("data", (chunk) => (body += chunk.slice(0, 2000)));
       res.on("end", () => {
         try {
-          resolve(["margo", "rigg-learn"].includes(JSON.parse(body).app) ? "ours" : "other");
+          resolve(JSON.parse(body).app === "margo" ? "ours" : "other");
         } catch {
           resolve("other");
         }
@@ -79,11 +80,11 @@ const loginShellPath = () =>
     const shell = process.env.SHELL || "/bin/zsh";
     execFile(
       shell,
-      ["-ilc", `printf '__RIGG_PATH__%s__RIGG_PATH__' "$PATH"`],
+      ["-ilc", `printf '__MARGO_PATH__%s__MARGO_PATH__' "$PATH"`],
       { timeout: 5000 },
       (error, stdout) => {
         // Startup files may print other text, so the PATH sits between markers.
-        const found = !error && /__RIGG_PATH__(.+?)__RIGG_PATH__/.exec(stdout);
+        const found = !error && /__MARGO_PATH__(.+?)__MARGO_PATH__/.exec(stdout);
         resolve(found ? found[1] : null);
       },
     );
@@ -348,7 +349,7 @@ const launch = async () => {
   const shellPath = resolvePath();
   buildMenu();
   allowMicrophoneForOurPages();
-  ipcMain.handle("rigg:pick-folder", async (event) => {
+  ipcMain.handle("margo:pick-folder", async (event) => {
     // Only the app's own pages may open the picker.
     if (!isOurs(event.senderFrame?.url ?? "")) return null;
     const parent = BrowserWindow.fromWebContents(event.sender);

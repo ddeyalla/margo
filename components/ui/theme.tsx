@@ -7,7 +7,7 @@ import { Segmented } from "./index";
 /** The app's colours: follow macOS, or always light or dark. Kept in this browser's storage. */
 export type AppTheme = "system" | "light" | "dark";
 
-const KEY = "rigg-learn.theme";
+const KEY = "margo.theme";
 
 /**
  * The colours in force for a stored choice. Written into the inline script as source, so it must stay
@@ -18,11 +18,25 @@ function resolveTheme(saved: string | null, prefersLight: boolean): "light" | "d
 }
 
 /**
+ * Moves this browser's saved settings from the app's old name to "margo" once, before anything reads them.
+ * Self-contained for the same reason as resolveTheme.
+ */
+function moveOldKeys(store: Storage) {
+  for (let i = store.length - 1; i >= 0; i--) {
+    const key = store.key(i);
+    if (!key || key.indexOf("rigg-learn") !== 0) continue;
+    const moved = "margo" + key.slice(10);
+    if (store.getItem(moved) === null) store.setItem(moved, store.getItem(key) as string);
+    store.removeItem(key);
+  }
+}
+
+/**
  * Runs in <head> before the first paint, so the page never flashes the wrong colours.
  * It sets data-theme on <html> to light or dark, follows macOS while the choice is "system",
  * and follows a choice made in another window.
  */
-export const themeScript = `(function(){try{var k=${JSON.stringify(KEY)},r=(${resolveTheme.toString()}),m=matchMedia("(prefers-color-scheme: light)"),a=function(){document.documentElement.dataset.theme=r(localStorage.getItem(k),m.matches)};a();m.addEventListener("change",a);addEventListener("storage",function(e){if(e.key===k||e.key===null)a()})}catch(e){}})()`;
+export const themeScript = `(function(){try{(${moveOldKeys.toString()})(localStorage);var k=${JSON.stringify(KEY)},r=(${resolveTheme.toString()}),m=matchMedia("(prefers-color-scheme: light)"),a=function(){document.documentElement.dataset.theme=r(localStorage.getItem(k),m.matches)};a();m.addEventListener("change",a);addEventListener("storage",function(e){if(e.key===k||e.key===null)a()})}catch(e){}})()`;
 
 const listeners = new Set<() => void>();
 

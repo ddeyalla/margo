@@ -126,7 +126,7 @@ describe("the Obsidian note file", () => {
   });
 
   it("creates a missing notes folder and leaves no temp file behind", async () => {
-    const notesDir = path.join(await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-")), "Reading", "Books");
+    const notesDir = path.join(await mkdtemp(path.join(tmpdir(), "margo-vault-")), "Reading", "Books");
     const status = await writeVault(notesDir, book, { highlights, notes });
     expect(status).toEqual({ state: "written", file: path.join(notesDir, "Generative AI Design Patterns - Solutions.md") });
     expect(await readdir(notesDir)).toEqual(["Generative AI Design Patterns - Solutions.md"]);
@@ -136,7 +136,7 @@ describe("the Obsidian note file", () => {
   });
 
   it("never overwrites a file this book did not write, and keeps the name it took", async () => {
-    const notesDir = await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-"));
+    const notesDir = await mkdtemp(path.join(tmpdir(), "margo-vault-"));
     const mine = path.join(notesDir, "Generative AI Design Patterns - Solutions.md");
     await writeFile(mine, "My own note, no frontmatter.\n");
     const first = await writeVault(notesDir, book, { highlights, notes });
@@ -156,7 +156,7 @@ describe("the Obsidian note file", () => {
   });
 
   it("recognises its own file however long the title and author are", async () => {
-    const notesDir = await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-"));
+    const notesDir = await mkdtemp(path.join(tmpdir(), "margo-vault-"));
     const long = { ...book, title: `A Very Long Title ${"word ".repeat(1500)}`, author: "Someone ".repeat(500) };
     const first = await writeVault(notesDir, long, { highlights, notes });
     expect(await writeVault(notesDir, long, { highlights, notes })).toEqual(first);
@@ -164,7 +164,7 @@ describe("the Obsidian note file", () => {
   });
 
   it("still recognises a file from before bookId came first", async () => {
-    const notesDir = await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-"));
+    const notesDir = await mkdtemp(path.join(tmpdir(), "margo-vault-"));
     const long = { ...book, title: `Older Long Title ${"word ".repeat(500)}` };
     const [open, idLine, ...rest] = renderVault(long, { highlights, notes }).split("\n");
     const formatAt = rest.findIndex((line) => line.startsWith("format: "));
@@ -176,7 +176,7 @@ describe("the Obsidian note file", () => {
   });
 
   it("reports a folder it cannot create instead of throwing", async () => {
-    const base = await mkdtemp(path.join(tmpdir(), "rigg-learn-vault-"));
+    const base = await mkdtemp(path.join(tmpdir(), "margo-vault-"));
     await writeFile(path.join(base, "not-a-folder"), "");
     const status = await writeVault(path.join(base, "not-a-folder", "Notes"), book, { highlights, notes });
     expect(status.state).toBe("failed");

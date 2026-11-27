@@ -15,7 +15,7 @@ interface Jobs {
   writing: Map<string, number>;
   failed: Map<string, string>;
 }
-const jobs = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.quiz-jobs")] ??= {
+const jobs = ((globalThis as { [key: symbol]: unknown })[Symbol.for("margo.quiz-jobs")] ??= {
   writing: new Map(),
   failed: new Map(),
 }) as Jobs;

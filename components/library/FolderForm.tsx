@@ -17,7 +17,7 @@ type FolderKind = "books" | "notes";
  * a folder's full path. Resolves to the path, null when cancelled, or "unsupported" when the server isn't a Mac.
  */
 const pickFolder = async (kind: FolderKind): Promise<string | null | "unsupported"> => {
-  if (window.riggApp?.pickFolder) return window.riggApp.pickFolder();
+  if (window.margoApp?.pickFolder) return window.margoApp.pickFolder();
   const response = await fetch("/api/folder-picker", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

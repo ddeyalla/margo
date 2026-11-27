@@ -36,7 +36,7 @@ const storedMessages = async (dir: string) =>
 
 describe("tutor turns", () => {
   it("keeps the reader's message when the tutor is stopped before its first word", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-turns-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-turns-"));
     const turn = opened(await openTurn(bookId, { kind: "new", thread: newThread() }, "claude", dir));
     expect(await storedMessages(dir)).toEqual([["user", "Explain this passage.", false]]);
     await turn.close({ text: "", sessionId: null, partial: true });
@@ -44,7 +44,7 @@ describe("tutor turns", () => {
   });
 
   it("saves a follow-up sent right after Stop after the stopped answer", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-turns-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-turns-"));
     const first = opened(await openTurn(bookId, { kind: "new", thread: newThread() }, "claude", dir));
     let followUpOpened = false;
     const followUp = openTurn(bookId, { kind: "reply", threadId: "t1", message: { role: "user", content: "Why?", createdAt: "" } }, "claude", dir).then((turn) => {
@@ -69,7 +69,7 @@ describe("tutor turns", () => {
   });
 
   it("retries only a thread whose last message is unanswered", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-turns-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-turns-"));
     await opened(await openTurn(bookId, { kind: "new", thread: newThread() }, "claude", dir)).close({
       text: "",
       sessionId: null,
@@ -104,7 +104,7 @@ describe("chat requests", () => {
   const png = readFileSync(path.join(__dirname, "fixtures", "images", "tiny.png"));
 
   const withImages = async (count: number) => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-requests-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-requests-"));
     const images: ImageAttachment[] = [];
     for (let n = 0; n < count; n++) {
       const saved = await saveAttachment(bookId, png, dir);
@@ -151,7 +151,7 @@ describe("chat requests", () => {
   });
 
   it("carries the whiteboard a message is about, when it is one of this book's, with words", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-requests-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-requests-"));
     await updateBookState(bookId, (state) => ({ ...state, boards: [normalizeBoard({ id: "board-0001", title: "Habits", kind: "free", chapter: null })] }), dir);
     const board = { id: "board-0001", title: "Habits", scene: { nodes: [{ id: "n1", text: "Cue", x: 0, y: 0 }], links: [], loose: 0, sketches: 0 }, ids: { n1: "el-1" } };
     expect(reply(await parseTurnRequest({ kind: "reply", threadId: "t1", text: "Add the reward", board }, book, "claude", dir)).board).toEqual(board);
@@ -161,7 +161,7 @@ describe("chat requests", () => {
   });
 
   it("needs words or an image", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-requests-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-requests-"));
     expect(await parseTurnRequest({ kind: "reply", threadId: "t1", text: "   " }, book, "claude", dir)).toBe("Write a message or attach an image.");
     expect(await parseTurnRequest({ kind: "reply", threadId: "t1", text: "x".repeat(8001) }, book, "claude", dir)).toBe("This message is too long.");
   });
@@ -184,13 +184,13 @@ describe("chat requests", () => {
   });
 
   it("refuses a place from the wrong kind of book", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-requests-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-requests-"));
     const place = { anchor: { kind: "pdf", page: 2, start: 0, end: 0 }, chapterTitle: null };
     expect(await parseTurnRequest({ kind: "general", text: "Hi", place }, book, "claude", dir)).toBe("Invalid place.");
   });
 
   it("builds a passage thread from a selection as before", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "rigg-learn-requests-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "margo-requests-"));
     const selection = { text: "A passage.", before: "", after: "", anchor: { kind: "epub", cfi: "epubcfi(/6/4)" }, chapterTitle: null };
     expect(await parseTurnRequest({ kind: "new", action: "explain", question: null, selection }, book, "claude", dir)).toMatchObject({
       kind: "new",

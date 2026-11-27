@@ -15,7 +15,7 @@ interface YourTurn {
   skips: number;
 }
 
-const KEY = "rigg-learn:your-turn";
+const KEY = "margo:your-turn";
 
 const read = (): YourTurn => {
   try {

@@ -2,8 +2,8 @@
 // With sandbox on, a preload may only use `electron`, which is all this needs.
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("riggApp", {
+contextBridge.exposeInMainWorld("margoApp", {
   isApp: true,
   /** Opens the native folder picker. Resolves to the chosen path, or null if cancelled. */
-  pickFolder: () => ipcRenderer.invoke("rigg:pick-folder"),
+  pickFolder: () => ipcRenderer.invoke("margo:pick-folder"),
 });

@@ -17,7 +17,7 @@ export const isProviderId = (value: unknown): value is ProviderId =>
 
 /** Probing spawns CLIs, so results are kept briefly. The cache lives on globalThis because dev bundles each route separately. */
 const PROBE_TTL_MS = 60_000;
-const cache = ((globalThis as { [key: symbol]: unknown })[Symbol.for("rigg-learn.provider-probes")] ??= {
+const cache = ((globalThis as { [key: symbol]: unknown })[Symbol.for("margo.provider-probes")] ??= {
   at: 0,
   value: null as Promise<ProviderInfo[]> | null,
 }) as { at: number; value: Promise<ProviderInfo[]> | null };
