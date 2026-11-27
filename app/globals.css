@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* rigg-learn design tokens. Two themes share one set of names: the window is a
+/* Margo design tokens. Two themes share one set of names: the window is a
    soft grey, the book sits on a raised canvas, and panels float as rounded cards.
    Dark is the default; [data-theme="light"] on <html> swaps every value. The
    script in app/layout.tsx sets that attribute before the first paint. */

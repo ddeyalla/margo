@@ -42,6 +42,7 @@ import { ErrorBanner, Toast, useToast } from "./FloatingMessages";
 import { OpeningNotice, useNoticeExit } from "./OpeningNotice";
 import type { PlaceStore, ReadingSpot } from "./place";
 import { FocusClock, FocusRecap } from "./FocusSession";
+import { GlanceCard, type GlanceAsk } from "./GlanceCard";
 import { ReadAloudBar } from "./ReadAloudBar";
 import { OpenFailed, PageTurn, SpotlightExit } from "./ReaderChrome";
 import { ReadingFooter } from "./ReadingFooter";
@@ -175,6 +176,8 @@ export function BookWorkspace({
   const noticeExit = useNoticeExit(notice, bare || reviewing);
   /* Read-along, null while its controls are closed. Its voice and speed are settings, remembered for every book. */
   const [readAloud, setReadAloud] = useState<{ playing: boolean } | null>(null);
+  /* The hover glance (a spike): the word Option is held over, until it is let go. */
+  const [glance, setGlance] = useState<GlanceAsk | null>(null);
   const toggleReadAloud = useCallback(() => {
     if (book.format !== "epub" || error) return;
     dismissNotice();
@@ -484,7 +487,7 @@ export function BookWorkspace({
 
   return (
     <div className="flex h-dvh flex-col bg-ink">
-      <title>{`${title} · rigg learn`}</title>
+      <title>{`${title} · Margo`}</title>
       <BookHeader
         title={title}
         spot={spot}
@@ -552,10 +555,12 @@ export function BookWorkspace({
                         spotlight={spotlight}
                         readAloud={readAloud && { playing: readAloud.playing, rate: settings.readAloudRate, voice: settings.readAloudVoice }}
                         onReadAloudStop={pauseReadAloud}
+                        onGlance={setGlance}
                       />
                     ) : (
                       <PdfReader {...readerProps} />
                     )}
+                    {glance && provider ? <GlanceCard key={`${glance.term}|${glance.sentence}`} bookId={book.id} ask={glance} provider={provider} /> : null}
                     {readAloud && book.format === "epub" ? (
                       <ReadAloudBar
                         playing={readAloud.playing}

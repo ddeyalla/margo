@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     "electron/**",
     // The speech model's process, also plain Node, started by lib/server/speech.ts.
     "lib/server/speech-process.cjs",
+    "lib/server/voice-process.cjs",
+    "lib/server/voice-text.cjs",
     "dist-app/**",
     // Agent worktrees: other checkouts of this repo, each with its own build output.
     ".claude/**",

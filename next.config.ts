@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/books/\\[bookId\\]/cards": ["./lib/server/cards/prompt.md"],
     "/api/speech/transcribe": ["./lib/server/speech-process.cjs", "./node_modules/sherpa-onnx-node/**", "./node_modules/sherpa-onnx-darwin-arm64/**"],
+    "/api/voice/say": ["./lib/server/voice-process.cjs", "./lib/server/voice-text.cjs", "./node_modules/sherpa-onnx-node/**", "./node_modules/sherpa-onnx-darwin-arm64/**"],
     "/api/books/\\[bookId\\]/cover": [
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
       "./node_modules/pdfjs-dist/standard_fonts/**",

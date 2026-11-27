@@ -14,7 +14,7 @@ export const openFailure = (format: BookFormat, error: unknown): OpenFailure => 
   const detail = error instanceof Error && error.message ? error.message : null;
   const message =
     kind === "PasswordException"
-      ? "This PDF is locked with a password. rigg learn can't open locked PDFs yet."
+      ? "This PDF is locked with a password. Margo can't open locked PDFs yet."
       : kind === "ResponseException" || kind === "ResponseError" || kind === "NotFoundError"
         ? "The file could not be loaded. It may have been moved or deleted since the library was read. Go back to the library to refresh it."
         : kind === "InvalidPDFException"

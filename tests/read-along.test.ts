@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { addFixations, FIXATION_TAG } from "@/components/reader/fixations";
-import { Narrator, pickVoice, type FoliateTTS } from "@/components/reader/narrator";
-import { ReadAlong } from "@/components/reader/readAlong";
+import { Narrator, sentencesOf, type FoliateTTS } from "@/components/reader/narrator";
 import { markAt, ssmlToText } from "@/components/reader/ssml";
 import { TTS } from "@/public/vendor/foliate-js/tts.js";
 import { textWalker } from "@/public/vendor/foliate-js/text-walker.js";
@@ -137,49 +136,36 @@ describe("read-along over foliate's TTS", () => {
   });
 });
 
-describe("pickVoice", () => {
-  const voice = (name: string, lang: string, isDefault = false) =>
-    ({ name, lang, voiceURI: `com.apple.voice.${name}`, localService: true, default: isDefault }) as SpeechSynthesisVoice;
-  const voices = [voice("Amélie", "fr-CA"), voice("Daniel", "en-GB"), voice("Samantha", "en-US", true), voice("Thomas", "fr-FR")];
-
-  it("keeps the saved voice", () => {
-    expect(pickVoice(voices, "com.apple.voice.Daniel", "fr")?.name).toBe("Daniel");
+describe("sentencesOf", () => {
+  it("cuts a block after each sentence and keeps the text between them", () => {
+    const text = "Zero to One is about building the future. It is not about copying it! Is that clear?";
+    const parts = sentencesOf(text).map(({ start, end }) => text.slice(start, end).trim());
+    expect(parts).toEqual(["Zero to One is about building the future.", "It is not about copying it!", "Is that clear?"]);
   });
 
-  it("otherwise matches the book's language", () => {
-    expect(pickVoice(voices, null, "en-GB")?.name).toBe("Samantha");
-    expect(pickVoice(voices, null, "fr-FR")?.name).toBe("Thomas");
-    expect(pickVoice(voices, "com.apple.voice.Gone", "fr")?.name).toBe("Amélie");
+  it("joins a very short sentence to the next, so the voice never speaks two words alone", () => {
+    const text = "Yes. Zero to One is about building the future.";
+    expect(sentencesOf(text).map(({ start, end }) => text.slice(start, end))).toEqual([text]);
   });
 
-  it("falls back to the default voice for a language it has none for", () => {
-    expect(pickVoice(voices, null, "ja")?.name).toBe("Samantha");
-    expect(pickVoice([], null, "en")).toBeNull();
+  it("covers every character, so each word's mark falls in a sentence", () => {
+    const text = "Mr. Smith arrived late, as usual. He sat down without a word to anyone at all.";
+    const parts = sentencesOf(text);
+    expect(parts[0].start).toBe(0);
+    expect(parts.at(-1)!.end).toBe(text.length);
   });
 });
 
-/* The browser's speech engine, with these voices; speak() records what would have been said. */
-const fakeSpeech = (voices: SpeechSynthesisVoice[]) => {
-  const spoken: { text: string; voice: SpeechSynthesisVoice | null }[] = [];
-  vi.stubGlobal("speechSynthesis", {
-    getVoices: () => voices,
-    cancel: () => {},
-    speak: (u: { text: string; voice: SpeechSynthesisVoice | null }) => spoken.push({ text: u.text, voice: u.voice }),
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  });
-  vi.stubGlobal(
-    "SpeechSynthesisUtterance",
-    class {
-      text: string;
-      voice: SpeechSynthesisVoice | null = null;
-      constructor(text: string) {
-        this.text = text;
-      }
-    },
-  );
-  return spoken;
-};
+/* Web Audio, enough for the narrator: a source ends as soon as it starts. */
+class FakeAudioContext {
+  currentTime = 0;
+  destination = {};
+  resume = async () => {};
+  createBufferSource() {
+    const source = { buffer: null, onended: null as null | (() => void), connect() {}, stop() {}, start: () => queueMicrotask(() => source.onended?.()) };
+    return source;
+  }
+}
 
 const sectionTTS = (): FoliateTTS => {
   const { doc, tts } = section();
@@ -189,63 +175,43 @@ const sectionTTS = (): FoliateTTS => {
 describe("Narrator", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  const local = { name: "Samantha", lang: "en-US", voiceURI: "samantha", localService: true, default: true } as SpeechSynthesisVoice;
-  const remote = { name: "Cloud", lang: "en-US", voiceURI: "cloud", localService: false, default: false } as SpeechSynthesisVoice;
-
-  it("speaks in the chosen on-device voice", async () => {
-    const spoken = fakeSpeech([local]);
+  it("speaks each sentence in the chosen voice and speed, then says the book ended", async () => {
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const said: [string, string, number][] = [];
+    const say = async (_: BaseAudioContext, text: string, voice: string, speed: number) => {
+      said.push([text, voice, speed]);
+      return { duration: 1 } as AudioBuffer;
+    };
     const stopped = vi.fn();
-    const narrator = new Narrator({ tts: async () => sectionTTS(), nextSection: async () => false, stopped });
-    narrator.voice = local;
+    const narrator = new Narrator({ tts: async () => sectionTTS(), nextSection: async () => false, stopped }, say);
+    narrator.voice = "emma";
+    narrator.rate = 1.25;
     await narrator.play(null);
-    expect(spoken.map((s) => [s.text.trim(), s.voice])).toEqual([["Chapter one", local]]);
-    expect(stopped).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(stopped).toHaveBeenCalledWith("end"));
+    expect(said).toEqual([
+      ["Chapter one", "emma", 1.25],
+      ["Zero to One is about building the future, not copying it.", "emma", 1.25],
+      ["A boldly nested word ends here.", "emma", 1.25],
+    ]);
   });
 
-  it("never speaks without an on-device voice, so the browser cannot pick a network one", async () => {
-    const spoken = fakeSpeech([remote]);
+  it("stops with an error when the voice cannot speak, the model missing for one", async () => {
+    vi.stubGlobal("AudioContext", FakeAudioContext);
     const stopped = vi.fn();
-    const narrator = new Narrator({ tts: async () => sectionTTS(), nextSection: async () => false, stopped });
+    const narrator = new Narrator({ tts: async () => sectionTTS(), nextSection: async () => false, stopped }, async () => {
+      throw new Error("The voice model is not installed.");
+    });
     await narrator.play(null);
-    narrator.voice = remote;
-    await narrator.play(null);
-    expect(spoken).toEqual([]);
-    expect(stopped).toHaveBeenCalledTimes(2);
-    expect(stopped).toHaveBeenCalledWith("error");
+    await vi.waitFor(() => expect(stopped).toHaveBeenCalledWith("error"));
   });
 
   it("stops with an error when the section's TTS cannot be made", async () => {
-    const spoken = fakeSpeech([local]);
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const say = vi.fn();
     const stopped = vi.fn();
-    const narrator = new Narrator({ tts: () => Promise.reject(new Error("import failed")), nextSection: async () => false, stopped });
-    narrator.voice = local;
+    const narrator = new Narrator({ tts: () => Promise.reject(new Error("import failed")), nextSection: async () => false, stopped }, say);
     await narrator.play(null);
-    expect(spoken).toEqual([]);
+    expect(say).not.toHaveBeenCalled();
     expect(stopped).toHaveBeenCalledWith("error");
-  });
-});
-
-describe("ReadAlong", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("refuses to play on a machine with only network voices, and says it stopped", async () => {
-    const spoken = fakeSpeech([{ name: "Cloud", lang: "en-US", voiceURI: "cloud", localService: false, default: true } as SpeechSynthesisVoice]);
-    const { doc } = section();
-    const initTTS = vi.fn();
-    const stopped = vi.fn();
-    const readAlong = new ReadAlong({
-      view: () => ({ book: { sections: [] }, lastLocation: null, renderer: { nextSection: async () => {}, scrollToAnchor: async () => {} }, tts: null, initTTS }),
-      section: () => ({ doc, index: 0 }),
-      host: () => null,
-      paged: () => false,
-      spotlight: () => false,
-      blockAtReadingLine: () => null,
-      stopped,
-    });
-    await readAlong.play(1, null);
-    expect(stopped).toHaveBeenCalledOnce();
-    expect(readAlong.reading).toBe(false);
-    expect(initTTS).not.toHaveBeenCalled();
-    expect(spoken).toEqual([]);
   });
 });

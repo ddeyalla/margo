@@ -12,11 +12,12 @@ import { openFailure } from "./errors";
 import { addFixations, removeFixations, skipFixations } from "./fixations";
 import { cssFamily } from "./fonts";
 import type { FoliateTTS } from "./narrator";
+import { glanceAt } from "./glance";
 import { READ_ALONG, ReadAlong } from "./readAlong";
 import { mergeLineBoxes, type Box } from "./rects";
 import { blockAtReadingLine, blockOf, installSpotlight, markBlock, removeSpotlight } from "./spotlight";
 import { epubToc, wholeChapterSections, type FoliateTocItem } from "./toc";
-import type { PageNumber, ReaderProps, TocEntry } from "./types";
+import type { PageNumber, ReaderProps, SelectionRect, TocEntry } from "./types";
 
 /* foliate-js ships no types. These cover the parts this adapter uses. */
 interface FoliateRenderer extends HTMLElement {
@@ -67,7 +68,7 @@ interface FoliateView extends HTMLElement {
 export interface ReadAloud {
   playing: boolean;
   rate: number;
-  /** The chosen voice's voiceURI, or null for the default on-device voice. */
+  /** The chosen reading voice (lib/shared/voices.ts), or null for the default. */
   voice: string | null;
 }
 
@@ -250,6 +251,7 @@ export function EpubReader({
   spotlight,
   readAloud,
   onReadAloudStop,
+  onGlance,
   onInteract,
   onReady,
   onSelectionChange,
@@ -269,6 +271,8 @@ export function EpubReader({
   readAloud: ReadAloud | null;
   /** Read-along stopped by itself: the book ended, the voice failed, or the reader moved to another chapter. */
   onReadAloudStop(): void;
+  /** The hover glance (a spike): Option held over a word asks for its meaning; null when it should close. */
+  onGlance?(glance: { term: string; sentence: string; rect: SelectionRect } | null): void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<FoliateView | null>(null);
@@ -420,6 +424,7 @@ export function EpubReader({
 
   /* Read-along for this page, made once its view can exist. */
   const emitReadAloudStop = useEffectEvent(onReadAloudStop);
+  const emitGlance = useEffectEvent((glance: Parameters<NonNullable<typeof onGlance>>[0]) => onGlance?.(glance));
   useEffect(() => {
     const readAlong = new ReadAlong({
       view: () => (openRef.current ? viewRef.current : null),
@@ -633,6 +638,27 @@ export function EpubReader({
       });
       doc.addEventListener("wheel", onWheel, { passive: true });
       doc.addEventListener("touchmove", () => emitInteract(), { passive: true });
+      /* The hover glance: Option held, the pointer resting on a word for a moment. Letting go closes it. */
+      let dwell: ReturnType<typeof setTimeout> | undefined;
+      let glanced: string | null = null;
+      doc.addEventListener("mousemove", (e) => {
+        clearTimeout(dwell);
+        if (!e.altKey) return;
+        const { clientX, clientY } = e;
+        dwell = setTimeout(() => {
+          const target = glanceAt(doc, clientX, clientY);
+          const rect = target && viewportRect(target.range, doc.defaultView?.frameElement);
+          if (!target || !rect || target.term === glanced) return;
+          glanced = target.term;
+          emitGlance({ term: target.term, sentence: target.sentence, rect });
+        }, 350);
+      });
+      doc.addEventListener("keyup", (e) => {
+        if (e.key !== "Alt") return;
+        clearTimeout(dwell);
+        glanced = null;
+        emitGlance(null);
+      });
       refreshSpot();
     };
 
