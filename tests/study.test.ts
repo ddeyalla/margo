@@ -338,3 +338,22 @@ describe("where a study stands", () => {
     expect(gradeNote(turn({ verdict: "right", unsure: true }))).toBe("Graded: unsure.");
   });
 });
+
+describe("the learner ledger", () => {
+  it("gets one check per graded answer, a weak one for an unsure grade, and the reader's own call as another", async () => {
+    const { ledgerIdle, readLedger } = await import("@/lib/server/ledger");
+    const { evidenceStrength } = await import("@/lib/shared/ledger");
+    const dir = await tmp();
+    const { id } = await startStudy(book, { selection }, "claude", writer(), dir);
+    const first = await answerStudy(book.id, id, "Something about distance?", grader("partly", 0.9), signal, dir);
+    await overruleStudy(book.id, id, first.study.turns[0].at, "right", dir);
+    await ledgerIdle();
+    const checks = (await readLedger(dir)).filter((event) => event.outcome !== null);
+    expect(checks.map((event) => [event.source, event.outcome, evidenceStrength(event)])).toEqual([
+      ["ask", 0.5, "weak"],
+      ["ask", 1, "weak"],
+    ]);
+    /* Both are about the passage, so they join the item its cards and highlights are on. */
+    expect(new Set(checks.map((event) => event.item)).size).toBe(1);
+  });
+});

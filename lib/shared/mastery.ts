@@ -2,6 +2,7 @@ import { boardRecall, type Board } from "./boards";
 import { recordSignal, signalOf, type Signal } from "./confidence";
 import { courseSteps, type Course } from "./courses";
 import { isPassed, type ChapterQuiz } from "./quiz";
+import { isQuizSet } from "./items";
 import { recallAt, replaySchedule, studyDay } from "./schedule";
 import type { BookId, CardSet } from "./types";
 
@@ -92,7 +93,8 @@ export const courseMastery = (course: Pick<Course, "books" | "units">, books: Re
       if (item) items.push(item);
     }
     for (const set of evidence.cardSets) {
-      if (set.chapterTitle === null || !labels.has(set.chapterTitle)) continue;
+      /* A set of quiz questions is counted above, by replaying the quiz's answers. */
+      if (set.chapterTitle === null || !labels.has(set.chapterTitle) || isQuizSet(set)) continue;
       const item = cardRecall(set, now);
       if (item) items.push(item);
     }

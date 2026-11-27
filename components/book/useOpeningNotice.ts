@@ -5,7 +5,7 @@ import type { ReaderHandle } from "@/components/reader/types";
 import { consumeRefreshMark } from "@/lib/client/open";
 import { recentMarks, shouldShowResume } from "@/lib/shared/resume";
 import { reviewQueue } from "@/lib/shared/schedule";
-import type { BookState, Highlight, Note } from "@/lib/shared/types";
+import type { BookState, DailyLoad, Highlight, Note } from "@/lib/shared/types";
 import type { OpeningNotice } from "./OpeningNotice";
 import type { PlaceStore } from "./place";
 
@@ -18,12 +18,14 @@ const SETTLE_MS = 700;
  */
 export function useOpeningNotice({
   initialState,
+  dailyLoad,
   readerRef,
   spot,
   highlights,
   notes,
 }: {
   initialState: BookState;
+  dailyLoad: DailyLoad;
   readerRef: RefObject<ReaderHandle | null>;
   spot: PlaceStore;
   highlights: Highlight[];
@@ -46,9 +48,9 @@ export function useOpeningNotice({
     /* A page rebuilt after another window changed the book is not an open. */
     if (consumeRefreshMark()) return;
     const resume = shouldShowResume(initialState.position !== null, initialState.lastReadAt, new Date());
-    const due = reviewQueue(initialState.cardSets, new Date()).length;
+    const due = reviewQueue(initialState.cardSets, new Date(), dailyLoad).length;
     if (resume || due > 0) greeting.current = { resume, due };
-  }, [initialState]);
+  }, [initialState, dailyLoad]);
 
   /* Once the place has held still, the greeting is made from it: where the reader left off is where the book now is. */
   useEffect(() => {

@@ -4,6 +4,8 @@ import { SURE } from "./confidence";
 import { isParked } from "./parked";
 import type { ChapterQuiz } from "./quiz";
 import { recallAt, replaySchedule } from "./schedule";
+import { isStudy, type LearnerTurn, type StudyThread } from "./study";
+import { isJustTellMe } from "./work";
 import type { Anchor, BookId, BookState, CardSet, Highlight, Rating, Thread } from "./types";
 
 /*
@@ -75,27 +77,41 @@ export const topicItem = (topic: string) => `topic:${topic.toLowerCase().replace
 const RATING_OUTCOME: Record<Rating, number> = { again: 0, hard: 0.6, good: 1, easy: 1 };
 
 const cardEvidence = (bookId: BookId, set: CardSet): Evidence[] =>
-  (set.history ?? []).map((record) => ({
-    id: `${bookId}:card:${set.id}:${record.at}`,
-    at: record.at,
-    bookId,
-    item: anchorItem(set.anchor),
-    anchor: set.anchor,
-    chapter: set.chapterTitle,
-    source: "card",
-    outcome: RATING_OUTCOME[record.rating],
-    unaided: true,
-    hintLevel: 0,
-    confidence: record.confidence,
-    topic: topicOf(set.fact),
-    exposedAt: set.createdAt,
-  }));
+  (set.history ?? []).flatMap((record) => {
+    const cue = set.cues.find((entry) => entry.id === record.cueId);
+    /* A question that came from a chapter quiz is the same item whichever way it is answered, so the test's evidence and the bank's meet. */
+    const fromQuiz = cue?.origin;
+    return {
+      id: `${bookId}:card:${set.id}:${record.at}`,
+      at: record.at,
+      bookId,
+      item: fromQuiz ? `quiz:${fromQuiz.chapter}:${fromQuiz.questionId}` : anchorItem(set.anchor),
+      anchor: set.anchor,
+      chapter: set.chapterTitle,
+      source: fromQuiz ? ("quiz" as const) : ("card" as const),
+      outcome: RATING_OUTCOME[record.rating],
+      /* Picking from options, or a grade the grader wouldn't stand behind, is not recall from nothing. */
+      unaided: !record.aided,
+      hintLevel: 0,
+      confidence: record.confidence,
+      topic: topicOf(fromQuiz && cue ? cue.question : set.fact),
+      exposedAt: set.createdAt,
+    };
+  });
+
+/** How a graded answer counts as an outcome: the reader's own call, else the verdict. The grader's score stands in for an unsure verdict. */
+const turnOutcome = (turn: LearnerTurn): number => {
+  if (turn.override) return turn.override === "right" ? 1 : 0;
+  if (turn.unsure) return turn.score;
+  return turn.verdict === "right" ? 1 : turn.verdict === "partly" ? 0.6 : 0;
+};
 
 const quizEvidence = (bookId: BookId, quiz: ChapterQuiz): Evidence[] =>
   quiz.attempts.flatMap((attempt) =>
     attempt.answers.flatMap((answer) => {
       const question = quiz.questions.find((entry) => entry.id === answer.questionId);
       if (!question) return [];
+      const turn = answer.turn;
       return {
         id: `${bookId}:quiz:${quiz.chapter}:${question.id}:${attempt.at}`,
         at: attempt.at,
@@ -104,8 +120,9 @@ const quizEvidence = (bookId: BookId, quiz: ChapterQuiz): Evidence[] =>
         anchor: question.anchor,
         chapter: quiz.chapter,
         source: "quiz" as const,
-        outcome: answer.correct ? 1 : 0,
-        unaided: true,
+        outcome: turn ? turnOutcome(turn) : answer.correct ? 1 : 0,
+        /* An answer the grader wasn't sure of is a weak check, whichever way the reader then called it. */
+        unaided: !turn?.unsure,
         hintLevel: 0,
         confidence: answer.confidence,
         topic: topicOf(question.question),
@@ -163,8 +180,38 @@ export const threadEvidence = (bookId: BookId, thread: Thread): Evidence[] => {
       ...exposure,
       topic: topicOf(question || thread.quote),
     },
+    ...(isStudy(thread) ? studyEvidence(bookId, thread) : []),
   ];
 };
+
+/**
+ * The reader's graded answers in Go deeper, one check each. An answer counts as unaided only when it is their
+ * first try, they asked for no hint, hadn't asked to be told, and the grader stood behind it. Their own call on a grade adds a second, weak
+ * check just after it: they had read the grader's note by then. The thread's start is when they first met the
+ * passage there, so an answer in the same sitting is medium evidence and one a day later is strong.
+ */
+export const studyEvidence = (bookId: BookId, thread: StudyThread): Evidence[] =>
+  thread.study.turns.flatMap((turn, index) => {
+    const told = thread.messages.some((message) => message.createdAt < turn.at && message.role === "user" && isJustTellMe(message.content));
+    const base: Evidence = {
+      id: `${bookId}:study:${thread.id}:${turn.at}`,
+      at: turn.at,
+      bookId,
+      item: anchorItem(thread.anchor),
+      anchor: thread.anchor,
+      chapter: thread.chapterTitle,
+      source: thread.study.mode === "explainBack" ? "explain-back" : "ask",
+      outcome: turn.override ? turnOutcome({ ...turn, override: null }) : turnOutcome(turn),
+      /* Every try after the first came after the grader's note and the passage were on screen. */
+      unaided: index === 0 && !turn.unsure && !told && turn.hintsUsed === 0,
+      hintLevel: Math.min(3, turn.hintsUsed),
+      confidence: null,
+      topic: topicOf(thread.study.question),
+      exposedAt: thread.createdAt,
+    };
+    if (!turn.override) return [base];
+    return [base, { ...base, id: `${base.id}:${turn.override}`, at: new Date(Date.parse(turn.at) + 1).toISOString(), outcome: turnOutcome(turn), unaided: false }];
+  });
 
 /** Everything a book's saved state says about what the reader met and how they did, oldest first. */
 export const evidenceOf = (bookId: BookId, state: Pick<BookState, "highlights" | "threads" | "cardSets" | "quizzes" | "boards">): Evidence[] =>

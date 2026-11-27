@@ -258,7 +258,22 @@ export interface Schedule {
   lastReview: string | null;
 }
 
-/** One question that makes the reader recall the set's fact. */
+/**
+ * How an item is answered. "flip": think of it, see the answer, rate yourself. "choice": pick from options.
+ * "free": write an answer that the tutor's checker grades against the passage.
+ */
+export type AnswerType = "flip" | "choice" | "free";
+
+export const ANSWER_TYPES: readonly AnswerType[] = ["flip", "choice", "free"];
+
+/** The most options a choice item shows, and the fewest. */
+export const MIN_CHOICES = 2;
+export const MAX_CHOICES = 6;
+
+/**
+ * One item in the bank: a prompt the reader recalls the set's fact from. The set holds its passage anchor and
+ * schedule, so every item of a passage is scheduled together and tied to the same place in the book.
+ */
 export interface Cue {
   id: string;
   question: string;
@@ -267,6 +282,14 @@ export interface Cue {
   lastRating: Rating | null;
   /** When the card was checked against its passage and passed. Absent on cards saved before checking or edited since. */
   verifiedAt?: string;
+  /** How it is answered. Absent means "flip", every card saved before there were types. */
+  type?: AnswerType;
+  /** For a choice item: every option the reader picks from, the right one (`answer`) among them. */
+  choices?: string[];
+  /** For a free item: the points a right answer must make, kept from the first time an answer was graded. */
+  rubric?: string[];
+  /** Set on an item that came from a chapter quiz's question, so it is moved into the bank once. */
+  origin?: { chapter: string; questionId: string };
 }
 
 /**
@@ -283,6 +306,8 @@ export interface ReviewRecord extends Stance {
   at: string;
   cueId: string;
   rating: Rating;
+  /** The reader picked from options, or the grader wasn't sure of the answer: not recall from nothing. */
+  aided?: boolean;
 }
 
 /** The cards made from one passage: one fact, a few ways to recall it, one schedule. */
@@ -316,6 +341,8 @@ export interface BookState {
   quizzes: ChapterQuiz[];
   /** Test and retest notices the reader passed over, so they are not shown again. */
   quizSkips: QuizSkip[];
+  /** The chapter-quiz questions already moved into the bank as items, as `chapter\nquestionId`. An item the reader deletes isn't made again. */
+  banked: string[];
   /** The book's whiteboards: each one's title, where its file is, and a chapter board's draw-it-back attempts. */
   boards: Board[];
   /** When the reader last moved through the book, an ISO time, or null if never or saved before this was kept. */
@@ -332,6 +359,7 @@ export const emptyBookState = (): BookState => ({
   cardSets: [],
   quizzes: [],
   quizSkips: [],
+  banked: [],
   boards: [],
   lastReadAt: null,
 });
@@ -394,10 +422,29 @@ export interface AppSettings {
   /** Absolute folder of books and of the markdown notes copy, chosen in the app. BOOKS_DIR and NOTES_DIR win over them. */
   booksDir: string | null;
   notesDir: string | null;
+  /** How much of the bank is shown each study day, in each book. What goes over waits, quietly. */
+  dailyLoad: DailyLoad;
 }
 
+/** The most new items a book introduces in a study day, and the most due reviews it brings back. */
+export interface DailyLoad {
+  newPerDay: number;
+  reviewsPerDay: number;
+}
+
+export const DEFAULT_DAILY_LOAD: DailyLoad = { newPerDay: 20, reviewsPerDay: 60 };
+export const MAX_DAILY_LOAD = 500;
+
+export const isLoadLimit = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_DAILY_LOAD;
+
+/** A load read from a file or a request: each limit as given when it is a whole number from 0 to 500, else the default. */
+export const cleanLoad = (value: unknown, fallback: DailyLoad = DEFAULT_DAILY_LOAD): DailyLoad => {
+  const { newPerDay, reviewsPerDay } = (typeof value === "object" && value ? value : {}) as Record<string, unknown>;
+  return { newPerDay: isLoadLimit(newPerDay) ? newPerDay : fallback.newPerDay, reviewsPerDay: isLoadLimit(reviewsPerDay) ? reviewsPerDay : fallback.reviewsPerDay };
+};
+
 /** The settings the app itself changes. */
-export type SettingsChange = Partial<Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "readAloudVoice" | "readAloudRate" | "libraryView" | "booksDir" | "notesDir">>;
+export type SettingsChange = Partial<Pick<AppSettings, "provider" | "models" | "pdfPage" | "readingMode" | "epubPage" | "boldStarts" | "readingFont" | "chaptersOpen" | "panelTab" | "readAloudVoice" | "readAloudRate" | "libraryView" | "booksDir" | "notesDir" | "dailyLoad">>;
 
 export type ProviderStatus = "ready" | "needs-auth" | "missing" | "unavailable";
 

@@ -9,6 +9,7 @@ import { readActivity } from "./activity";
 import { readCourses } from "./courses/store";
 import { readLibrary } from "./library";
 import { bookText } from "./search/index";
+import { readSettings } from "./settings";
 import { bookStateUpdatedAt, readBookState } from "./store";
 
 export interface TodayBook {
@@ -41,7 +42,12 @@ const titleOf = (state: BookState | null, fileTitle: string) => state?.meta?.tit
 
 /** What Today shows on home, read from every book's state, the Courses and the activity log. */
 export const readToday = async (now = new Date()): Promise<Today> => {
-  const [{ books }, { courses }, activity] = await Promise.all([readLibrary(), readCourses().catch(() => ({ courses: [] as Course[] })), readActivity().catch(emptyActivity)]);
+  const [{ books }, { courses }, activity, { dailyLoad }] = await Promise.all([
+    readLibrary(),
+    readCourses().catch(() => ({ courses: [] as Course[] })),
+    readActivity().catch(emptyActivity),
+    readSettings(),
+  ]);
   const entries = await Promise.all(
     books.map(async (book) => {
       const [state, updatedAt] = await Promise.all([readBookState(book.id).catch(() => null), bookStateUpdatedAt(book.id)]);
@@ -53,7 +59,7 @@ export const readToday = async (now = new Date()): Promise<Today> => {
   let due = 0;
   let dueBook: (TodayBook & { due: number }) | null = null;
   for (const { entry, state } of states) {
-    const count = reviewQueue(state.cardSets, now).length;
+    const count = reviewQueue(state.cardSets, now, dailyLoad).length;
     due += count;
     if (count && (!dueBook || count > dueBook.due)) dueBook = { id: entry.id, title: entry.title, due: count };
   }

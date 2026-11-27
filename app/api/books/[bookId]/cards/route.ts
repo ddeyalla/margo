@@ -1,10 +1,11 @@
 import { cardRequest, generateCards, verifyCards } from "@/lib/server/cards/generate";
 import { storeCards } from "@/lib/server/cards/store";
+import { CardGradeError, gradeCardAnswer } from "@/lib/server/cards/grade";
 import { checkerFor } from "@/lib/server/check/provider";
 import { getConfig } from "@/lib/server/config";
 import { readSettings } from "@/lib/server/settings";
 import { noteEvidence } from "@/lib/server/ledger";
-import { readBookState, updateBookState } from "@/lib/server/store";
+import { BookClosedError, readBookState, updateBookState } from "@/lib/server/store";
 import { PROVIDERS, isProviderId, modelFor } from "@/lib/server/tutor/providers";
 import { isObject, MAX_QUOTE, parseAnchor, shortText } from "@/lib/server/validate";
 import { mirrorVault } from "@/lib/server/vault";
@@ -26,14 +27,25 @@ const dirs = () => {
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
 
 /**
- * Makes cards for a selected passage through the chosen tutor, checks each
+ * `{ op: "grade", provider, setId, cueId, answer }` grades a written answer to a free card and answers `{ grade }`;
+ * nothing is rated by it. Otherwise: makes cards for a selected passage through the chosen tutor, checks each
  * against the passage, and stores those that pass.
  * Answers with every card set, how many cues were added and, when none were,
  * why. Takes as long as the tutor does; nothing is stored if it fails.
  */
 export const POST = withBook(async ({ book, request }) => {
   const body = await readBody(request);
-  if (!isObject(body) || !isProviderId(body.provider)) return badRequest("Expected { provider, selection }.");
+  if (!isObject(body) || !isProviderId(body.provider)) return badRequest("Expected { provider, selection }, or { op: \"grade\", provider, setId, cueId, answer }.");
+  if (body.op === "grade") {
+    try {
+      return Response.json({ grade: await gradeCardAnswer(book.id, body.setId, body.cueId, body.answer, checkerFor(body.provider), request.signal) });
+    } catch (error) {
+      if (error instanceof CardGradeError) return badRequest(error.message);
+      if (error instanceof BookClosedError) throw error;
+      if (request.signal.aborted) return new Response(null, { status: 499 });
+      return Response.json({ error: error instanceof Error ? error.message : "The answer couldn't be graded." }, { status: 502 });
+    }
+  }
   const providerId = body.provider;
   const selection = isObject(body.selection) ? body.selection : null;
   const anchor = selection && parseAnchor(selection.anchor, book.format);
@@ -98,9 +110,10 @@ const parseChange = (body: unknown, method: "PATCH" | "DELETE"): CardChange | st
     const thinking = body.thinking ?? null;
     if (confidence !== null && !isConfidence(confidence)) return "confidence is a whole number from 0 to 100, or null.";
     if (thinking !== null && typeof thinking !== "string") return "thinking is a line of text, or null.";
-    return { op: "review", setId, cueId: body.cueId, rating: body.rating, reps: body.reps as number, ...cleanStance(confidence, thinking) };
+    if (body.aided !== undefined && typeof body.aided !== "boolean") return "aided is true or false.";
+    return { op: "review", setId, cueId: body.cueId, rating: body.rating, reps: body.reps as number, ...(body.aided ? { aided: true } : {}), ...cleanStance(confidence, thinking) };
   }
-  return 'PATCH takes { op: "edit-cue", setId, cueId, question, answer } or { op: "review", setId, cueId, rating, reps, confidence?, thinking? }.';
+  return 'PATCH takes { op: "edit-cue", setId, cueId, question, answer } or { op: "review", setId, cueId, rating, reps, aided?, confidence?, thinking? }.';
 };
 
 /** Edits a card or records a review (PATCH), or deletes a card or a set (DELETE). Answers with every card set. */

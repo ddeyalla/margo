@@ -1,3 +1,4 @@
+import { isQuizSet } from "./items";
 import { studyDay } from "./schedule";
 import type { ChapterQuiz } from "./quiz";
 import type { ActivityFile } from "./mastery";
@@ -32,7 +33,7 @@ export const dayWork = (activity: ActivityFile, books: readonly { cardSets: Card
     for (const set of book.cardSets) for (const record of set.history ?? []) at(studyDay(new Date(record.at))).ratings++;
     for (const quiz of book.quizzes) for (const attempt of quiz.attempts) at(studyDay(new Date(attempt.at))).quizzes++;
   }
-  const made = books.flatMap((book) => book.cardSets.filter((set) => set.cues.length).map((set) => studyDay(new Date(set.createdAt))));
+  const made = books.flatMap((book) => book.cardSets.filter((set) => set.cues.length && !isQuizSet(set)).map((set) => studyDay(new Date(set.createdAt))));
   for (const [day, work] of days) work.cards = made.filter((madeOn) => madeOn <= day).length;
   return days;
 };

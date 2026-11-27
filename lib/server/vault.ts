@@ -92,10 +92,13 @@ export const renderVault = (book: VaultBook, { highlights, notes, cardSets = [] 
     ...highlights.map((h) => ({ ...h, blockId: blockId("h", h.id), notes: attached.get(h.id) ?? [], cues: [] as Cue[] })),
     ...standalone.map((n) => ({ ...n, blockId: blockId("n", n.id), notes: [n], cues: [] as Cue[] })),
   ];
-  for (const set of cardSets) {
-    const home = entries.find((entry) => sameAnchor(entry.anchor, set.anchor));
-    if (home) home.cues.push(...set.cues);
-    else entries.push({ ...set, blockId: blockId("c", set.id), notes: [], cues: set.cues });
+  /* Questions that came from chapter quizzes are the app's, not cards the reader made: they stay out of the notes. */
+  for (const entry of cardSets) {
+    const cues = entry.cues.filter((cue) => !cue.origin);
+    if (!cues.length) continue;
+    const home = entries.find((candidate) => sameAnchor(candidate.anchor, entry.anchor));
+    if (home) home.cues.push(...cues);
+    else entries.push({ ...entry, blockId: blockId("c", entry.id), notes: [], cues });
   }
   const groups = byChapter(entries);
 

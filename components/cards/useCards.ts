@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { changeCards, type CardChange } from "@/lib/shared/cards";
-import type { BookId, CardSet, ProviderId, SelectionContext } from "@/lib/shared/types";
+import { patchSettings } from "@/lib/client/api";
+import type { BookId, CardSet, DailyLoad, ProviderId, SelectionContext } from "@/lib/shared/types";
 
 /** A passage the tutor is writing cards for. */
 export interface CardJob {
@@ -37,12 +38,13 @@ const fetchSets = async (bookId: BookId): Promise<CardSet[] | null> => {
 };
 
 /**
- * The book's card sets. Making cards waits on the tutor, so each passage shows
+ * The book's card sets, and the daily limit on how many are shown. Making cards waits on the tutor, so each passage shows
  * as a job until its answer comes back. Edits and reviews show at once, then
  * the server's answer replaces them; changes go out one at a time, in order.
  */
-export function useCards(bookId: BookId, initial: CardSet[]) {
+export function useCards(bookId: BookId, initial: CardSet[], initialLoad: DailyLoad) {
   const [sets, setSets] = useState(initial);
+  const [load, setLoadState] = useState(initialLoad);
   const [jobs, setJobs] = useState<CardJob[]>([]);
   const [notice, setNotice] = useState<{ kind: "added" | "none" | "error"; text: string } | null>(null);
   const queue = useRef<Promise<void>>(Promise.resolve());
@@ -118,7 +120,13 @@ export function useCards(bookId: BookId, initial: CardSet[]) {
 
   const dismissNotice = useCallback(() => setNotice(null), []);
 
-  return useMemo(() => ({ sets, jobs, notice, dismissNotice, make, change }), [sets, jobs, notice, dismissNotice, make, change]);
+  /* Shown at once and saved for every book: the limit is the reader's, not this book's. */
+  const setLoad = useCallback((next: DailyLoad) => {
+    setLoadState(next);
+    void patchSettings({ dailyLoad: next });
+  }, []);
+
+  return useMemo(() => ({ sets, jobs, notice, load, setLoad, dismissNotice, make, change }), [sets, jobs, notice, load, setLoad, dismissNotice, make, change]);
 }
 
 export type CardsApi = ReturnType<typeof useCards>;

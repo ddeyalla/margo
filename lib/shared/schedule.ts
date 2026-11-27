@@ -1,6 +1,6 @@
 import { fsrs, generatorParameters, Rating as FsrsRating, State, type Card, type Grade } from "ts-fsrs";
 import { lastRecord, recordSignal } from "./confidence";
-import type { CardSet, Cue, Rating, Schedule, ScheduleState, Stance } from "./types";
+import { DEFAULT_DAILY_LOAD, type CardSet, type Cue, type DailyLoad, type Rating, type Schedule, type ScheduleState, type Stance } from "./types";
 
 const scheduler = fsrs(
   generatorParameters({
@@ -136,6 +136,8 @@ export const pickCue = (set: CardSet, random: number): Cue => {
 };
 
 export interface Review extends Partial<Stance> {
+  /** Picked from options, or graded unsure: see `ReviewRecord.aided`. */
+  aided?: boolean;
   cueId: string;
   rating: Rating;
   /** The set's `schedule.reps` when the cue was shown. A stale or repeated rating carries an old count and is ignored. */
@@ -157,31 +159,56 @@ export const applyReview = (set: CardSet, review: Review, now: Date): CardSet =>
     introducedOn: set.introducedOn ?? studyDay(now),
     history: [
       ...(set.history ?? []),
-      { at: now.toISOString(), cueId: review.cueId, rating: review.rating, confidence: review.confidence ?? null, thinking: review.thinking ?? null },
+      {
+        at: now.toISOString(),
+        cueId: review.cueId,
+        rating: review.rating,
+        confidence: review.confidence ?? null,
+        thinking: review.thinking ?? null,
+        ...(review.aided ? { aided: true } : {}),
+      },
     ].slice(-HISTORY_LIMIT),
   };
 };
 
-/** New sets a book introduces per study day unless the reader changes it. */
-export const NEW_PER_DAY = 10;
+/** How much of the bank to show in a study day when the reader hasn't chosen. */
+export const DEFAULT_LOAD: DailyLoad = DEFAULT_DAILY_LOAD;
+
+/** Sets introduced before `day` that were rated on it: the day's due reviews done so far, one per set however many times it came up. Sets introduced that day count against the new limit instead. */
+const reviewedOn = (sets: readonly CardSet[], day: string): number =>
+  sets.filter((set) => set.introducedOn !== day && (set.history ?? []).some((record) => studyDay(new Date(record.at)) === day)).length;
 
 /**
- * The sets to review now, in order: learning steps that are ready, then due
- * reviews, then new sets up to what is left of today's new limit. Sets with no
- * cues are skipped.
+ * The sets to review now, in order: learning steps that are ready, then due reviews, then new sets. A learning
+ * step is already under way and minutes away, so it always comes. Due reviews stop at what is left of the day's
+ * review limit, most overdue first, and new sets at what is left of its new limit. What goes over is still due
+ * tomorrow and is not counted or shown anywhere: a backlog never grows into a number. Sets with no cues are skipped.
  */
-export const reviewQueue = (sets: CardSet[], now: Date, newPerDay = NEW_PER_DAY): CardSet[] => {
+export const reviewQueue = (sets: CardSet[], now: Date, load: DailyLoad = DEFAULT_LOAD): CardSet[] => {
   const live = sets.filter((set) => set.cues.length > 0);
   const byDue = (a: CardSet, b: CardSet) => a.schedule.due.localeCompare(b.schedule.due);
   const learning = live.filter((set) => inLearning(set.schedule) && isDue(set.schedule, now)).sort(byDue);
-  const due = live.filter((set) => set.schedule.state === "review" && isDue(set.schedule, now)).sort(byDue);
   const today = studyDay(now);
+  const due = live
+    .filter((set) => set.schedule.state === "review" && isDue(set.schedule, now))
+    .sort(byDue)
+    .slice(0, Math.max(0, load.reviewsPerDay - reviewedOn(sets, today)));
   const introduced = sets.filter((set) => set.introducedOn === today).length;
   const fresh = live
     .filter((set) => set.schedule.state === "new")
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .slice(0, Math.max(0, newPerDay - introduced));
+    .slice(0, Math.max(0, load.newPerDay - introduced));
   return [...learning, ...due, ...fresh];
+};
+
+/** Whether more is due than the day's limit shows. For an agent's tool to say "more is waiting", never how many. */
+export const hasDeferred = (sets: CardSet[], now: Date, load: DailyLoad = DEFAULT_LOAD): boolean => {
+  const live = sets.filter((set) => set.cues.length > 0);
+  const today = studyDay(now);
+  const due = live.filter((set) => set.schedule.state === "review" && isDue(set.schedule, now)).length;
+  const fresh = live.filter((set) => set.schedule.state === "new").length;
+  const introduced = sets.filter((set) => set.introducedOn === today).length;
+  return due > Math.max(0, load.reviewsPerDay - reviewedOn(sets, today)) || fresh > Math.max(0, load.newPerDay - introduced);
 };
 
 /** When the next learning step comes up today, if any, so the review screen can say when to come back. */

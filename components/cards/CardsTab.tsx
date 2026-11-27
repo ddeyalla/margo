@@ -2,21 +2,23 @@
 
 import { useState } from "react";
 import { BookOpenText, Pencil, Play, RefreshCw, Trash2, X } from "lucide-react";
-import { Button, EmptyState, IconButton, Spinner, TextArea } from "@/components/ui";
+import { Button, EmptyState, Field, IconButton, Spinner, TextArea } from "@/components/ui";
 import { ChapterSections } from "@/components/annotations/ChapterSections";
 import { UNTITLED_SECTION } from "@/lib/shared/annotations";
 import { placeLabel } from "@/lib/shared/place";
+import { typeOf } from "@/lib/shared/items";
 import { intervalLabel, isDue, reviewQueue } from "@/lib/shared/schedule";
 import { useUnsentText } from "@/lib/client/unsent";
-import type { Anchor, CardSet, Cue } from "@/lib/shared/types";
+import { MAX_DAILY_LOAD, type Anchor, type CardSet, type Cue, type DailyLoad } from "@/lib/shared/types";
 import { SIGNAL_LABELS, isMisleading, lastRecord, misconceptions, recordSignal } from "@/lib/shared/confidence";
 import { SIGNAL_TONE } from "./Stance";
 import type { CardsApi } from "./useCards";
 
 /** Where a set stands, in a word or two. */
-const status = (set: CardSet, now: Date): string => {
+const status = (set: CardSet, now: Date, shown: ReadonlySet<string>): string => {
   if (set.schedule.state === "new") return "New";
-  if (isDue(set.schedule, now)) return "Due";
+  /* Due only when today's limit lets it through; what waits past it reads as coming up, with no count. */
+  if (isDue(set.schedule, now)) return shown.has(set.id) ? "Due" : "Waiting";
   return `In ${intervalLabel(now, new Date(set.schedule.due))}`;
 };
 
@@ -64,6 +66,36 @@ function LastAnswer({ set, cue }: { set: CardSet; cue: Cue }) {
   );
 }
 
+const LIMITS: { key: keyof DailyLoad; label: string }[] = [
+  { key: "newPerDay", label: "New a day" },
+  { key: "reviewsPerDay", label: "Reviews a day" },
+];
+
+/** How much of the bank each day shows. What goes over waits for another day; it is never counted up. */
+function DailyLimit({ load, onChange }: { load: DailyLoad; onChange(load: DailyLoad): void }) {
+  return (
+    <div className="flex items-center gap-3 px-3 pb-2 text-caption text-dim">
+      {LIMITS.map(({ key, label }) => (
+        <label key={key} className="flex items-center gap-1.5">
+          <span>{label}</span>
+          <Field
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={MAX_DAILY_LOAD}
+            value={load[key]}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              if (event.target.value !== "" && Number.isInteger(value) && value >= 0 && value <= MAX_DAILY_LOAD) onChange({ ...load, [key]: value });
+            }}
+            className="w-14 tabular-nums"
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
 /** Card sets by chapter in reading order, with the review button and any cards still being written. */
 export function CardsTab({
   cards,
@@ -79,7 +111,9 @@ export function CardsTab({
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const now = new Date();
-  const ready = reviewQueue(cards.sets, now).length;
+  const queue = reviewQueue(cards.sets, now, cards.load);
+  const ready = queue.length;
+  const shown = new Set(queue.map((set) => set.id));
   const total = cards.sets.reduce((sum, set) => sum + set.cues.length, 0);
 
   const progress = (
@@ -128,6 +162,7 @@ export function CardsTab({
           {total} {total === 1 ? "card" : "cards"} on {cards.sets.length} {cards.sets.length === 1 ? "passage" : "passages"}
         </span>
       </div>
+      <DailyLimit load={cards.load} onChange={cards.setLoad} />
       {progress}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         <ChapterSections items={cards.sets} listClassName="flex flex-col gap-1">
@@ -144,7 +179,7 @@ export function CardsTab({
                   <span className="mt-1 flex items-center gap-1.5 text-caption text-dim">
                     <span className="min-w-0 truncate">{placeLabel(set.chapterTitle, set.anchor) ?? UNTITLED_SECTION}</span>
                     <span aria-hidden className="size-0.5 shrink-0 rounded-full bg-dim/60" />
-                    <span className="shrink-0 tabular-nums">{status(set, now)}</span>
+                    <span className="shrink-0 tabular-nums">{status(set, now, shown)}</span>
                   </span>
                 </button>
                 <IconButton
@@ -171,7 +206,10 @@ export function CardsTab({
                     </li>
                   ) : (
                     <li key={cue.id} className="group/cue relative pr-14">
-                      <p className="text-body leading-snug text-paper">{cue.question}</p>
+                      <p className="text-body leading-snug text-paper">
+                        {typeOf(cue) !== "flip" ? <span className="mr-1.5 text-caption font-medium text-dim">{typeOf(cue) === "choice" ? "Choice" : "Written"}</span> : null}
+                        {cue.question}
+                      </p>
                       <p className="mt-0.5 text-label leading-snug text-dim">{cue.answer}</p>
                       <LastAnswer set={set} cue={cue} />
                       {isMisleading(set, cue.id) ? (

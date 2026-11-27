@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { lastRecord, misconceptions } from "@/lib/shared/confidence";
-import type { NewCards } from "@/lib/shared/cards";
+import type { NewCard } from "@/lib/shared/cards";
 import type { CardSet } from "@/lib/shared/types";
 import type { Checker } from "../check/provider";
 import { checked, CHECKS_AT_ONCE, isVerified } from "../check/verify";
@@ -77,10 +77,10 @@ export const cardPassage = (source: CardSource): string => [source.before, sourc
 export const verifyCards = async (
   { provider, model }: Checker,
   source: CardSource,
-  cards: readonly { question: string; answer: string }[],
+  cards: readonly Omit<NewCard, "verifiedAt">[],
   signal: AbortSignal,
   now = new Date(),
-): Promise<{ kept: NewCards["cards"]; dropped: { question: string; reason: string }[] }> => {
+): Promise<{ kept: NewCard[]; dropped: { question: string; reason: string }[] }> => {
   const passage = cardPassage(source);
   const results = await pooled(cards, CHECKS_AT_ONCE, (card) => checked(provider, { question: card.question, expected: card.answer, passage }, model, signal));
   const verifiedAt = now.toISOString();
