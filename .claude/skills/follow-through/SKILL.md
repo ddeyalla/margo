@@ -18,7 +18,7 @@ You turn what the session left open into things the reader can accept. You propo
 ## Steps
 
 1. `get_today` for the book last read, then `list_library` if you need ids.
-2. What was missed: `query_ledger` with `state: "shaky"` for that book, and its `events` list for the latest misses (outcome below 0.6). Also `list_suggestions` (pending) so you do not propose what already waits.
+2. What was missed: `query_ledger` with `state: "shaky"` for that book, and its `recentEvents` for the latest misses (outcome below 0.6). Also `list_suggestions` (pending) so you do not propose what already waits.
 3. What was left open: `list_threads` for the book. Parked threads (`parked: true`) and threads whose last message is the reader's are open. Read each with `get_thread`.
 4. For each missed item (up to 5): `search_library` or `get_book_text` to find the passage that states the fact. Write a question that can be answered without the book open, `verify_item` it, then `propose_card` with the verbatim quote, the anchor and one to three questions.
 5. For each open question (up to 5): find its answer in the book. Give it in the recap with the passage's chapter. If a card would help the reader keep it, `propose_card` it. Do not re-park, edit or delete the reader's thread.

@@ -253,8 +253,9 @@ describe("suggestions", () => {
   it("carry a prepared session plan that only advises, one a day", async () => {
     const anchor = await craterAnchor();
     const stateBefore = JSON.stringify(await readBookState(bookId));
+    const forDay = (await call<{ forDay: string }>("propose_session_plan", { retest: [{ bookId, topic: "t", why: "w" }] })).forDay;
     const plan = {
-      forDay: "2999-01-02",
+      forDay,
       note: "Two items were missed.",
       retest: [{ bookId, topic: "Why craters last", chapter: "Craters", anchor, why: "Missed twice." }],
       exercises: [{ bookId, topic: "Craters", anchor, prompt: "Explain why old surfaces show the most craters.", why: "You are here." }],
@@ -265,7 +266,7 @@ describe("suggestions", () => {
     expect(JSON.stringify(await readBookState(bookId))).toBe(stateBefore);
     const again = await call<{ suggestionId: string }>("propose_session_plan", { ...plan, note: "Updated." }, "prep-agent");
     const pending = (await listSuggestions("pending")).filter((entry) => entry.kind === "plan");
-    expect(pending).toMatchObject([{ id: again.suggestionId, payload: { note: "Updated.", forDay: "2999-01-02" }, target: { bookId: null } }]);
+    expect(pending).toMatchObject([{ id: again.suggestionId, payload: { note: "Updated.", forDay }, target: { bookId: null } }]);
     expect(await pendingSuggestions()).toMatchObject([{ id: again.suggestionId, bookTitle: null }]);
 
     expect(await decideSuggestion(again.suggestionId, "accept")).toMatchObject({ status: "accepted" });
@@ -278,6 +279,8 @@ describe("suggestions", () => {
     expect(await refusal("propose_session_plan", {})).toMatch(/at least one/);
     expect(await refusal("propose_session_plan", { forDay: "2001-01-01", retest: [item] })).toMatch(/has passed/);
     expect(await refusal("propose_session_plan", { forDay: "soon", retest: [item] })).toMatch(/date like/);
+    expect(await refusal("propose_session_plan", { forDay: "2026-02-31", retest: [item] })).toMatch(/date like/);
+    expect(await refusal("propose_session_plan", { forDay: "2999-01-01", retest: [item] })).toMatch(/days away/);
     expect(await refusal("propose_session_plan", { retest: [{ ...item, bookId: "nope" }] })).toMatch(/No book/);
     expect(await refusal("propose_session_plan", { retest: [{ ...item, anchor: { kind: "pdf", page: 1, start: 0, end: 1 } }] })).toMatch(/not a place/);
     expect(await refusal("propose_session_plan", { exercises: [{ ...item, prompt: "Q?" }] })).toMatch(/anchor/);

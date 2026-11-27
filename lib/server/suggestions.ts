@@ -168,7 +168,8 @@ export const decideSuggestion = async (
 export type PendingSuggestion = Suggestion & { bookTitle: string | null };
 
 export const pendingSuggestions = async (dataDir = getConfig().dataDir): Promise<PendingSuggestion[]> => {
-  const pending = await listSuggestions("pending", dataDir);
+  /* A prepared plan comes before cards, so the reader sees it first however many cards were added after it. */
+  const pending = (await listSuggestions("pending", dataDir)).sort((a, b) => Number(b.kind === "plan") - Number(a.kind === "plan"));
   if (!pending.length) return [];
   /* One look at the library for all of them, so suggestions for books that left don't each scan it again. */
   const books = new Map((await recentLibrary(undefined, dataDir)).books.map((book) => [book.id, book]));

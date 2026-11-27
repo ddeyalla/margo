@@ -46,7 +46,14 @@ const listSuggestionsTool = defineTool({
 });
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const tomorrow = (now: Date) => studyDay(new Date(now.getTime() + 86_400_000));
+const MAX_DAYS_AHEAD = 7;
+/** The study day `days` after now's, counted on the calendar so a clock change never shifts it. */
+const dayAfter = (now: Date, days: number) => {
+  const later = new Date(now);
+  later.setDate(later.getDate() + days);
+  return studyDay(later);
+};
+const isRealDay = (day: string) => DAY.test(day) && new Date(`${day}T00:00:00Z`).toISOString().startsWith(day);
 
 /** Looks each book up once for a plan, so a plan naming twenty items in one book reads its state once. */
 const planBooks = () => {
@@ -95,8 +102,9 @@ const proposeSessionPlanTool = defineTool({
     },
   },
   run: async ({ forDay, note, retest = [], exercises = [], questions = [] }, { caller, now }) => {
-    if (forDay !== undefined && (!DAY.test(forDay) || Number.isNaN(Date.parse(forDay)))) throw new ToolError('"forDay" must be a date like 2026-12-01.');
+    if (forDay !== undefined && !isRealDay(forDay)) throw new ToolError('"forDay" must be a date like 2026-12-01.');
     if (forDay !== undefined && forDay < studyDay(now)) throw new ToolError(`"forDay" is a day that has passed. Today's study day is ${studyDay(now)}.`);
+    if (forDay !== undefined && forDay > dayAfter(now, MAX_DAYS_AHEAD)) throw new ToolError(`"forDay" is more than ${MAX_DAYS_AHEAD} days away. Prepare the next session, not a distant one.`);
     if (!retest.length && !exercises.length && !questions.length) throw new ToolError("A plan needs at least one item to retest, an exercise or an open question.");
     const books = planBooks();
     const item = async (raw: unknown): Promise<PlanItem> => {
@@ -107,7 +115,7 @@ const proposeSessionPlanTool = defineTool({
       return { bookId: book.id, bookTitle: title, topic: text(raw.topic, "topic", 240), chapter: shortText(raw.chapter, 500), anchor, why: text(raw.why, "why", 300) };
     };
     const payload = {
-      forDay: forDay ?? tomorrow(now),
+      forDay: forDay ?? dayAfter(now, 1),
       note: note ?? null,
       retest: await Promise.all(retest.map(item)),
       exercises: await Promise.all(
