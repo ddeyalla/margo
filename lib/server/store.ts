@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeBoard } from "@/lib/shared/boards";
+import { bankQuizzes } from "@/lib/shared/items";
 import { emptyBookState, tidyTitle, type BookId, type BookState, type PassageThread, type Position, type Thread } from "@/lib/shared/types";
 import { getConfig } from "./config";
 import { withFileLock } from "./file-lock";
@@ -147,8 +148,12 @@ const normalize = (raw: Partial<StoredState> | null): BookState => {
   const state = { ...emptyBookState(), ...raw };
   delete state.cards;
   if (state.meta?.title) state.meta = { ...state.meta, title: tidyTitle(state.meta.title) };
+  /* One bank of items: the questions of chapter quizzes join the cards on the way in, and stay saved there from the next write on. */
+  const { cardSets, banked } = bankQuizzes(state);
   return {
     ...state,
+    cardSets,
+    banked,
     threads: state.threads.map((thread) => ("kind" in thread ? thread : { ...thread, kind: "passage" })),
     boards: state.boards.map(normalizeBoard),
   };

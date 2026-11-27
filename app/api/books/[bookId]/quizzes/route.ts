@@ -9,11 +9,23 @@ import { readBody, withBook } from "@/lib/server/with-book";
 import { cleanStance, isConfidence } from "@/lib/shared/confidence";
 import { evidenceOf } from "@/lib/shared/ledger";
 import type { QuizAnswer } from "@/lib/shared/quiz";
+import { applyReview } from "@/lib/shared/schedule";
 import { recordSitting } from "@/lib/shared/sitting";
 import { MAX_ANSWER, standing, type LearnerTurn } from "@/lib/shared/study";
 import type { BookState } from "@/lib/shared/types";
 
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
+
+/** A test's answer to a question the bank already holds moves that item's schedule too, so the two never drift apart. */
+const answeredInBank = (sets: BookState["cardSets"], chapter: string, answers: QuizAnswer[], now: Date): BookState["cardSets"] =>
+  answers.reduce(
+    (current, answer) =>
+      current.map((set) => {
+        const cue = set.cues.find((entry) => entry.origin?.chapter === chapter && entry.origin.questionId === answer.questionId);
+        return cue ? applyReview(set, { cueId: cue.id, rating: answer.correct ? "good" : "again", reps: set.schedule.reps, test: true, confidence: answer.confidence, thinking: answer.thinking }, now) : set;
+      }),
+    sets,
+  );
 
 const answerWith = (state: BookState, bookId: string) => ({ quizzes: state.quizzes, skips: state.quizSkips, ...quizJobs(bookId) });
 
@@ -84,9 +96,10 @@ export const POST = withBook(async (found) => {
     const retestOf = typeof body.retestOf === "string" ? body.retestOf.slice(0, 40) : undefined;
     let known = false;
     const saved = await updateBookState(book.id, (state) => {
-      const quizzes = recordSitting(state.quizzes, { chapter, kind, retestOf, answers }, new Date());
+      const now = new Date();
+      const quizzes = recordSitting(state.quizzes, { chapter, kind, retestOf, answers }, now);
       known = quizzes !== null;
-      return quizzes ? { ...state, quizzes } : state;
+      return quizzes ? { ...state, quizzes, cardSets: answeredInBank(state.cardSets, chapter, answers, now) } : state;
     });
     if (!known) return Response.json({ error: "That chapter has no quiz." }, { status: 404 });
     noteEvidence(evidenceOf(book.id, saved));

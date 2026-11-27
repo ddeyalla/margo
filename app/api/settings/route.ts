@@ -3,7 +3,7 @@ import { checkFolder, readSettings, saveSettings } from "@/lib/server/settings";
 import { isProviderId } from "@/lib/server/tutor/providers";
 import { isObject } from "@/lib/server/validate";
 import { isTutorModel } from "@/lib/shared/models";
-import { isLibraryView, isPanelTab, isReadAloudRate, isReadAloudVoice, isReadingFont, isReadingMode, isReadingTheme, type SettingsChange } from "@/lib/shared/types";
+import { cleanLoad, isLibraryView, isLoadLimit, isPanelTab, isReadAloudRate, isReadAloudVoice, isReadingFont, isReadingMode, isReadingTheme, type SettingsChange } from "@/lib/shared/types";
 
 export async function GET() {
   await connection();
@@ -25,6 +25,15 @@ export async function PATCH(request: Request) {
   if (isObject(body) && "readAloudVoice" in body && isReadAloudVoice(body.readAloudVoice)) change.readAloudVoice = body.readAloudVoice;
   if (isObject(body) && isReadAloudRate(body.readAloudRate)) change.readAloudRate = body.readAloudRate;
   if (isObject(body) && isLibraryView(body.libraryView)) change.libraryView = body.libraryView;
+  /* { dailyLoad: { newPerDay: 20, reviewsPerDay: 60 } } sets each limit named, whole numbers from 0 to 500; one left out keeps its saved value. */
+  if (isObject(body) && "dailyLoad" in body) {
+    const load = isObject(body.dailyLoad) ? body.dailyLoad : null;
+    const given = load ? (["newPerDay", "reviewsPerDay"] as const).filter((key) => key in load) : [];
+    if (!load || !given.length || !given.every((key) => isLoadLimit(load[key]))) {
+      return Response.json({ error: "dailyLoad takes { newPerDay?, reviewsPerDay? }, each a whole number from 0 to 500." }, { status: 400 });
+    }
+    change.dailyLoad = cleanLoad(load, (await readSettings()).dailyLoad);
+  }
   /* { models: { claude: "claude-sonnet-5-5" } } chooses a tutor's model; null goes back to its default. */
   if (isObject(body) && isObject(body.models)) {
     const models = { ...(await readSettings()).models };
@@ -47,7 +56,7 @@ export async function PATCH(request: Request) {
     return Response.json(
       {
         error:
-          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { models: { <provider>: \"<model id>\" | null } }, { pdfPage: \"auto\" | \"dark\" | \"light\" }, { readingMode: \"scroll\" | \"pages\" }, { epubPage: \"auto\" | \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false }, { panelTab: \"chat\" | \"notes\" | \"highlights\" | \"cards\" }, { readAloudVoice: \"<voiceURI>\" | null }, { readAloudRate: 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2 }, { libraryView: \"grid\" | \"shelf\" }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
+          "Expected { provider: \"claude\" | \"codex\" | \"api\" }, { models: { <provider>: \"<model id>\" | null } }, { pdfPage: \"auto\" | \"dark\" | \"light\" }, { readingMode: \"scroll\" | \"pages\" }, { epubPage: \"auto\" | \"dark\" | \"light\" }, { boldStarts: true | false }, { readingFont: \"<font family>\" | null }, { chaptersOpen: true | false }, { panelTab: \"chat\" | \"notes\" | \"highlights\" | \"cards\" }, { readAloudVoice: \"<voiceURI>\" | null }, { readAloudRate: 0.75 | 1 | 1.25 | 1.5 | 1.75 | 2 }, { libraryView: \"grid\" | \"shelf\" }, { dailyLoad: { newPerDay: 20, reviewsPerDay: 60 } }, { booksDir: \"/absolute/folder\" } or { notesDir: \"/absolute/folder\" | null }.",
       },
       { status: 400 },
     );

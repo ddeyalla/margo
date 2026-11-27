@@ -1,6 +1,6 @@
 import { sameAnchor } from "./annotations";
 import { applyReview, newSchedule, type Review } from "./schedule";
-import type { Anchor, CardSet, Cue } from "./types";
+import type { Anchor, AnswerType, CardSet, Cue } from "./types";
 
 /** Cards the tutor wrote for a passage, ready to store. */
 export interface NewCards {
@@ -9,7 +9,16 @@ export interface NewCards {
   chapterTitle: string | null;
   fact: string;
   /** `verifiedAt` is when a card was checked against the passage; absent on a card that wasn't. */
-  cards: { question: string; answer: string; verifiedAt?: string }[];
+  cards: NewCard[];
+}
+
+/** One card to store. A card with no type is a flip; a choice card lists every option, its answer among them. */
+export interface NewCard {
+  question: string;
+  answer: string;
+  verifiedAt?: string;
+  type?: AnswerType;
+  choices?: string[];
 }
 
 export type CardChange =
@@ -33,7 +42,16 @@ export const addCards = (sets: CardSet[], added: NewCards, now: Date, newId: () 
   for (const card of added.cards) {
     if (asked.has(normalized(card.question))) continue;
     asked.add(normalized(card.question));
-    cues.push({ id: newId(), question: card.question, answer: card.answer, createdAt: at, lastRating: null, ...(card.verifiedAt ? { verifiedAt: card.verifiedAt } : {}) });
+    cues.push({
+      id: newId(),
+      question: card.question,
+      answer: card.answer,
+      createdAt: at,
+      lastRating: null,
+      ...(card.verifiedAt ? { verifiedAt: card.verifiedAt } : {}),
+      ...(card.type && card.type !== "flip" ? { type: card.type } : {}),
+      ...(card.type === "choice" && card.choices ? { choices: card.choices } : {}),
+    });
   }
   if (!cues.length) return { sets, count: 0 };
   if (existing) return { sets: sets.map((set) => (set === existing ? { ...set, cues: [...set.cues, ...cues] } : set)), count: cues.length };
@@ -53,12 +71,21 @@ export const addCards = (sets: CardSet[], added: NewCards, now: Date, newId: () 
 };
 
 /** A cue with the reader's wording. The check was of the old wording, so its mark goes unless nothing changed. */
-const editedCue = ({ verifiedAt, ...cue }: Cue, question: string, answer: string): Cue => ({
-  ...cue,
-  question,
-  answer,
-  ...(verifiedAt && question === cue.question && answer === cue.answer ? { verifiedAt } : {}),
-});
+const editedCue = ({ verifiedAt, ...cue }: Cue, question: string, answer: string): Cue => {
+  /* A choice whose right answer is reworded to something its options don't hold has no options left to pick from: it becomes a flip. */
+  const { type, choices, rubric, ...rest } = cue;
+  const keepsChoices = type === "choice" && choices?.includes(answer);
+  const kept = type === "choice" ? (keepsChoices ? { type, choices } : {}) : { ...(type ? { type } : {}), ...(choices ? { choices } : {}) };
+  return {
+    ...rest,
+    ...kept,
+    /* The points a right answer must make came from the old answer. */
+    ...(rubric && answer === cue.answer ? { rubric } : {}),
+    question,
+    answer,
+    ...(verifiedAt && question === cue.question && answer === cue.answer ? { verifiedAt } : {}),
+  };
+};
 
 /** Applies one change. A change naming a set or cue that is gone leaves everything as it was. */
 export const changeCards = (sets: CardSet[], change: CardChange, now: Date): CardSet[] => {

@@ -173,6 +173,26 @@ describe("read tools", () => {
   });
 });
 
+describe("the item bank through the tools", () => {
+  it("lists typed items, and holds back what the daily limit doesn't let through without counting it", async () => {
+    const { saveSettings } = await import("@/lib/server/settings");
+    await updateBookState(bookId, (state) => ({
+      ...state,
+      cardSets: [...state.cardSets, ...addCards([], { anchor: { kind: "epub", cfi: "epubcfi(/6/8!/4/2)" }, quote: "Orbits", chapterTitle: "Orbits", fact: "Orbits are ellipses.", cards: [{ question: "What shape is an orbit?", answer: "An ellipse", type: "choice", choices: ["A circle", "An ellipse"] }] }, new Date(), () => "set-2").sets],
+    }));
+    const open = await call<{ due: number; moreWaiting: boolean; cards: { cards: { type: string; choices?: string[] }[] }[] }>("review_queue", { bookId });
+    expect(open.cards.flatMap((set) => set.cards).find((card) => card.type === "choice")).toMatchObject({ choices: ["A circle", "An ellipse"] });
+    await saveSettings({ dailyLoad: { newPerDay: 1, reviewsPerDay: 60 } });
+    try {
+      const capped = await call<{ due: number; moreWaiting: boolean }>("review_queue", { bookId });
+      expect(capped).toMatchObject({ due: 1, moreWaiting: true });
+      expect(await call("get_today")).toMatchObject({ due: 1 });
+    } finally {
+      await saveSettings({ dailyLoad: { newPerDay: 20, reviewsPerDay: 60 } });
+    }
+  });
+});
+
 describe("the two direct writes", () => {
   it("park a question on a passage, which the thread tools then show", async () => {
     const hit = await tidalHit();

@@ -1,3 +1,4 @@
+import type { NewCard } from "./cards";
 import type { Anchor, BookId } from "./types";
 
 /*
@@ -33,7 +34,7 @@ export interface CardSuggestion extends SuggestionFrame {
     chapterTitle: string | null;
     fact: string;
     /** The cards the reader can add: each passed the check against the quote when it was proposed, at `verifiedAt`. */
-    cards: { question: string; answer: string; verifiedAt?: string }[];
+    cards: NewCard[];
     /** Proposed cards that didn't pass, with why. They are shown as left out and are never added. */
     failed?: { question: string; answer: string; reason: string }[];
   };

@@ -24,8 +24,17 @@ const proposeCardTool = defineTool({
     cards: {
       type: "list",
       max: 3,
-      description: "One to three cards.",
-      item: { type: "object", properties: { question: { type: "string" }, answer: { type: "string" } }, required: ["question", "answer"] },
+      description: 'One to three cards. Each is a "flip" by default: the reader thinks of the answer, sees it and rates themselves. Give `type: "choice"` with `choices` (2 to 6 options, the right one word for word as the `answer`) to have them pick; give `type: "free"` for a written answer that a grader marks against the passage.',
+      item: {
+        type: "object",
+        properties: {
+          question: { type: "string" },
+          answer: { type: "string" },
+          type: { type: "string", enum: ["flip", "choice", "free"] },
+          choices: { type: "array", items: { type: "string" }, maxItems: 6 },
+        },
+        required: ["question", "answer"],
+      },
     },
     provider: PROVIDER_FIELD,
   },
