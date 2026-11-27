@@ -250,6 +250,44 @@ describe("suggestions", () => {
     await expect(decideSuggestion(suggestionId, "reject")).rejects.toThrow(SuggestionError);
   });
 
+  it("carry a prepared session plan that only advises, one a day", async () => {
+    const anchor = await craterAnchor();
+    const stateBefore = JSON.stringify(await readBookState(bookId));
+    const forDay = (await call<{ forDay: string }>("propose_session_plan", { retest: [{ bookId, topic: "t", why: "w" }] })).forDay;
+    const plan = {
+      forDay,
+      note: "Two items were missed.",
+      retest: [{ bookId, topic: "Why craters last", chapter: "Craters", anchor, why: "Missed twice." }],
+      exercises: [{ bookId, topic: "Craters", anchor, prompt: "Explain why old surfaces show the most craters.", why: "You are here." }],
+      questions: [{ bookId, question: "What is a maria?" }],
+    };
+    const first = await call<{ suggestionId: string; status: string; retest: number; exercises: number; questions: number }>("propose_session_plan", plan, "prep-agent");
+    expect(first).toMatchObject({ status: "pending", retest: 1, exercises: 1, questions: 1 });
+    expect(JSON.stringify(await readBookState(bookId))).toBe(stateBefore);
+    const again = await call<{ suggestionId: string }>("propose_session_plan", { ...plan, note: "Updated." }, "prep-agent");
+    const pending = (await listSuggestions("pending")).filter((entry) => entry.kind === "plan");
+    expect(pending).toMatchObject([{ id: again.suggestionId, payload: { note: "Updated.", forDay }, target: { bookId: null } }]);
+    expect(await pendingSuggestions()).toMatchObject([{ id: again.suggestionId, bookTitle: null }]);
+
+    expect(await decideSuggestion(again.suggestionId, "accept")).toMatchObject({ status: "accepted" });
+    expect(JSON.stringify(await readBookState(bookId))).toBe(stateBefore);
+  });
+
+  it("refuse a plan that is empty, for a past day, or names a book or place that isn't there", async () => {
+    const anchor = await craterAnchor();
+    const item = { bookId, topic: "Craters", why: "Missed." };
+    expect(await refusal("propose_session_plan", {})).toMatch(/at least one/);
+    expect(await refusal("propose_session_plan", { forDay: "2001-01-01", retest: [item] })).toMatch(/has passed/);
+    expect(await refusal("propose_session_plan", { forDay: "soon", retest: [item] })).toMatch(/date like/);
+    expect(await refusal("propose_session_plan", { forDay: "2026-02-31", retest: [item] })).toMatch(/date like/);
+    expect(await refusal("propose_session_plan", { forDay: "2999-01-01", retest: [item] })).toMatch(/days away/);
+    expect(await refusal("propose_session_plan", { retest: [{ ...item, bookId: "nope" }] })).toMatch(/No book/);
+    expect(await refusal("propose_session_plan", { retest: [{ ...item, anchor: { kind: "pdf", page: 1, start: 0, end: 1 } }] })).toMatch(/not a place/);
+    expect(await refusal("propose_session_plan", { exercises: [{ ...item, prompt: "Q?" }] })).toMatch(/anchor/);
+    expect(await refusal("propose_session_plan", { exercises: [{ bookId, topic: "Craters", anchor, why: "x" }] })).toMatch(/prompt/);
+    expect((await listSuggestions("pending")).filter((entry) => entry.kind === "plan")).toEqual([]);
+  });
+
   it("leave out a card that fails the check against the passage, say why, and add only the ones that passed", async () => {
     const cards = [
       { question: "What do impacts leave behind?", answer: "Craters." },
@@ -257,7 +295,7 @@ describe("suggestions", () => {
     ];
     const proposed = await call<{ suggestionId: string; status: string; verified: number; failed: unknown[] }>("propose_card", { ...proposal(await craterAnchor()), fact: "Impacts leave craters.", cards });
     expect(proposed).toMatchObject({ status: "pending", verified: 1, failed: [{ question: "How wide is the BAD crater?", reason: "The passage doesn't say." }] });
-    const [waiting] = await pendingSuggestions();
+    const [waiting] = (await pendingSuggestions()) as { payload: CardSuggestion["payload"] }[];
     expect(waiting.payload.cards).toEqual([{ ...cards[0], verifiedAt: expect.any(String) }]);
     expect(waiting.payload.failed).toEqual([{ ...cards[1], reason: "The passage doesn't say." }]);
 
@@ -358,7 +396,7 @@ describe("the MCP server", () => {
     const tools = reply(2).result!.tools as { name: string; inputSchema: { type: string }; annotations: { readOnlyHint: boolean } }[];
     expect(tools.map((tool) => tool.name)).toEqual(TOOLS.map((tool) => tool.name));
     expect(tools.every((tool) => tool.inputSchema.type === "object")).toBe(true);
-    expect(tools.filter((tool) => !tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(["park_question", "log_activity", "propose_card", "record_evidence"]);
+    expect(tools.filter((tool) => !tool.annotations.readOnlyHint).map((tool) => tool.name)).toEqual(["park_question", "log_activity", "propose_card", "propose_session_plan", "record_evidence"]);
     expect(reply(3).result).toEqual({});
   });
 
