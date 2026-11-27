@@ -115,11 +115,24 @@ Write the margin down before the first test. The proposed margin is **20 points*
 
 ### 6.2 Hover glance (spike, done in this draft)
 
-- **Trigger:** hold Option and rest the pointer on a word for 350 ms. Release Option to close the card.
-- **Card:** the meaning of the word in its sentence, one example, and a flag that tells if the passage teaches this idea.
-- **Why Option:** a plain hover sends a model call on each pointer stop. That breaks RULE-05 (calm default). To test plain hover, remove the `altKey` check in `EpubReader.tsx`.
-- **Log:** each glance goes to `glances.jsonl` in the data folder (term, core flag, time).
-- **Measured:** one glance through the Claude Code CLI took 4.3 s. This is too slow for a hover. **Next:** send glances to the fastest model (Haiku), per the spec routing table (UI copy row), and pre-fetch the term under the pointer when Option goes down.
+- **Triggers** (all three work, so we can see which one the Learner uses):
+  1. Hold Option and rest the pointer on a word. The request starts when Option goes down.
+  2. Glance mode: press ⌘⇧G. Then resting the pointer on a word for 400 ms is enough. Press ⌘⇧G or Esc to stop.
+  3. Right click or two-finger click on a word.
+- **Card:** the meaning of the word in its sentence, one example, and a flag that tells if the passage teaches this idea. The text streams into the card.
+- **How it runs:** one `claude` CLI process with Haiku stays running. Each glance is one more message to it. The process starts when the book opens and gets one short warm-up message. It restarts after 20 glances and stops after 10 minutes without use.
+- **Cache:** each book saves its answers in `glances/<bookId>.json` in the data folder. A word glanced at again shows at once.
+- **Log:** each glance goes to `glances.jsonl` in the data folder (term, core flag, cached, time to first text, total time).
+- **Measured speed** (time to first text):
+
+  | Version | Time |
+  |---|---|
+  | New CLI process for each glance | 4.3 s |
+  | Warm Haiku worker, first glance after warm-up | 1.5 s |
+  | Warm Haiku worker, later glances | 2.1 to 2.9 s |
+  | Cached word | 0.01 s |
+
+- **Next:** the CLI costs about 2 s for each turn, even with Haiku. Test the direct API path (Haiku with streaming) with the API credits, and compare it with the numbers above.
 - **Measure:** day-7 recall on Nodes the Learner glanced at, against Nodes the Learner did not glance at. Compare core terms and prerequisite terms separately.
 - **Kill rule:** if day-7 recall on glanced core terms is lower than on non-glanced core terms, remove the glance from core terms. Keep it for prerequisite terms.
 
